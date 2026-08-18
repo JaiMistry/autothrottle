@@ -11,7 +11,7 @@ COPY internal/web/templates ./internal/web/templates
 COPY internal/web/static ./internal/web/static
 RUN npx @tailwindcss/cli -i ./input.css -o /out/tailwind.css --minify
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.6-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
