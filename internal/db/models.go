@@ -14,15 +14,15 @@ type MediaServer struct {
 }
 
 type Downloader struct {
-	ID                                                             int64
-	Name                                                           string
-	Type                                                           string // qbittorrent, transmission
-	URL                                                            string
-	CredentialEncrypted                                            sql.NullString
-	DefaultDownloadLimit, DefaultUploadLimit                       int64 // KB/s, 0 = unlimited
-	BackupDownloadLimit, BackupUploadLimit                         int64
-	Enabled                                                        bool
-	CreatedAt, UpdatedAt                                           string
+	ID                                       int64
+	Name                                     string
+	Type                                     string // qbittorrent, transmission
+	URL                                      string
+	CredentialEncrypted                      sql.NullString
+	DefaultDownloadLimit, DefaultUploadLimit int64 // KB/s, 0 = unlimited
+	BackupDownloadLimit, BackupUploadLimit   int64
+	Enabled                                  bool
+	CreatedAt, UpdatedAt                     string
 }
 
 type Mapping struct {
@@ -34,11 +34,11 @@ type Mapping struct {
 }
 
 type Event struct {
-	ID                                        int64
-	OccurredAt                                string
-	Level                                     string // info, warn, error
-	Message                                   string
-	MappingID, MediaServerID, DownloaderID    sql.NullInt64
+	ID                                     int64
+	OccurredAt                             string
+	Level                                  string // info, warn, error
+	Message                                string
+	MappingID, MediaServerID, DownloaderID sql.NullInt64
 }
 
 // --- media servers ---

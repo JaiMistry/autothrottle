@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	cookieName        = "autothrottle_session"
-	csrfFormField     = "csrf_token"
-	csrfHeaderName    = "X-CSRF-Token"
-	sessionTTL        = 24 * time.Hour
-	loginRateMax      = 5
-	loginRateWindow   = time.Minute
+	cookieName      = "autothrottle_session"
+	csrfFormField   = "csrf_token"
+	csrfHeaderName  = "X-CSRF-Token"
+	sessionTTL      = 24 * time.Hour
+	loginRateMax    = 5
+	loginRateWindow = time.Minute
 )
 
 type contextKey string
