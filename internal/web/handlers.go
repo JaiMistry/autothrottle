@@ -40,6 +40,7 @@ type dashboardPageData struct {
 	MediaServers     []dashboardMediaServerView
 	Downloaders      []dashboardDownloaderView
 	Paused           bool
+	OverallStatus    string // "paused", "throttling", or "idle" — drives the header pill
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +107,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		MediaServers:     msViews,
 		Downloaders:      dlViews,
 		Paused:           s.scheduler.Paused(),
+		OverallStatus:    overallStatus(s.scheduler.Paused(), dlViews),
 	}
 	if err := s.templates["dashboard"].ExecuteTemplate(w, "layout", data); err != nil {
 		slog.Error("rendering dashboard page", "error", err)
@@ -116,4 +118,20 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) togglePause(w http.ResponseWriter, r *http.Request) {
 	s.scheduler.SetPaused(r.Context(), !s.scheduler.Paused())
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// overallStatus picks the Dashboard header pill's state: a manual
+// pause always wins (it overrides real session activity), otherwise
+// any downloader currently throttled means the mechanism is doing its
+// job right now, otherwise everything's at its default rate.
+func overallStatus(paused bool, downloaders []dashboardDownloaderView) string {
+	if paused {
+		return "paused"
+	}
+	for _, dl := range downloaders {
+		if dl.Enabled && dl.StateKnown && dl.Throttled {
+			return "throttling"
+		}
+	}
+	return "idle"
 }

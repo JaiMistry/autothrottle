@@ -1,11 +1,22 @@
 {{define "content"}}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-lg font-bold">Dashboard</h1>
+<div class="flex items-center justify-between mb-6 gap-4">
+  <div class="flex items-center gap-3">
+    <h1 class="text-lg font-bold">Dashboard</h1>
+    {{if .HasMediaServers}}
+    {{if eq .OverallStatus "throttling"}}
+    <span class="pill pill-warn"><span class="stripe"></span>Throttling active</span>
+    {{else if eq .OverallStatus "paused"}}
+    <span class="pill pill-neutral"><span class="stripe"></span>Paused</span>
+    {{else}}
+    <span class="pill pill-good"><span class="stripe"></span>Idle</span>
+    {{end}}
+    {{end}}
+  </div>
   {{if .HasMediaServers}}
   <form method="post" action="/pause-toggle">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     {{if .Paused}}
-    <button type="submit" class="btn btn-warning btn-sm">Throttling paused — resume</button>
+    <button type="submit" class="btn btn-warning btn-sm">Resume throttling</button>
     {{else}}
     <button type="submit" class="btn btn-ghost btn-sm">Pause all throttling</button>
     {{end}}
@@ -17,21 +28,17 @@
 <div class="grid grid-cols-3 gap-3 mb-6">
   <div class="card bg-base-200 border border-base-300 p-4">
     <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Media servers</div>
-    <div class="text-xl font-bold">{{.MediaServerCount}}</div>
+    <div class="text-xl font-bold font-mono tabular-nums">{{.MediaServerCount}}</div>
   </div>
   <div class="card bg-base-200 border border-base-300 p-4">
     <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Downloaders</div>
-    <div class="text-xl font-bold">{{.DownloaderCount}}</div>
+    <div class="text-xl font-bold font-mono tabular-nums">{{.DownloaderCount}}</div>
   </div>
   <div class="card bg-base-200 border border-base-300 p-4">
     <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Active mappings</div>
-    <div class="text-xl font-bold">{{.MappingCount}}</div>
+    <div class="text-xl font-bold font-mono tabular-nums">{{.MappingCount}}</div>
   </div>
 </div>
-
-{{if .Paused}}
-<div class="alert alert-warning text-sm mb-6">Throttling is manually paused — every downloader is held at its default rate regardless of playback.</div>
-{{end}}
 
 <div class="grid grid-cols-2 gap-4">
   <div class="card bg-base-200 border border-base-300">
@@ -42,11 +49,11 @@
         <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
           <span>{{.Name}}</span>
           {{if not .Enabled}}
-          <span class="badge badge-ghost badge-sm">disabled</span>
+          <span class="pill pill-neutral"><span class="stripe"></span>disabled</span>
           {{else if gt .ActiveSessions 0}}
-          <span class="badge badge-success badge-sm">{{.ActiveSessions}} playing</span>
+          <span class="pill pill-accent"><span class="stripe"></span>{{.ActiveSessions}} playing</span>
           {{else}}
-          <span class="badge badge-ghost badge-sm">idle</span>
+          <span class="pill pill-neutral"><span class="stripe"></span>idle</span>
           {{end}}
         </div>
         {{end}}
@@ -61,13 +68,13 @@
         <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
           <span>{{.Name}}</span>
           {{if not .Enabled}}
-          <span class="badge badge-ghost badge-sm">disabled</span>
+          <span class="pill pill-neutral"><span class="stripe"></span>disabled</span>
           {{else if not .StateKnown}}
-          <span class="badge badge-ghost badge-sm">unknown</span>
+          <span class="pill pill-neutral"><span class="stripe"></span>unknown</span>
           {{else if .Throttled}}
-          <span class="badge badge-warning badge-sm">throttled</span>
+          <span class="pill pill-warn"><span class="stripe"></span>throttled</span>
           {{else}}
-          <span class="badge badge-success badge-sm">default rate</span>
+          <span class="pill pill-good"><span class="stripe"></span>default rate</span>
           {{end}}
         </div>
         {{end}}

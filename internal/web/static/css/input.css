@@ -47,3 +47,60 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Status pill with a glowing dot — the visual-identity preview's
+   signature state indicator (a page-level "Throttling active" pill,
+   plus per-item variants). Not a daisyUI component; daisyUI's plain
+   badge covers static labels but has no equivalent for "live state
+   worth a glance," which is what this exists for. */
+@layer components {
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3125rem 0.75rem 0.3125rem 0.5rem;
+    border-radius: 999px;
+    line-height: 1;
+  }
+  .pill .stripe {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-warn {
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning);
+  }
+  .pill-warn .stripe {
+    background: var(--color-warning);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning) 25%, transparent);
+  }
+  .pill-good {
+    background: color-mix(in srgb, var(--color-success) 16%, transparent);
+    color: var(--color-success);
+  }
+  .pill-good .stripe {
+    background: var(--color-success);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
+  }
+  .pill-accent {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-primary);
+  }
+  .pill-accent .stripe {
+    background: var(--color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
+  .pill-neutral {
+    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    color: var(--color-base-content);
+    opacity: 0.7;
+  }
+  .pill-neutral .stripe {
+    background: currentColor;
+    opacity: 0.5;
+  }
+}
