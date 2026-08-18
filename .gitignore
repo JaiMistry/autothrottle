@@ -7,3 +7,8 @@
 .env
 internal/web/static/css/tailwind.css
 tailwindcss
+
+# Local working notes, not part of the public project
+idea.md
+plan.md
+.claude/
