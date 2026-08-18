@@ -1,0 +1,487 @@
+<title>AutoThrottle — Visual Identity</title>
+<style>
+  :root {
+    --ink: #0a0f1a;
+    --surface-dark: #131b2c;
+    --surface-dark-2: #1a2438;
+    --paper: #f2f5f9;
+    --surface-light: #ffffff;
+    --surface-light-2: #e7ecf3;
+    --accent: #38bdf8;
+    --accent-dim: #0ea5c7;
+    --good: #4ade80;
+    --warn: #f5a623;
+    --critical: #f2545b;
+
+    --bg: var(--paper);
+    --surface: var(--surface-light);
+    --surface-2: var(--surface-light-2);
+    --text: #16202f;
+    --text-dim: #4a5768;
+    --text-faint: #8593a5;
+    --border: #d7dee7;
+    --shadow: 0 1px 2px rgba(20, 30, 45, 0.06), 0 8px 24px -12px rgba(20, 30, 45, 0.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--ink);
+      --surface: var(--surface-dark);
+      --surface-2: var(--surface-dark-2);
+      --text: #e7edf6;
+      --text-dim: #9aa8bc;
+      --text-faint: #5c6a80;
+      --border: #232f45;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: var(--ink);
+    --surface: var(--surface-dark);
+    --surface-2: var(--surface-dark-2);
+    --text: #e7edf6;
+    --text-dim: #9aa8bc;
+    --text-faint: #5c6a80;
+    --border: #232f45;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: var(--paper);
+    --surface: var(--surface-light);
+    --surface-2: var(--surface-light-2);
+    --text: #16202f;
+    --text-dim: #4a5768;
+    --text-faint: #8593a5;
+    --border: #d7dee7;
+    --shadow: 0 1px 2px rgba(20, 30, 45, 0.06), 0 8px 24px -12px rgba(20, 30, 45, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  ::selection { background: var(--accent); color: #06202b; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 48px 28px 96px; }
+
+  header.top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  header.top h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  header.top .kicker {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    font-weight: 600;
+  }
+  .intro {
+    color: var(--text-dim);
+    max-width: 65ch;
+    margin: 4px 0 40px;
+    font-size: 15px;
+  }
+
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px 6px 6px;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle .dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: grid;
+    place-items: center;
+    color: #06202b;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  section { margin: 56px 0; }
+  section > h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    font-weight: 700;
+    margin: 0 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Palette */
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .swatch {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .swatch .fill { height: 64px; }
+  .swatch .label { padding: 10px 12px; }
+  .swatch .name { font-size: 13px; font-weight: 600; }
+  .swatch .hex { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+
+  /* Type scale */
+  .type-row {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .type-row:last-child { border-bottom: none; }
+  .type-row .tag {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    width: 130px;
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+  .type-sample { text-wrap: balance; }
+
+  /* Dashboard mock */
+  .app {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: var(--surface);
+  }
+  .app-nav {
+    background: var(--surface-2);
+    padding: 20px 14px;
+    border-right: 1px solid var(--border);
+  }
+  .app-nav .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 24px;
+    padding: 0 8px;
+  }
+  .app-nav .brand .mark {
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .app-nav a {
+    display: block;
+    text-decoration: none;
+    font-size: 13px;
+    color: var(--text-dim);
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    font-weight: 500;
+  }
+  .app-nav a.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+
+  .app-main { padding: 24px 26px; }
+  .app-main .row1 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .app-main h3 { margin: 0; font-size: 17px; font-weight: 700; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px 5px 8px;
+    border-radius: 999px;
+  }
+  .pill .stripe { width: 7px; height: 7px; border-radius: 50%; }
+  .pill.good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .pill.good .stripe { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent); }
+  .pill.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .pill.warn .stripe { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: var(--surface);
+  }
+  .card .k {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .card .v { font-size: 20px; font-weight: 700; }
+  .card .v .unit { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+  .card .v.accent { color: var(--accent); }
+  .card .v.warn { color: var(--warn); }
+
+  .chart-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    background: var(--surface);
+  }
+  .chart-card .k { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-bottom: 12px; }
+  .chart-card svg { display: block; width: 100%; height: 90px; }
+
+  .log-line {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    padding: 5px 0;
+    color: var(--text-dim);
+  }
+  .log-line .t { color: var(--text-faint); flex-shrink: 0; }
+  .log-line .badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    height: fit-content;
+  }
+  .log-line .badge.good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+  .log-line .badge.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .cards { grid-template-columns: 1fr; }
+    .app { grid-template-columns: 1fr; }
+    .app-nav { display: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="kicker">AutoThrottle</div>
+      <h1>Visual identity preview</h1>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle light and dark theme">
+      <span class="dot" id="theme-icon">◐</span>
+      <span id="theme-label">Auto (follows system)</span>
+    </button>
+  </header>
+  <p class="intro">
+    A working preview of the palette, type, and layout proposed for the
+    app — not a mockup of every screen, just enough of the Dashboard to
+    see the pieces together. The toggle above uses the same light/dark
+    mechanism daisyUI provides natively for the real build.
+  </p>
+
+  <section>
+    <h2>Palette</h2>
+    <div class="swatches">
+      <div class="swatch">
+        <div class="fill" style="background:#0a0f1a"></div>
+        <div class="label"><div class="name">Ink</div><div class="hex mono">#0A0F1A</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#131b2c"></div>
+        <div class="label"><div class="name">Surface (dark)</div><div class="hex mono">#131B2C</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#f2f5f9"></div>
+        <div class="label"><div class="name">Paper</div><div class="hex mono">#F2F5F9</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#38bdf8"></div>
+        <div class="label"><div class="name">Accent</div><div class="hex mono">#38BDF8</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#4ade80"></div>
+        <div class="label"><div class="name">Good</div><div class="hex mono">#4ADE80</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#f5a623"></div>
+        <div class="label"><div class="name">Warn</div><div class="hex mono">#F5A623</div></div>
+      </div>
+      <div class="swatch">
+        <div class="fill" style="background:#f2545b"></div>
+        <div class="label"><div class="name">Critical</div><div class="hex mono">#F2545B</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Typography</h2>
+    <div class="type-row">
+      <div class="tag">Display</div>
+      <div class="type-sample" style="font-size: 26px; font-weight: 700; letter-spacing: -0.01em;">Throttling active on qBittorrent</div>
+    </div>
+    <div class="type-row">
+      <div class="tag">Body</div>
+      <div class="type-sample" style="font-size: 15px; color: var(--text-dim); max-width: 46ch;">
+        Plex session started on Living Room TV. Download and upload limits switched to backup rates until playback ends.
+      </div>
+    </div>
+    <div class="type-row">
+      <div class="tag">Data / mono</div>
+      <div class="type-sample mono" style="font-size: 15px;">2.1 MB/s <span style="color: var(--text-faint)">↓</span> · 512 KB/s <span style="color: var(--text-faint)">↑</span> · 192.168.1.60</div>
+    </div>
+    <div class="type-row">
+      <div class="tag">Caption</div>
+      <div class="type-sample" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); font-weight: 600;">Media Servers — Plex</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Dashboard, in context</h2>
+    <div class="app">
+      <nav class="app-nav">
+        <div class="brand"><span class="mark"></span>AutoThrottle</div>
+        <a class="active" href="#">Dashboard</a>
+        <a href="#">Configuration</a>
+        <a href="#">Analytics</a>
+        <a href="#">History</a>
+        <a href="#">Settings</a>
+      </nav>
+      <div class="app-main">
+        <div class="row1">
+          <h3>Dashboard</h3>
+          <span class="pill warn"><span class="stripe"></span>Throttling active</span>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <div class="k">Download limit</div>
+            <div class="v warn mono">2,200 <span class="unit">KB/s</span></div>
+          </div>
+          <div class="card">
+            <div class="k">Upload limit</div>
+            <div class="v warn mono">512 <span class="unit">KB/s</span></div>
+          </div>
+          <div class="card">
+            <div class="k">Active session</div>
+            <div class="v accent">Plex</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="k">Bandwidth, last 2 hours — shaded region is bandwidth saved</div>
+          <svg viewBox="0 0 400 90" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="savedFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="22" x2="400" y2="22" stroke="var(--border)" stroke-width="1"/>
+            <line x1="0" y1="45" x2="400" y2="45" stroke="var(--border)" stroke-width="1"/>
+            <line x1="0" y1="68" x2="400" y2="68" stroke="var(--border)" stroke-width="1"/>
+            <path d="M0,20 C40,20 60,22 100,22 C160,22 180,60 240,62 C300,64 320,64 400,64" fill="none" stroke="var(--text-faint)" stroke-width="1.5" stroke-dasharray="3 3"/>
+            <path d="M0,20 C40,20 60,22 100,22 C160,22 180,60 240,62 C300,64 320,64 400,64 L400,90 L0,90 Z" fill="url(#savedFill)"/>
+            <path d="M0,20 C40,20 60,22 100,22 C160,22 180,60 240,62 C300,64 320,64 400,64" fill="none" stroke="#38bdf8" stroke-width="2"/>
+            <circle cx="400" cy="64" r="3.5" fill="#38bdf8"/>
+          </svg>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div class="log-line"><span class="t mono">14:02:11</span><span class="badge warn">THROTTLE</span> Plex session started — qBittorrent limited to backup rate</div>
+          <div class="log-line"><span class="t mono">13:41:55</span><span class="badge good">NORMAL</span> Playback ended on Living Room TV — limits restored</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Colors, type, and layout only — not a full page-by-page mockup. Body/UI text uses the system font stack in both this preview and the real app (no webfont load); the mono face is used for anything numeric, matching the plan's log/rate-display convention.
+  </footer>
+</div>
+
+<script>
+  function applyIcon(theme) {
+    var icon = document.getElementById('theme-icon');
+    var label = document.getElementById('theme-label');
+    if (theme === 'dark') { icon.textContent = '●'; label.textContent = 'Dark'; }
+    else if (theme === 'light') { icon.textContent = '○'; label.textContent = 'Light'; }
+    else { icon.textContent = '◐'; label.textContent = 'Auto (follows system)'; }
+  }
+  function toggleTheme() {
+    var root = document.documentElement;
+    var current = root.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : current === 'light' ? null : 'dark';
+    if (next) root.setAttribute('data-theme', next); else root.removeAttribute('data-theme');
+    applyIcon(next);
+  }
+  applyIcon(document.documentElement.getAttribute('data-theme'));
+</script>
