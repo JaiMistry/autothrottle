@@ -32,7 +32,11 @@ func main() {
 		logger.Error("opening database", "error", err)
 		os.Exit(1)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			logger.Error("closing database", "error", err)
+		}
+	}()
 
 	srv, err := web.New(database, authCfg)
 	if err != nil {

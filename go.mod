@@ -1,6 +1,6 @@
 module github.com/JaiMistry/autothrottle
 
-go 1.26
+go 1.25.0
 
 require modernc.org/sqlite v1.56.0
 

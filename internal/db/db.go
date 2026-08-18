@@ -31,7 +31,7 @@ func Open(path string) (*DB, error) {
 	conn.SetMaxOpenConns(1)
 
 	if _, err := conn.Exec(schemaSQL); err != nil {
-		conn.Close()
+		_ = conn.Close() // already returning the more relevant schema error
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
 

@@ -60,7 +60,7 @@ func (d *DB) ListMediaServers() ([]MediaServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []MediaServer
 	for rows.Next() {
@@ -120,7 +120,7 @@ func (d *DB) ListDownloaders() ([]Downloader, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []Downloader
 	for rows.Next() {
@@ -181,7 +181,7 @@ func (d *DB) ListMappings() ([]Mapping, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []Mapping
 	for rows.Next() {
@@ -223,7 +223,7 @@ func (d *DB) ListEvents(limit int) ([]Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []Event
 	for rows.Next() {
