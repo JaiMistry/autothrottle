@@ -24,7 +24,7 @@ var staticFS embed.FS
 // pages would collide, since every page defines a template named
 // "content" and html/template's named templates share one namespace
 // per *template.Template instance.
-var pages = []string{"login", "dashboard", "configuration"}
+var pages = []string{"login", "dashboard", "configuration", "history"}
 
 type Server struct {
 	db            *db.DB
@@ -76,6 +76,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /{$}", s.dashboardPage)
 	protected.HandleFunc("POST /pause-toggle", s.togglePause)
 	protected.HandleFunc("GET /configuration", s.configurationPage)
+	protected.HandleFunc("GET /history", s.historyPage)
 	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)
 	protected.HandleFunc("POST /configuration/media-servers/test", s.testMediaServerForm)
 	protected.HandleFunc("POST /configuration/media-servers/{id}/delete", s.deleteMediaServer)
@@ -87,7 +88,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("POST /configuration/mappings", s.createMapping)
 	protected.HandleFunc("POST /configuration/mappings/{id}/toggle", s.toggleMapping)
 	protected.HandleFunc("POST /configuration/mappings/{id}/delete", s.deleteMapping)
-	// /analytics, /history, /settings land in later passes.
+	// /analytics, /settings land in later passes.
 
 	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
