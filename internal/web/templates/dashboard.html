@@ -1,10 +1,20 @@
 {{define "content"}}
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-lg font-bold">Dashboard</h1>
+  {{if .HasMediaServers}}
+  <form method="post" action="/pause-toggle">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    {{if .Paused}}
+    <button type="submit" class="btn btn-warning btn-sm">Throttling paused — resume</button>
+    {{else}}
+    <button type="submit" class="btn btn-ghost btn-sm">Pause all throttling</button>
+    {{end}}
+  </form>
+  {{end}}
 </div>
 
 {{if .HasMediaServers}}
-<div class="grid grid-cols-3 gap-3 mb-4">
+<div class="grid grid-cols-3 gap-3 mb-6">
   <div class="card bg-base-200 border border-base-300 p-4">
     <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Media servers</div>
     <div class="text-xl font-bold">{{.MediaServerCount}}</div>
@@ -16,6 +26,53 @@
   <div class="card bg-base-200 border border-base-300 p-4">
     <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Active mappings</div>
     <div class="text-xl font-bold">{{.MappingCount}}</div>
+  </div>
+</div>
+
+{{if .Paused}}
+<div class="alert alert-warning text-sm mb-6">Throttling is manually paused — every downloader is held at its default rate regardless of playback.</div>
+{{end}}
+
+<div class="grid grid-cols-2 gap-4">
+  <div class="card bg-base-200 border border-base-300">
+    <div class="card-body">
+      <h2 class="font-bold text-sm mb-3">Media servers</h2>
+      <div class="flex flex-col gap-2">
+        {{range .MediaServers}}
+        <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
+          <span>{{.Name}}</span>
+          {{if not .Enabled}}
+          <span class="badge badge-ghost badge-sm">disabled</span>
+          {{else if gt .ActiveSessions 0}}
+          <span class="badge badge-success badge-sm">{{.ActiveSessions}} playing</span>
+          {{else}}
+          <span class="badge badge-ghost badge-sm">idle</span>
+          {{end}}
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  <div class="card bg-base-200 border border-base-300">
+    <div class="card-body">
+      <h2 class="font-bold text-sm mb-3">Downloaders</h2>
+      <div class="flex flex-col gap-2">
+        {{range .Downloaders}}
+        <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
+          <span>{{.Name}}</span>
+          {{if not .Enabled}}
+          <span class="badge badge-ghost badge-sm">disabled</span>
+          {{else if not .StateKnown}}
+          <span class="badge badge-ghost badge-sm">unknown</span>
+          {{else if .Throttled}}
+          <span class="badge badge-warning badge-sm">throttled</span>
+          {{else}}
+          <span class="badge badge-success badge-sm">default rate</span>
+          {{end}}
+        </div>
+        {{end}}
+      </div>
+    </div>
   </div>
 </div>
 {{else}}

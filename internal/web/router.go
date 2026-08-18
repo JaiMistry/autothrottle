@@ -10,6 +10,7 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/scheduler"
 )
 
 //go:embed templates/*.html
@@ -33,9 +34,10 @@ type Server struct {
 	csrf          *auth.CSRF
 	templates     map[string]*template.Template
 	encryptionKey []byte
+	scheduler     *scheduler.Scheduler
 }
 
-func New(database *db.DB, authCfg auth.Config, encryptionKey []byte) (*Server, error) {
+func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *scheduler.Scheduler) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		t, err := template.ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html")
@@ -58,6 +60,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte) (*Server, e
 		csrf:          csrf,
 		templates:     templates,
 		encryptionKey: encryptionKey,
+		scheduler:     sched,
 	}, nil
 }
 
@@ -71,6 +74,7 @@ func (s *Server) Router() http.Handler {
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /{$}", s.dashboardPage)
+	protected.HandleFunc("POST /pause-toggle", s.togglePause)
 	protected.HandleFunc("GET /configuration", s.configurationPage)
 	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)
 	protected.HandleFunc("POST /configuration/media-servers/test", s.testMediaServerForm)
@@ -95,12 +99,4 @@ func (s *Server) Router() http.Handler {
 	}
 
 	return mux
-}
-
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	// Full per-backend reachability reporting (per plan.md's Security
-	// section — this must not just report the internal loop's own
-	// aliveness) lands once media-server/downloader clients exist.
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
 }

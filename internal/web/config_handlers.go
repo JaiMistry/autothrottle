@@ -12,6 +12,7 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/clients"
+	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
@@ -386,7 +387,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	case r.FormValue("clear_credentials") == "on":
 		credentialEncrypted = sql.NullString{}
 	case username != "" && password != "":
-		encoded, err := encodeDownloaderCredential(username, password)
+		encoded, err := credential.EncodeDownloader(username, password)
 		if err != nil {
 			slog.Error("encoding downloader credential", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -484,7 +485,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 			writeTestResult(w, false, "stored credential could not be decrypted")
 			return
 		}
-		cred, err := decodeDownloaderCredential(raw)
+		cred, err := credential.DecodeDownloader(raw)
 		if err != nil {
 			writeTestResult(w, false, "stored credential is corrupt")
 			return

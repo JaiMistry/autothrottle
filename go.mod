@@ -2,7 +2,10 @@ module github.com/JaiMistry/autothrottle
 
 go 1.25.0
 
-require modernc.org/sqlite v1.56.0
+require (
+	github.com/coder/websocket v1.8.15
+	modernc.org/sqlite v1.56.0
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
