@@ -1,0 +1,12 @@
+---
+services:
+  autothrottle:
+    build: .
+    image: autothrottle-local:latest
+    pull_policy: never
+    container_name: autothrottle
+    environment:
+      - LISTEN_ADDR=:8080
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

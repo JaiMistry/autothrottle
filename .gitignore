@@ -1,0 +1,9 @@
+/bin/
+/dist/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+internal/web/static/css/tailwind.css
+tailwindcss
