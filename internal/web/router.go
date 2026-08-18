@@ -1,0 +1,92 @@
+// Package web wires together the HTTP router, templates, and static
+// assets.
+package web
+
+import (
+	"embed"
+	"html/template"
+	"io/fs"
+	"net/http"
+
+	"github.com/JaiMistry/autothrottle/internal/auth"
+	"github.com/JaiMistry/autothrottle/internal/db"
+)
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
+
+// pages lists the page templates that get paired with layout.html.
+// Each is parsed as its own *template.Template — sharing one set across
+// pages would collide, since every page defines a template named
+// "content" and html/template's named templates share one namespace
+// per *template.Template instance.
+var pages = []string{"login", "dashboard"}
+
+type Server struct {
+	db        *db.DB
+	authCfg   auth.Config
+	sessions  *auth.SessionManager
+	limiter   *auth.LoginLimiter
+	csrf      *auth.CSRF
+	templates map[string]*template.Template
+}
+
+func New(database *db.DB, authCfg auth.Config) (*Server, error) {
+	templates := make(map[string]*template.Template, len(pages))
+	for _, page := range pages {
+		t, err := template.ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html")
+		if err != nil {
+			return nil, err
+		}
+		templates[page] = t
+	}
+
+	csrf, err := auth.NewCSRF()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Server{
+		db:        database,
+		authCfg:   authCfg,
+		sessions:  auth.NewDefaultSessionManager(),
+		limiter:   auth.NewDefaultLoginLimiter(),
+		csrf:      csrf,
+		templates: templates,
+	}, nil
+}
+
+func (s *Server) Router() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /login", s.loginPage)
+	mux.HandleFunc("POST /login", auth.LoginHandler(s.authCfg, s.sessions, s.limiter))
+	mux.HandleFunc("POST /logout", auth.LogoutHandler(s.sessions))
+	mux.HandleFunc("GET /health", s.healthHandler)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /{$}", s.dashboardPage)
+	// /configuration, /analytics, /history, /settings land in later passes.
+
+	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
+		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
+	))
+
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err == nil {
+		mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	}
+
+	return mux
+}
+
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Full per-backend reachability reporting (per plan.md's Security
+	// section — this must not just report the internal loop's own
+	// aliveness) lands once media-server/downloader clients exist.
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}

@@ -1,0 +1,58 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — AutoThrottle</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css">
+  <script src="/static/js/htmx.min.js"></script>
+  <script>
+    (function () {
+      var saved = localStorage.getItem("theme");
+      if (saved) document.documentElement.setAttribute("data-theme", saved);
+    })();
+  </script>
+</head>
+<body class="min-h-screen bg-base-100 text-base-content">
+  {{if .Authenticated}}
+  <div class="grid grid-cols-[200px_1fr] min-h-screen">
+    <nav class="bg-base-200 border-r border-base-300 p-4 flex flex-col">
+      <div class="flex items-center gap-2 font-bold text-sm px-2 mb-6">
+        <span class="w-5 h-5 rounded-md bg-primary shrink-0"></span>
+        AutoThrottle
+      </div>
+      <a href="/" class="text-sm px-3 py-2 rounded-lg mb-0.5 font-medium {{if eq .Active "dashboard"}}bg-base-100 shadow-sm{{else}}text-base-content/70 hover:bg-base-100/50{{end}}">Dashboard</a>
+      <a href="/configuration" class="text-sm px-3 py-2 rounded-lg mb-0.5 font-medium {{if eq .Active "configuration"}}bg-base-100 shadow-sm{{else}}text-base-content/70 hover:bg-base-100/50{{end}}">Configuration</a>
+      <a href="/analytics" class="text-sm px-3 py-2 rounded-lg mb-0.5 font-medium {{if eq .Active "analytics"}}bg-base-100 shadow-sm{{else}}text-base-content/70 hover:bg-base-100/50{{end}}">Analytics</a>
+      <a href="/history" class="text-sm px-3 py-2 rounded-lg mb-0.5 font-medium {{if eq .Active "history"}}bg-base-100 shadow-sm{{else}}text-base-content/70 hover:bg-base-100/50{{end}}">History</a>
+      <a href="/settings" class="text-sm px-3 py-2 rounded-lg mb-0.5 font-medium {{if eq .Active "settings"}}bg-base-100 shadow-sm{{else}}text-base-content/70 hover:bg-base-100/50{{end}}">Settings</a>
+      <div class="mt-auto flex flex-col gap-2">
+        <button onclick="autothrottleToggleTheme()" class="btn btn-sm btn-ghost justify-start">Toggle theme</button>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit" class="btn btn-sm btn-ghost justify-start w-full">Log out</button>
+        </form>
+      </div>
+    </nav>
+    <main class="p-6">
+      {{template "content" .}}
+    </main>
+  </div>
+  {{else}}
+  <main class="min-h-screen flex items-center justify-center p-6">
+    {{template "content" .}}
+  </main>
+  {{end}}
+  <script>
+    function autothrottleToggleTheme() {
+      var current = document.documentElement.getAttribute("data-theme") ||
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "autothrottle-dark" : "autothrottle-light");
+      var next = current === "autothrottle-dark" ? "autothrottle-light" : "autothrottle-dark";
+      document.documentElement.setAttribute("data-theme", next);
+      localStorage.setItem("theme", next);
+    }
+  </script>
+</body>
+</html>
+{{end}}

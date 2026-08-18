@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-lg font-bold">Dashboard</h1>
+</div>
+
+{{if .HasMediaServers}}
+<div class="grid grid-cols-3 gap-3 mb-4">
+  <div class="card bg-base-200 border border-base-300 p-4">
+    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Media servers</div>
+    <div class="text-xl font-bold">{{.MediaServerCount}}</div>
+  </div>
+  <div class="card bg-base-200 border border-base-300 p-4">
+    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Downloaders</div>
+    <div class="text-xl font-bold">{{.DownloaderCount}}</div>
+  </div>
+  <div class="card bg-base-200 border border-base-300 p-4">
+    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Active mappings</div>
+    <div class="text-xl font-bold">{{.MappingCount}}</div>
+  </div>
+</div>
+{{else}}
+<div class="card bg-base-200 border border-base-300 p-8 text-center">
+  <p class="text-base-content/70 mb-4">No media servers configured yet — add one to get started.</p>
+  <a href="/configuration" class="btn btn-primary btn-sm inline-block w-fit mx-auto">Go to Configuration</a>
+</div>
+{{end}}
+{{end}}

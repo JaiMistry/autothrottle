@@ -20,6 +20,14 @@ type contextKey string
 
 const sessionTokenKey contextKey = "session_token"
 
+// SessionTokenFromContext returns the current request's session token,
+// as attached by RequireAuth. Empty when auth is disabled (no session
+// exists) or the middleware hasn't run.
+func SessionTokenFromContext(ctx context.Context) string {
+	token, _ := ctx.Value(sessionTokenKey).(string)
+	return token
+}
+
 // secureCookies defaults to true (the app is meant to sit behind a
 // TLS-terminating reverse proxy) but can be turned off for local
 // plain-HTTP development.

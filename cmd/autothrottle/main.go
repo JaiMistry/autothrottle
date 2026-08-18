@@ -11,20 +11,39 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/JaiMistry/autothrottle/internal/auth"
+	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/web"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
+	authCfg, err := auth.LoadConfig()
+	if err != nil {
+		logger.Error("loading auth config", "error", err)
+		os.Exit(1)
+	}
+
+	dbPath := envOr("AUTOTHROTTLE_DB_PATH", "/data/autothrottle.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		logger.Error("opening database", "error", err)
+		os.Exit(1)
+	}
+	defer database.Close()
+
+	srv, err := web.New(database, authCfg)
+	if err != nil {
+		logger.Error("initializing web server", "error", err)
+		os.Exit(1)
+	}
+
 	addr := envOr("LISTEN_ADDR", ":8080")
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /", placeholderHandler)
-
-	srv := &http.Server{
+	httpServer := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      srv.Router(),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -34,8 +53,8 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("listening", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Info("listening", "addr", addr, "auth_disabled", authCfg.Disabled)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "error", err)
 			os.Exit(1)
 		}
@@ -47,20 +66,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
-}
-
-func placeholderHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("AutoThrottle — under construction\n"))
 }
 
 func envOr(key, fallback string) string {

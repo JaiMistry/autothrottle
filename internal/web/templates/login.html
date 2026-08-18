@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="card w-full max-w-sm bg-base-200 border border-base-300 shadow-lg">
+  <div class="card-body">
+    <div class="flex items-center gap-2 font-bold mb-4">
+      <span class="w-5 h-5 rounded-md bg-primary shrink-0"></span>
+      AutoThrottle
+    </div>
+    {{if .Error}}
+    <div class="alert alert-error text-sm py-2 mb-2">{{.Error}}</div>
+    {{end}}
+    <form method="post" action="/login" class="flex flex-col gap-3">
+      <label class="form-control">
+        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Username</span>
+        <input type="text" name="username" class="input input-bordered w-full" autofocus required>
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Password</span>
+        <input type="password" name="password" class="input input-bordered w-full" required>
+      </label>
+      <button type="submit" class="btn btn-primary mt-2">Log in</button>
+    </form>
+  </div>
+</div>
+{{end}}

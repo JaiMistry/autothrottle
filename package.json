@@ -1,0 +1,10 @@
+{
+  "name": "autothrottle-css",
+  "private": true,
+  "description": "Build-time only: compiles the Tailwind/daisyUI CSS. Never installed or run at container runtime.",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4",
+    "tailwindcss": "^4",
+    "daisyui": "^5"
+  }
+}

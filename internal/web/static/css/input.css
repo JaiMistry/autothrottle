@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: false;
+}
+@plugin "daisyui/theme" {
+  name: "autothrottle-dark";
+  default: true;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #0a0f1a;
+  --color-base-200: #131b2c;
+  --color-base-300: #1a2438;
+  --color-base-content: #e7edf6;
+  --color-primary: #38bdf8;
+  --color-primary-content: #06202b;
+  --color-success: #4ade80;
+  --color-warning: #f5a623;
+  --color-error: #f2545b;
+  --radius-box: 0.625rem;
+  --radius-field: 0.5rem;
+}
+@plugin "daisyui/theme" {
+  name: "autothrottle-light";
+  default: false;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #f2f5f9;
+  --color-base-200: #ffffff;
+  --color-base-300: #e7ecf3;
+  --color-base-content: #16202f;
+  --color-primary: #38bdf8;
+  --color-primary-content: #06202b;
+  --color-success: #4ade80;
+  --color-warning: #f5a623;
+  --color-error: #f2545b;
+  --radius-box: 0.625rem;
+  --radius-field: 0.5rem;
+}
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

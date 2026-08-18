@@ -7,6 +7,15 @@ services:
     container_name: autothrottle
     environment:
       - LISTEN_ADDR=:8080
+      - AUTOTHROTTLE_DB_PATH=/data/autothrottle.db
+      - AUTOTHROTTLE_AUTH_USERNAME=admin
+      - AUTOTHROTTLE_AUTH_PASSWORD=devpassword
+      - AUTOTHROTTLE_SECURE_COOKIES=false
+    volumes:
+      - autothrottle_data:/data
     ports:
       - "8080:8080"
     restart: unless-stopped
+
+volumes:
+  autothrottle_data:
