@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
+	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/web"
 )
@@ -38,7 +40,14 @@ func main() {
 		}
 	}()
 
-	srv, err := web.New(database, authCfg)
+	keyPath := envOr("AUTOTHROTTLE_ENCRYPTION_KEY_PATH", filepath.Join(filepath.Dir(dbPath), "encryption.key"))
+	encryptionKey, err := crypto.LoadOrGenerateKey(os.Getenv("AUTOTHROTTLE_ENCRYPTION_KEY"), keyPath)
+	if err != nil {
+		logger.Error("loading encryption key", "error", err)
+		os.Exit(1)
+	}
+
+	srv, err := web.New(database, authCfg, encryptionKey)
 	if err != nil {
 		logger.Error("initializing web server", "error", err)
 		os.Exit(1)

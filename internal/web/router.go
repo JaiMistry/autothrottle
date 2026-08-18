@@ -23,18 +23,19 @@ var staticFS embed.FS
 // pages would collide, since every page defines a template named
 // "content" and html/template's named templates share one namespace
 // per *template.Template instance.
-var pages = []string{"login", "dashboard"}
+var pages = []string{"login", "dashboard", "configuration"}
 
 type Server struct {
-	db        *db.DB
-	authCfg   auth.Config
-	sessions  *auth.SessionManager
-	limiter   *auth.LoginLimiter
-	csrf      *auth.CSRF
-	templates map[string]*template.Template
+	db            *db.DB
+	authCfg       auth.Config
+	sessions      *auth.SessionManager
+	limiter       *auth.LoginLimiter
+	csrf          *auth.CSRF
+	templates     map[string]*template.Template
+	encryptionKey []byte
 }
 
-func New(database *db.DB, authCfg auth.Config) (*Server, error) {
+func New(database *db.DB, authCfg auth.Config, encryptionKey []byte) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		t, err := template.ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html")
@@ -50,12 +51,13 @@ func New(database *db.DB, authCfg auth.Config) (*Server, error) {
 	}
 
 	return &Server{
-		db:        database,
-		authCfg:   authCfg,
-		sessions:  auth.NewDefaultSessionManager(),
-		limiter:   auth.NewDefaultLoginLimiter(),
-		csrf:      csrf,
-		templates: templates,
+		db:            database,
+		authCfg:       authCfg,
+		sessions:      auth.NewDefaultSessionManager(),
+		limiter:       auth.NewDefaultLoginLimiter(),
+		csrf:          csrf,
+		templates:     templates,
+		encryptionKey: encryptionKey,
 	}, nil
 }
 
@@ -69,7 +71,19 @@ func (s *Server) Router() http.Handler {
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /{$}", s.dashboardPage)
-	// /configuration, /analytics, /history, /settings land in later passes.
+	protected.HandleFunc("GET /configuration", s.configurationPage)
+	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)
+	protected.HandleFunc("POST /configuration/media-servers/test", s.testMediaServerForm)
+	protected.HandleFunc("POST /configuration/media-servers/{id}/delete", s.deleteMediaServer)
+	protected.HandleFunc("POST /configuration/media-servers/{id}/test", s.testMediaServerByID)
+	protected.HandleFunc("POST /configuration/downloaders", s.saveDownloader)
+	protected.HandleFunc("POST /configuration/downloaders/test", s.testDownloaderForm)
+	protected.HandleFunc("POST /configuration/downloaders/{id}/delete", s.deleteDownloader)
+	protected.HandleFunc("POST /configuration/downloaders/{id}/test", s.testDownloaderByID)
+	protected.HandleFunc("POST /configuration/mappings", s.createMapping)
+	protected.HandleFunc("POST /configuration/mappings/{id}/toggle", s.toggleMapping)
+	protected.HandleFunc("POST /configuration/mappings/{id}/delete", s.deleteMapping)
+	// /analytics, /history, /settings land in later passes.
 
 	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
