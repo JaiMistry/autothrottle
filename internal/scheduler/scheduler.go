@@ -26,10 +26,24 @@ type Scheduler struct {
 	db            *db.DB
 	encryptionKey []byte
 
-	mu        sync.Mutex
-	active    map[int64]map[string]bool // media server ID -> active session keys
-	lastState map[int64]bool            // downloader ID -> currently throttled
-	paused    bool                      // manual "pause all throttling" override
+	mu     sync.Mutex
+	active map[int64]map[string]bool // media server ID -> active session keys
+	// applied tracks what was last successfully pushed to each
+	// downloader — not just whether it's throttled, but the actual
+	// rate pair, so editing a limit while a downloader is already in
+	// that state still pushes the new numbers.
+	applied map[int64]appliedState
+	paused  bool // manual "pause all throttling" override
+
+	// limiterFor resolves a downloader type to its rate-limit client.
+	// A field rather than a direct call so tests can substitute a fake
+	// and never touch a real download client.
+	limiterFor func(downloaderType string) clients.RateLimiter
+}
+
+type appliedState struct {
+	throttled                  bool
+	downloadLimit, uploadLimit int64
 }
 
 func New(database *db.DB, encryptionKey []byte) *Scheduler {
@@ -37,7 +51,8 @@ func New(database *db.DB, encryptionKey []byte) *Scheduler {
 		db:            database,
 		encryptionKey: encryptionKey,
 		active:        make(map[int64]map[string]bool),
-		lastState:     make(map[int64]bool),
+		applied:       make(map[int64]appliedState),
+		limiterFor:    clients.RateLimiterFor,
 	}
 }
 
@@ -73,8 +88,37 @@ func (s *Scheduler) ActiveSessionCount(mediaServerID int64) int {
 func (s *Scheduler) DownloaderThrottled(downloaderID int64) (throttled, known bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	throttled, known = s.lastState[downloaderID]
-	return throttled, known
+	state, known := s.applied[downloaderID]
+	return state.throttled, known
+}
+
+// ClearSessions drops every tracked session for a media server and
+// re-resolves. Called when a server's watcher stops (removed, disabled,
+// or reconnecting under new config) so a stopped server can't keep
+// downloaders throttled on the strength of sessions nobody is watching
+// any more.
+func (s *Scheduler) ClearSessions(mediaServerID int64) {
+	s.mu.Lock()
+	delete(s.active, mediaServerID)
+	s.mu.Unlock()
+	s.ResolveAsync()
+}
+
+// Resolve re-evaluates every downloader against current configuration
+// and session state, applying any change. Exported so configuration
+// changes take effect immediately instead of waiting for the next
+// playback event.
+func (s *Scheduler) Resolve(ctx context.Context) { s.resolve(ctx) }
+
+// ResolveAsync runs Resolve on its own timeout-bound context, for
+// callers that must not block on downloader API calls — HTTP handlers
+// and the WebSocket read loop both use this.
+func (s *Scheduler) ResolveAsync() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
+		defer cancel()
+		s.resolve(ctx)
+	}()
 }
 
 // HandleSessionEvent updates a media server's active-session set and
@@ -96,11 +140,7 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, sessionKey string, a
 	}
 	s.mu.Unlock()
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
-		defer cancel()
-		s.resolve(ctx)
-	}()
+	s.ResolveAsync()
 }
 
 type resolution struct {
@@ -126,8 +166,14 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		return
 	}
 
+	// A disabled media server's watcher is stopped, but defence in
+	// depth: its sessions must not count even if a stale entry
+	// survives somewhere.
 	msNameByID := make(map[int64]string, len(mediaServers))
 	for _, ms := range mediaServers {
+		if !ms.Enabled {
+			continue
+		}
 		msNameByID[ms.ID] = ms.Name
 	}
 
@@ -150,6 +196,9 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		causeServerName := ""
 		if !paused {
 			for _, m := range byDownloader[dl.ID] {
+				if _, enabled := msNameByID[m.MediaServerID]; !enabled {
+					continue
+				}
 				if len(s.active[m.MediaServerID]) > 0 {
 					throttled = true
 					causeServerName = msNameByID[m.MediaServerID]
@@ -159,6 +208,19 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		}
 		toApply = append(toApply, resolution{downloader: dl, throttled: throttled, causeServerName: causeServerName})
 	}
+
+	// Forget downloaders that are gone or switched off, so a later
+	// re-enable re-applies its rates from scratch rather than being
+	// short-circuited by state remembered from before.
+	live := make(map[int64]bool, len(toApply))
+	for _, r := range toApply {
+		live[r.downloader.ID] = true
+	}
+	for id := range s.applied {
+		if !live[id] {
+			delete(s.applied, id)
+		}
+	}
 	s.mu.Unlock()
 
 	for _, r := range toApply {
@@ -167,22 +229,27 @@ func (s *Scheduler) resolve(ctx context.Context) {
 }
 
 func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled bool, causeServerName string) {
+	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
+	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
+	if throttled {
+		downloadLimit, uploadLimit = dl.BackupDownloadLimit, dl.BackupUploadLimit
+		message = fmt.Sprintf("throttled %s because %s is playing", dl.Name, causeServerName)
+	}
+	want := appliedState{throttled: throttled, downloadLimit: downloadLimit, uploadLimit: uploadLimit}
+
 	s.mu.Lock()
-	prev, known := s.lastState[dl.ID]
-	if known && prev == throttled {
+	prev, known := s.applied[dl.ID]
+	if known && prev == want {
 		s.mu.Unlock()
 		return
 	}
-	s.lastState[dl.ID] = throttled
+	// Recorded optimistically so concurrent resolves don't both fire
+	// the same call; a failure below un-records it.
+	s.applied[dl.ID] = want
 	s.mu.Unlock()
 
-	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
-	verb := "restored default rate for"
-	message := fmt.Sprintf("%s %s (nothing mapped is playing)", verb, dl.Name)
-	if throttled {
-		downloadLimit, uploadLimit = dl.BackupDownloadLimit, dl.BackupUploadLimit
-		verb = "throttled"
-		message = fmt.Sprintf("%s %s because %s is playing", verb, dl.Name, causeServerName)
+	if known && prev.throttled == throttled {
+		message = fmt.Sprintf("updated rate limits for %s", dl.Name)
 	}
 
 	var username, password string
@@ -200,7 +267,13 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 		username, password = cred.Username, cred.Password
 	}
 
-	if err := clients.SetQBittorrentLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
+	limiter := s.limiterFor(dl.Type)
+	if limiter == nil {
+		s.recordFailure(dl.ID, fmt.Sprintf("no rate-limit support for downloader type %q (%s)", dl.Type, dl.Name))
+		return
+	}
+
+	if err := limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
 		s.recordFailure(dl.ID, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, err))
 		return
 	}
@@ -220,7 +293,7 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 func (s *Scheduler) recordFailure(downloaderID int64, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
-	delete(s.lastState, downloaderID)
+	delete(s.applied, downloaderID)
 	s.mu.Unlock()
 	if err := s.db.InsertEvent(db.Event{
 		Level:        "error",

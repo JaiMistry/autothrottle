@@ -26,6 +26,14 @@ var staticFS embed.FS
 // per *template.Template instance.
 var pages = []string{"login", "dashboard", "configuration", "history"}
 
+// watcherManager is the watcher-lifecycle surface the web layer needs:
+// after any media-server change, reconcile the running watchers so the
+// change is live immediately rather than at next restart.
+type watcherManager interface {
+	Reconcile()
+	Running(mediaServerID int64) bool
+}
+
 type Server struct {
 	db            *db.DB
 	authCfg       auth.Config
@@ -35,9 +43,10 @@ type Server struct {
 	templates     map[string]*template.Template
 	encryptionKey []byte
 	scheduler     *scheduler.Scheduler
+	watchers      watcherManager
 }
 
-func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *scheduler.Scheduler) (*Server, error) {
+func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		t, err := template.ParseFS(templateFS, "templates/layout.html", "templates/"+page+".html")
@@ -61,6 +70,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 		templates:     templates,
 		encryptionKey: encryptionKey,
 		scheduler:     sched,
+		watchers:      watchers,
 	}, nil
 }
 

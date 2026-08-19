@@ -14,26 +14,15 @@ import (
 	"github.com/coder/websocket"
 )
 
-// PlexEvent reports a session's throttle-relevant state: whether it
-// counts toward "this server has something playing." Local-playback
-// exemption (plan.md's Runtime resolution section) is already resolved
-// before this is emitted — an exempted session never generates an
-// Active:true event, so nothing downstream needs to special-case it.
-type PlexEvent struct {
-	SessionKey string
-	Active     bool
-}
-
-// PlexWatcher maintains a WebSocket connection to a Plex server's
-// session-notification endpoint (plan.md's Real-time architecture —
-// free, undocumented-but-stable, no Plex Pass required) and emits
-// PlexEvents on state changes.
+// PlexWatcher implements SessionWatcher against a Plex server's
+// session-notification endpoint (free, undocumented-but-stable, no
+// Plex Pass required), emitting SessionEvents on state changes.
 type PlexWatcher struct {
 	BaseURL           string
 	Token             string
 	SkipLocalPlayback bool
 
-	events chan PlexEvent
+	events chan SessionEvent
 
 	mu         sync.Mutex
 	localCache map[string]bool // sessionKey -> is-local, cached while active
@@ -44,12 +33,12 @@ func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher 
 		BaseURL:           strings.TrimRight(baseURL, "/"),
 		Token:             token,
 		SkipLocalPlayback: skipLocalPlayback,
-		events:            make(chan PlexEvent, 16),
+		events:            make(chan SessionEvent, 16),
 		localCache:        make(map[string]bool),
 	}
 }
 
-func (w *PlexWatcher) Events() <-chan PlexEvent { return w.events }
+func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 
 // Run connects and reconnects with backoff until ctx is cancelled. This
 // isn't for detecting playback — it exists purely to notice a
@@ -173,7 +162,7 @@ func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
 
 func (w *PlexWatcher) emit(ctx context.Context, sessionKey string, active bool) {
 	select {
-	case w.events <- PlexEvent{SessionKey: sessionKey, Active: active}:
+	case w.events <- SessionEvent{SessionKey: sessionKey, Active: active}:
 	case <-ctx.Done():
 	}
 }

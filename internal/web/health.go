@@ -18,7 +18,11 @@ type backendStatus struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Reachable bool   `json:"reachable"`
-	Error     string `json:"error,omitempty"`
+	// Watched reports whether a live session watcher is running for
+	// this media server. Reachable but unwatched means throttling
+	// won't trigger from it, which a bare reachability check hides.
+	Watched bool   `json:"watched,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 type healthResponse struct {
@@ -42,6 +46,9 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			bs := backendStatus{Name: ms.Name, Type: ms.Type}
+			if s.watchers != nil {
+				bs.Watched = s.watchers.Running(ms.ID)
+			}
 			if token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted); err != nil {
 				bs.Error = "credential could not be decrypted"
 			} else if err := clients.TestPlex(ctx, ms.URL, token); err != nil {
@@ -49,7 +56,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				bs.Reachable = true
 			}
-			if !bs.Reachable {
+			if !bs.Reachable || !bs.Watched {
 				resp.Status = "degraded"
 			}
 			resp.MediaServers = append(resp.MediaServers, bs)

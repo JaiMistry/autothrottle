@@ -276,6 +276,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(true)
 
 	http.Redirect(w, r, "/configuration?tab=media-servers", http.StatusSeeOther)
 }
@@ -291,6 +292,7 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(true)
 	http.Redirect(w, r, "/configuration?tab=media-servers", http.StatusSeeOther)
 }
 
@@ -426,6 +428,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(false)
 
 	http.Redirect(w, r, "/configuration?tab=downloaders", http.StatusSeeOther)
 }
@@ -441,6 +444,7 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(false)
 	http.Redirect(w, r, "/configuration?tab=downloaders", http.StatusSeeOther)
 }
 
@@ -520,6 +524,7 @@ func (s *Server) createMapping(w http.ResponseWriter, r *http.Request) {
 		s.renderConfigError(w, r, "mappings", "That mapping already exists.")
 		return
 	}
+	s.applyConfigChange(false)
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
 }
 
@@ -547,6 +552,7 @@ func (s *Server) toggleMapping(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(false)
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
 }
 
@@ -561,10 +567,25 @@ func (s *Server) deleteMapping(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.applyConfigChange(false)
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
 }
 
 // --- shared ---
+
+// applyConfigChange makes a just-saved configuration change take
+// effect immediately. Media-server changes additionally reconcile the
+// running watchers (start, stop, or reconnect under new credentials);
+// every change re-resolves throttle state, since a new mapping or an
+// edited rate has to reach the downloader without waiting for the next
+// playback event. Resolution is asynchronous so a slow or unreachable
+// downloader can't stall the redirect.
+func (s *Server) applyConfigChange(mediaServersChanged bool) {
+	if mediaServersChanged && s.watchers != nil {
+		s.watchers.Reconcile()
+	}
+	s.scheduler.ResolveAsync()
+}
 
 func writeTestResult(w http.ResponseWriter, ok bool, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
-	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
+	"github.com/JaiMistry/autothrottle/internal/watcher"
 	"github.com/JaiMistry/autothrottle/internal/web"
 )
 
@@ -50,8 +50,9 @@ func main() {
 	}
 
 	sched := scheduler.New(database, encryptionKey)
+	watchers := watcher.NewManager(database, encryptionKey, sched)
 
-	srv, err := web.New(database, authCfg, encryptionKey, sched)
+	srv, err := web.New(database, authCfg, encryptionKey, sched, watchers)
 	if err != nil {
 		logger.Error("initializing web server", "error", err)
 		os.Exit(1)
@@ -69,7 +70,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	startWatchers(ctx, database, encryptionKey, sched, logger)
+	// Watchers run for the lifetime of ctx. Configuration changes
+	// reconcile this set live, from the web handlers — no restart.
+	watchers.Start(ctx)
 
 	go func() {
 		logger.Info("listening", "addr", addr, "auth_disabled", authCfg.Disabled)
@@ -88,51 +91,6 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
-	}
-}
-
-// startWatchers starts a Plex session watcher per enabled Plex media
-// server, forwarding its events into the scheduler. Watchers run for
-// the lifetime of ctx. Reconfiguring media servers via the
-// Configuration page takes effect on next restart in v1 — hot add/
-// remove of watchers is a natural v2 follow-up once the mapping UI has
-// proven itself in real use.
-func startWatchers(ctx context.Context, database *db.DB, encryptionKey []byte, sched *scheduler.Scheduler, logger *slog.Logger) {
-	mediaServers, err := database.ListMediaServers()
-	if err != nil {
-		logger.Error("listing media servers for watchers", "error", err)
-		return
-	}
-	for _, ms := range mediaServers {
-		if !ms.Enabled || ms.Type != "plex" {
-			continue
-		}
-		token, err := crypto.Decrypt(encryptionKey, ms.CredentialEncrypted)
-		if err != nil {
-			logger.Error("decrypting media server token", "media_server", ms.Name, "error", err)
-			continue
-		}
-
-		watcher := clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
-		mediaServerID := ms.ID
-		mediaServerName := ms.Name
-
-		go watcher.Run(ctx)
-		go func() {
-			events := watcher.Events()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case event, ok := <-events:
-					if !ok {
-						return
-					}
-					sched.HandleSessionEvent(mediaServerID, event.SessionKey, event.Active)
-				}
-			}
-		}()
-		logger.Info("started plex watcher", "media_server", mediaServerName, "url", ms.URL)
 	}
 }
 
