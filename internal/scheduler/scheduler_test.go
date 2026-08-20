@@ -8,6 +8,7 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 // fakeLimiter records what would have been sent to a download client.
@@ -44,7 +45,7 @@ func newTestScheduler(t *testing.T) (*Scheduler, *db.DB, *fakeLimiter) {
 	t.Cleanup(func() { _ = database.Close() })
 
 	limiter := &fakeLimiter{}
-	s := New(database, make([]byte, 32))
+	s := New(database, make([]byte, 32), settings.New(database))
 	s.limiterFor = func(string) clients.RateLimiter { return limiter }
 	return s, database, limiter
 }

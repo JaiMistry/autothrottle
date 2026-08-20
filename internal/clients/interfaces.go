@@ -17,6 +17,13 @@ type SessionWatcher interface {
 	// Events yields session state changes. Local-playback exemption is
 	// already applied — an exempted session never appears here.
 	Events() <-chan SessionEvent
+	// Snapshot returns every session key currently playing, with the
+	// same exemption filtering Events applies. The event stream alone
+	// can drift out of sync with reality — a WebSocket that drops
+	// mid-playback may never re-send a "playing" notification once
+	// reconnected, leaving a session tracked as active forever — so
+	// the manager polls this as the authoritative correction.
+	Snapshot(ctx context.Context) ([]string, error)
 }
 
 // SessionEvent reports one session's throttle-relevant state.
@@ -35,17 +42,43 @@ type RateLimiter interface {
 	SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error
 }
 
-// QBittorrent implements RateLimiter against qBittorrent's WebUI API.
+// RateReporter reads a download client's current transfer rates, in
+// bytes per second. Separate from RateLimiter because reading and
+// writing rates are independent capabilities: a client could plausibly
+// support one without the other, and the bandwidth sampler only ever
+// needs to read.
+type RateReporter interface {
+	Rates(ctx context.Context, baseURL, username, password string) (downloadBytesPerSec, uploadBytesPerSec int64, err error)
+}
+
+// QBittorrent implements RateLimiter and RateReporter against
+// qBittorrent's WebUI API.
 type QBittorrent struct{}
 
 func (QBittorrent) SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	return SetQBittorrentLimits(ctx, baseURL, username, password, downloadLimitKBps, uploadLimitKBps)
 }
 
+func (QBittorrent) Rates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
+	return QBittorrentRates(ctx, baseURL, username, password)
+}
+
 // RateLimiterFor resolves a downloader's type to its implementation.
 // Returns nil for an unsupported type; callers report that as a
 // configuration error rather than silently doing nothing.
 func RateLimiterFor(downloaderType string) RateLimiter {
+	switch downloaderType {
+	case "qbittorrent":
+		return QBittorrent{}
+	default:
+		return nil
+	}
+}
+
+// RateReporterFor resolves a downloader's type to its rate-reading
+// implementation. Nil means "no bandwidth data available for this
+// type" — the sampler skips it rather than treating it as an error.
+func RateReporterFor(downloaderType string) RateReporter {
 	switch downloaderType {
 	case "qbittorrent":
 		return QBittorrent{}

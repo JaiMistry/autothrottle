@@ -8,6 +8,10 @@
 // watchers against what's currently in the database: starting watchers
 // for newly-added servers, stopping them for removed or disabled ones,
 // and restarting any whose connection details changed.
+//
+// It also runs the periodic session reconciliation poll that keeps the
+// scheduler's view of what's playing honest when the event stream
+// misses something — see reconcileSessions.
 package watcher
 
 import (
@@ -15,17 +19,27 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
+
+// snapshotTimeout bounds one reconciliation poll. Generous relative to
+// a LAN round-trip, short relative to the poll interval, so a hung
+// server can never stack overlapping polls.
+const snapshotTimeout = 10 * time.Second
 
 // sink receives session events from watchers. The scheduler satisfies
 // this; the indirection keeps the manager testable without one.
 type sink interface {
 	HandleSessionEvent(mediaServerID int64, sessionKey string, active bool)
 	ClearSessions(mediaServerID int64)
+	// ReplaceSessions overwrites a server's whole active set from a
+	// snapshot, correcting any drift the event stream accumulated.
+	ReplaceSessions(mediaServerID int64, sessionKeys []string)
 }
 
 // handle tracks one running watcher. fingerprint captures the config
@@ -41,17 +55,19 @@ type Manager struct {
 	db            *db.DB
 	encryptionKey []byte
 	sched         sink
+	settings      *settings.Store
 
 	mu      sync.Mutex
 	root    context.Context
 	running map[int64]handle
 }
 
-func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
+func NewManager(database *db.DB, encryptionKey []byte, sched sink, store *settings.Store) *Manager {
 	return &Manager{
 		db:            database,
 		encryptionKey: encryptionKey,
 		sched:         sched,
+		settings:      store,
 		running:       make(map[int64]handle),
 	}
 }
@@ -129,6 +145,7 @@ func (m *Manager) Reconcile() {
 		ctx, cancel := context.WithCancel(m.root)
 		go w.Run(ctx)
 		go m.forward(ctx, id, w.Events())
+		go m.reconcileSessions(ctx, id, ms.Name, w)
 
 		m.running[id] = handle{cancel: cancel, fingerprint: fingerprint}
 		slog.Info("watcher: started", "media_server", ms.Name, "url", ms.URL)
@@ -174,6 +191,62 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 			m.sched.HandleSessionEvent(mediaServerID, event.SessionKey, event.Active)
 		}
 	}
+}
+
+// reconcileSessions periodically replaces a server's tracked session
+// set with a fresh snapshot from the server itself.
+//
+// The WebSocket feed is the primary input and stays authoritative for
+// latency: this exists only to correct drift. If the connection drops
+// while something is playing and the server never re-sends a "playing"
+// notification after reconnect, the event stream alone would leave
+// that session active forever and the downloader throttled forever.
+// Polling a full snapshot converges on truth regardless of which
+// individual notifications were missed.
+//
+// The interval is re-read every tick, so changing it takes effect
+// without restarting the watcher.
+func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, name string, w clients.SessionWatcher) {
+	failures := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(m.settings.SessionReconcileInterval()):
+		}
+
+		if err := m.reconcileOnce(ctx, mediaServerID, w); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			// Only the first failure and then every tenth are logged:
+			// an unreachable server would otherwise emit one line per
+			// interval forever (plan.md's no-log-spam commitment).
+			if failures == 0 || failures%10 == 0 {
+				slog.Warn("watcher: session reconciliation failed", "media_server", name, "consecutive_failures", failures+1, "error", err)
+			}
+			failures++
+			continue
+		}
+		if failures > 0 {
+			slog.Info("watcher: session reconciliation recovered", "media_server", name, "after_failures", failures)
+			failures = 0
+		}
+	}
+}
+
+// reconcileOnce takes one snapshot and hands it to the scheduler,
+// which decides whether anything actually changed.
+func (m *Manager) reconcileOnce(ctx context.Context, mediaServerID int64, w clients.SessionWatcher) error {
+	snapshotCtx, cancel := context.WithTimeout(ctx, snapshotTimeout)
+	defer cancel()
+
+	keys, err := w.Snapshot(snapshotCtx)
+	if err != nil {
+		return err
+	}
+	m.sched.ReplaceSessions(mediaServerID, keys)
+	return nil
 }
 
 // Running reports which media servers currently have a live watcher —

@@ -16,7 +16,10 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/retention"
+	"github.com/JaiMistry/autothrottle/internal/sampler"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 	"github.com/JaiMistry/autothrottle/internal/watcher"
 	"github.com/JaiMistry/autothrottle/internal/web"
 )
@@ -49,8 +52,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	sched := scheduler.New(database, encryptionKey)
-	watchers := watcher.NewManager(database, encryptionKey, sched)
+	store := settings.New(database)
+	sched := scheduler.New(database, encryptionKey, store)
+	watchers := watcher.NewManager(database, encryptionKey, sched, store)
+	samples := sampler.New(database, encryptionKey, store, sched)
+	maintenance := retention.New(database, store)
 
 	srv, err := web.New(database, authCfg, encryptionKey, sched, watchers)
 	if err != nil {
@@ -73,6 +79,11 @@ func main() {
 	// Watchers run for the lifetime of ctx. Configuration changes
 	// reconcile this set live, from the web handlers — no restart.
 	watchers.Start(ctx)
+
+	// Bandwidth sampling and housekeeping are independent of playback,
+	// so they run on their own timers rather than off session events.
+	go samples.Run(ctx)
+	go maintenance.Run(ctx)
 
 	go func() {
 		logger.Info("listening", "addr", addr, "auth_disabled", authCfg.Disabled)

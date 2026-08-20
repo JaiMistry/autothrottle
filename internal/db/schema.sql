@@ -47,3 +47,47 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_mappings_media_server ON mappings(media_server_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_downloader ON mappings(downloader_id);
 CREATE INDEX IF NOT EXISTS idx_events_occurred_at ON events(occurred_at);
+
+-- Key/value store for runtime-adjustable settings (retention windows,
+-- poll intervals, the pause-all override). Values are stored as text
+-- and parsed by internal/settings, which owns the keys and defaults.
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Raw bandwidth samples, one row per downloader per sampling tick.
+-- throttled and the limit pair are recorded alongside the observed
+-- rates so analytics can show actual throughput against the ceiling
+-- that was in force at the time, without re-deriving it from events.
+CREATE TABLE IF NOT EXISTS bandwidth_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sampled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    downloader_id INTEGER NOT NULL REFERENCES downloaders(id) ON DELETE CASCADE,
+    download_bytes_per_sec INTEGER NOT NULL,
+    upload_bytes_per_sec INTEGER NOT NULL,
+    throttled INTEGER NOT NULL DEFAULT 0,
+    download_limit_kbps INTEGER NOT NULL DEFAULT 0,
+    upload_limit_kbps INTEGER NOT NULL DEFAULT 0
+);
+
+-- Hourly aggregates of the above. Raw samples are pruned aggressively;
+-- these are cheap enough to keep for months, so long-range analytics
+-- stays available without an unbounded samples table.
+CREATE TABLE IF NOT EXISTS bandwidth_rollups_hourly (
+    hour TEXT NOT NULL,
+    downloader_id INTEGER NOT NULL REFERENCES downloaders(id) ON DELETE CASCADE,
+    sample_count INTEGER NOT NULL,
+    avg_download_bytes_per_sec INTEGER NOT NULL,
+    avg_upload_bytes_per_sec INTEGER NOT NULL,
+    max_download_bytes_per_sec INTEGER NOT NULL,
+    max_upload_bytes_per_sec INTEGER NOT NULL,
+    throttled_sample_count INTEGER NOT NULL,
+    PRIMARY KEY (hour, downloader_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_level ON events(level);
+CREATE INDEX IF NOT EXISTS idx_samples_sampled_at ON bandwidth_samples(sampled_at);
+CREATE INDEX IF NOT EXISTS idx_samples_downloader ON bandwidth_samples(downloader_id, sampled_at);
+CREATE INDEX IF NOT EXISTS idx_rollups_hour ON bandwidth_rollups_hourly(hour);

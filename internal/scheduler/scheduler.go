@@ -18,6 +18,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 const applyTimeout = 15 * time.Second
@@ -25,6 +26,7 @@ const applyTimeout = 15 * time.Second
 type Scheduler struct {
 	db            *db.DB
 	encryptionKey []byte
+	settings      *settings.Store
 
 	mu     sync.Mutex
 	active map[int64]map[string]bool // media server ID -> active session keys
@@ -33,7 +35,10 @@ type Scheduler struct {
 	// rate pair, so editing a limit while a downloader is already in
 	// that state still pushes the new numbers.
 	applied map[int64]appliedState
-	paused  bool // manual "pause all throttling" override
+	// paused mirrors the persisted throttle.paused setting. Held in
+	// memory as well so resolve — which runs on every session event —
+	// never has to hit the database for it.
+	paused bool
 
 	// limiterFor resolves a downloader type to its rate-limit client.
 	// A field rather than a direct call so tests can substitute a fake
@@ -46,13 +51,18 @@ type appliedState struct {
 	downloadLimit, uploadLimit int64
 }
 
-func New(database *db.DB, encryptionKey []byte) *Scheduler {
+func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Scheduler {
 	return &Scheduler{
 		db:            database,
 		encryptionKey: encryptionKey,
+		settings:      store,
 		active:        make(map[int64]map[string]bool),
 		applied:       make(map[int64]appliedState),
 		limiterFor:    clients.RateLimiterFor,
+		// Restored from the settings table rather than defaulting to
+		// false: someone who paused throttling and then restarted the
+		// container should not silently come back to it re-enabled.
+		paused: store.Paused(),
 	}
 }
 
@@ -64,6 +74,11 @@ func (s *Scheduler) SetPaused(ctx context.Context, paused bool) {
 	s.mu.Lock()
 	s.paused = paused
 	s.mu.Unlock()
+	if err := s.settings.SetPaused(paused); err != nil {
+		// The in-memory state is already applied, so throttling behaves
+		// as asked right now; only persistence across a restart is lost.
+		slog.Error("scheduler: persisting pause state", "error", err)
+	}
 	s.resolve(ctx)
 }
 
@@ -79,6 +94,17 @@ func (s *Scheduler) ActiveSessionCount(mediaServerID int64) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.active[mediaServerID])
+}
+
+// AppliedLimits reports the rate pair last successfully pushed to a
+// downloader, and whether that pair is the throttled one. The
+// bandwidth sampler records it alongside each sample so analytics can
+// show observed throughput against the ceiling in force at the time.
+func (s *Scheduler) AppliedLimits(downloaderID int64) (throttled bool, downloadKBps, uploadKBps int64, known bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, known := s.applied[downloaderID]
+	return state.throttled, state.downloadLimit, state.uploadLimit, known
 }
 
 // DownloaderThrottled reports a downloader's last-applied throttle
@@ -102,6 +128,68 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	delete(s.active, mediaServerID)
 	s.mu.Unlock()
 	s.ResolveAsync()
+}
+
+// ReplaceSessions overwrites a media server's active session set with
+// an authoritative snapshot, re-resolving only if it actually differs.
+//
+// This is the correction path for event-stream drift (see the watcher
+// manager's reconcileSessions). The no-change fast path matters: this
+// runs on a timer for every server, and the overwhelming majority of
+// polls find exactly what's already tracked — re-resolving each time
+// would mean a pointless downloader API call per poll per server.
+func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
+	next := make(map[string]bool, len(sessionKeys))
+	for _, key := range sessionKeys {
+		next[key] = true
+	}
+
+	s.mu.Lock()
+	current := s.active[mediaServerID]
+	if sameSessionSet(current, next) {
+		s.mu.Unlock()
+		return
+	}
+	added, removed := diffSessionSets(current, next)
+	if len(next) == 0 {
+		delete(s.active, mediaServerID)
+	} else {
+		s.active[mediaServerID] = next
+	}
+	s.mu.Unlock()
+
+	slog.Info("scheduler: corrected session state from snapshot",
+		"media_server_id", mediaServerID, "added", added, "removed", removed, "now_active", len(next))
+	s.ResolveAsync()
+}
+
+func sameSessionSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key := range a {
+		if !b[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// diffSessionSets reports how many keys the snapshot added and removed,
+// for a log line that says what the correction actually did rather
+// than just that one happened.
+func diffSessionSets(current, next map[string]bool) (added, removed int) {
+	for key := range next {
+		if !current[key] {
+			added++
+		}
+	}
+	for key := range current {
+		if !next[key] {
+			removed++
+		}
+	}
+	return added, removed
 }
 
 // Resolve re-evaluates every downloader against current configuration

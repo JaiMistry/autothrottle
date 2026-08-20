@@ -206,32 +206,20 @@ func (d *DB) DeleteMapping(id int64) error {
 
 // --- events ---
 
+// InsertEvent records one history event. An empty OccurredAt means
+// "now", which is every real caller; setting it explicitly exists for
+// tests that need an event dated into the past.
 func (d *DB) InsertEvent(e Event) error {
+	if e.OccurredAt == "" {
+		_, err := d.conn.Exec(
+			`INSERT INTO events (level, message, mapping_id, media_server_id, downloader_id) VALUES (?, ?, ?, ?, ?)`,
+			e.Level, e.Message, e.MappingID, e.MediaServerID, e.DownloaderID,
+		)
+		return err
+	}
 	_, err := d.conn.Exec(
-		`INSERT INTO events (level, message, mapping_id, media_server_id, downloader_id) VALUES (?, ?, ?, ?, ?)`,
-		e.Level, e.Message, e.MappingID, e.MediaServerID, e.DownloaderID,
+		`INSERT INTO events (occurred_at, level, message, mapping_id, media_server_id, downloader_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		e.OccurredAt, e.Level, e.Message, e.MappingID, e.MediaServerID, e.DownloaderID,
 	)
 	return err
-}
-
-// ListEvents returns the most recent events, newest first, capped at limit.
-func (d *DB) ListEvents(limit int) ([]Event, error) {
-	rows, err := d.conn.Query(
-		`SELECT id, occurred_at, level, message, mapping_id, media_server_id, downloader_id
-		 FROM events ORDER BY occurred_at DESC LIMIT ?`, limit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var out []Event
-	for rows.Next() {
-		var e Event
-		if err := rows.Scan(&e.ID, &e.OccurredAt, &e.Level, &e.Message, &e.MappingID, &e.MediaServerID, &e.DownloaderID); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
 }

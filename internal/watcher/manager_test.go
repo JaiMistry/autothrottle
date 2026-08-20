@@ -8,16 +8,35 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 // fakeSink stands in for the scheduler. Watchers started here dial a
 // .invalid host, so they never reach any real media server.
 type fakeSink struct {
-	mu      sync.Mutex
-	cleared []int64
+	mu       sync.Mutex
+	cleared  []int64
+	replaced []replacement
+}
+
+type replacement struct {
+	mediaServerID int64
+	sessionKeys   []string
 }
 
 func (f *fakeSink) HandleSessionEvent(int64, string, bool) {}
+
+func (f *fakeSink) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.replaced = append(f.replaced, replacement{mediaServerID: mediaServerID, sessionKeys: sessionKeys})
+}
+
+func (f *fakeSink) replacements() []replacement {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]replacement(nil), f.replaced...)
+}
 
 func (f *fakeSink) ClearSessions(mediaServerID int64) {
 	f.mu.Lock()
@@ -41,7 +60,7 @@ func newTestManager(t *testing.T) (*Manager, *db.DB, *fakeSink, []byte) {
 
 	key := make([]byte, 32)
 	sink := &fakeSink{}
-	m := NewManager(database, key, sink)
+	m := NewManager(database, key, sink, settings.New(database))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

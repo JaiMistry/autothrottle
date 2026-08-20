@@ -117,7 +117,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		if n.SessionKey == "" {
 			continue
 		}
-		active := n.State == "playing" || n.State == "buffering"
+		active := plexStateCounts(n.State)
 
 		if !active {
 			w.mu.Lock()
@@ -167,14 +167,77 @@ func (w *PlexWatcher) emit(ctx context.Context, sessionKey string, active bool) 
 	}
 }
 
-// isSessionLocal cross-references /status/sessions for the given
-// session's Player.local flag. The WebSocket "playing" notification
-// itself carries no client-address info, so this REST call is the only
-// way to resolve local-playback exemption.
-func (w *PlexWatcher) isSessionLocal(ctx context.Context, sessionKey string) (bool, error) {
+// Snapshot lists the sessions Plex currently reports as playing, with
+// local-playback exemption applied — the same filtering the event
+// stream does, so the two are directly comparable. Used by the watcher
+// manager to correct drift after a dropped connection.
+func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
+	sessions, err := w.fetchSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	present := make(map[string]bool, len(sessions))
+	active := make([]string, 0, len(sessions))
+	for _, s := range sessions {
+		if s.SessionKey == "" {
+			continue
+		}
+		present[s.SessionKey] = true
+		if !plexStateCounts(s.Player.State) {
+			continue
+		}
+		if w.SkipLocalPlayback && s.Player.Local {
+			continue
+		}
+		active = append(active, s.SessionKey)
+	}
+
+	// The snapshot is the freshest full view of what exists, so it's
+	// also the right moment to drop locality entries for sessions that
+	// have since ended — otherwise a long-lived watcher accumulates
+	// them for every session it has ever seen.
+	w.mu.Lock()
+	for key := range w.localCache {
+		if !present[key] {
+			delete(w.localCache, key)
+		}
+	}
+	for _, s := range sessions {
+		if s.SessionKey != "" {
+			w.localCache[s.SessionKey] = s.Player.Local
+		}
+	}
+	w.mu.Unlock()
+
+	return active, nil
+}
+
+// plexSession is the subset of /status/sessions this app reads.
+type plexSession struct {
+	SessionKey string `json:"sessionKey"`
+	Player     struct {
+		Local bool   `json:"local"`
+		State string `json:"state"`
+	} `json:"Player"`
+}
+
+// plexStateCounts mirrors the event stream's rule for which playback
+// states count toward throttling. Kept as one function so the
+// WebSocket path and the reconciliation path can never disagree about
+// what "playing" means.
+func plexStateCounts(state string) bool {
+	return state == "playing" || state == "buffering"
+}
+
+// fetchSessions reads /status/sessions. The WebSocket "playing"
+// notification carries no client-address or player-state detail, so
+// this REST call backs both local-playback exemption and snapshot
+// reconciliation.
+func (w *PlexWatcher) fetchSessions(ctx context.Context) ([]plexSession, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.BaseURL+"/status/sessions", nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	req.Header.Set("X-Plex-Token", w.Token)
 	req.Header.Set("Accept", "application/json")
@@ -182,29 +245,34 @@ func (w *PlexWatcher) isSessionLocal(ctx context.Context, sessionKey string) (bo
 	client := &http.Client{Timeout: testTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
 	var out struct {
 		MediaContainer struct {
-			Metadata []struct {
-				SessionKey string `json:"sessionKey"`
-				Player     struct {
-					Local bool `json:"local"`
-				} `json:"Player"`
-			} `json:"Metadata"`
+			Metadata []plexSession `json:"Metadata"`
 		} `json:"MediaContainer"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.MediaContainer.Metadata, nil
+}
+
+// isSessionLocal cross-references /status/sessions for the given
+// session's Player.local flag.
+func (w *PlexWatcher) isSessionLocal(ctx context.Context, sessionKey string) (bool, error) {
+	sessions, err := w.fetchSessions(ctx)
+	if err != nil {
 		return false, err
 	}
-	for _, m := range out.MediaContainer.Metadata {
-		if m.SessionKey == sessionKey {
-			return m.Player.Local, nil
+	for _, s := range sessions {
+		if s.SessionKey == sessionKey {
+			return s.Player.Local, nil
 		}
 	}
 	return false, fmt.Errorf("session %s not found in current sessions", sessionKey)
