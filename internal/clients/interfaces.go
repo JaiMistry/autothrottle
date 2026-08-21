@@ -1,16 +1,66 @@
 package clients
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
+
+// MediaServerType names one supported media server, for a UI that
+// renders the set generically rather than hardcoding an option per
+// type — the same reason internal/settings exposes Definitions.
+type MediaServerType struct {
+	Value string
+	Label string
+}
+
+// MediaServerTypes lists every type with a working watcher, in the
+// order a UI should offer them.
+var MediaServerTypes = []MediaServerType{
+	{Value: "plex", Label: "Plex"},
+	{Value: "emby", Label: "Emby"},
+	{Value: "jellyfin", Label: "Jellyfin"},
+}
+
+// SupportedMediaServerType reports whether a type string names a media
+// server this build can actually watch. The database's CHECK
+// constraint is deliberately wider than this — it permits any type the
+// schema anticipates — so this is what the web layer validates against.
+func SupportedMediaServerType(msType string) bool {
+	for _, t := range MediaServerTypes {
+		if t.Value == msType {
+			return true
+		}
+	}
+	return false
+}
+
+// TestMediaServer runs the connection test for a media server's type.
+//
+// Worth knowing that these are not equally strong: the Emby and
+// Jellyfin checks genuinely validate the API key, while the Plex one
+// cannot on a LAN — see TestPlex's comment for why.
+func TestMediaServer(ctx context.Context, msType, baseURL, token string) error {
+	switch msType {
+	case "plex":
+		return TestPlex(ctx, baseURL, token)
+	case "emby":
+		return TestEmby(ctx, baseURL, token)
+	case "jellyfin":
+		return TestJellyfin(ctx, baseURL, token)
+	default:
+		return fmt.Errorf("unsupported media server type %q", msType)
+	}
+}
 
 // SessionWatcher is one media server's live session feed: a long-lived
 // connection that emits an event whenever a session starts or stops
 // counting toward "this server has something playing."
 //
-// Plex is the only implementation in v1. Emby and Jellyfin both expose
-// the same shape of API (a WebSocket plus a SessionsStart subscribe
-// message), so they land as additional implementations of this
-// interface rather than as changes to anything downstream of it —
-// the watcher manager and the scheduler only ever see this interface.
+// Implemented by PlexWatcher and by EmbyWatcher, which covers both
+// Emby and Jellyfin. The manager and the scheduler see only this
+// interface, so the two protocols' substantial differences — Plex
+// pushes state changes, the others push whole session lists on a
+// subscription — stay contained in the clients package.
 type SessionWatcher interface {
 	// Run connects, and reconnects with backoff, until ctx is done.
 	Run(ctx context.Context)

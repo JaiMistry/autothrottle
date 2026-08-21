@@ -216,7 +216,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 	skipLocal := r.FormValue("skip_local_playback") == "on"
 	enabled := r.FormValue("enabled") == "on"
 
-	if name == "" || rawURL == "" || msType != "plex" {
+	if name == "" || rawURL == "" || !clients.SupportedMediaServerType(msType) {
 		s.renderConfigError(w, r, "media-servers", "Name, URL, and a supported type are required.")
 		return
 	}
@@ -301,15 +301,20 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 		writeTestResult(w, false, "bad form data")
 		return
 	}
+	msType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	token := r.FormValue("token")
 	if rawURL == "" || token == "" {
 		writeTestResult(w, false, "enter a URL and token first")
 		return
 	}
+	if !clients.SupportedMediaServerType(msType) {
+		writeTestResult(w, false, "choose a supported media server type first")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
-	if err := clients.TestPlex(ctx, rawURL, token); err != nil {
+	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
 		writeTestResult(w, false, err.Error())
 		return
 	}
@@ -334,7 +339,7 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
-	if err := clients.TestPlex(ctx, ms.URL, token); err != nil {
+	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
 		writeTestResult(w, false, err.Error())
 		return
 	}

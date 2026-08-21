@@ -60,8 +60,8 @@
         <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Type</span>
         <select name="type" class="select select-bordered w-full">
           <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
-          <option value="emby" disabled {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby (coming in v2)</option>
-          <option value="jellyfin" disabled {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin (coming in v2)</option>
+          <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
+          <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
         </select>
       </label>
       <label class="form-control">
@@ -70,7 +70,7 @@
       </label>
       <label class="form-control">
         <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Token{{if .EditMediaServer.HasCredential}} (leave blank to keep existing){{end}}</span>
-        <input type="password" name="token" placeholder="{{if .EditMediaServer.HasCredential}}••••••••{{else}}X-Plex-Token{{end}}" class="input input-bordered w-full" autocomplete="off">
+        <input type="password" name="token" placeholder="{{if .EditMediaServer.HasCredential}}••••••••{{else}}Plex token or Emby/Jellyfin API key{{end}}" class="input input-bordered w-full" autocomplete="off">
       </label>
       <label class="label cursor-pointer justify-start gap-2">
         <input type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}} class="checkbox checkbox-sm">

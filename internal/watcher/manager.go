@@ -153,24 +153,28 @@ func (m *Manager) Reconcile() {
 }
 
 // newWatcher builds the right SessionWatcher for a media server's
-// type. Emby and Jellyfin join here: one case each returning their own
-// clients.SessionWatcher implementation, with nothing else in the
-// manager, the scheduler, or the web layer needing to change.
+// type. Everything downstream — the manager's own lifecycle handling,
+// the scheduler, the web layer — sees only the interface, so a new
+// server type is a case here and a case in supportedType.
 func newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
 	switch ms.Type {
 	case "plex":
 		return clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
+	case "emby":
+		return clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
+	case "jellyfin":
+		return clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
 	default:
 		return nil, fmt.Errorf("no watcher implementation for type %q", ms.Type)
 	}
 }
 
 // supportedType reports whether a media server type has a watcher
-// implementation. Kept next to newWatcher so adding a type is a
-// two-line change in one place.
+// implementation. Kept next to newWatcher so adding a type stays a
+// change in one place.
 func supportedType(msType string) bool {
 	switch msType {
-	case "plex":
+	case "plex", "emby", "jellyfin":
 		return true
 	default:
 		return false

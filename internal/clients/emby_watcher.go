@@ -1,0 +1,328 @@
+package clients
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/coder/websocket"
+)
+
+// EmbyWatcher implements SessionWatcher against Emby's and Jellyfin's
+// notification WebSocket.
+//
+// The protocol differs from Plex's in three ways that shape this file:
+//
+//  1. It is not event-driven. Plex pushes a notification when a
+//     session changes state; these servers push nothing until asked,
+//     and what they then push is the *entire session list* on a timer
+//     (the SessionsStart subscription below). So state changes are
+//     derived here, by diffing each pushed list against the previous
+//     one, rather than being reported by the server.
+//  2. It requires a keepalive. The server sends ForceKeepAlive naming
+//     an interval and closes the connection if the client goes quiet
+//     for longer — see startKeepAlive.
+//  3. There is no locality flag, so the local-playback exemption is
+//     computed from the client's address. See embySessionIsLocal.
+//
+// Deriving events from full lists is not a downgrade in this app's
+// design: the scheduler is already built to accept whole-set
+// replacement (ReplaceSessions, for reconciliation), and diffing means
+// a missed message self-corrects on the very next push rather than
+// persisting until the reconciliation poll. If anything these servers
+// drift less than Plex does.
+type EmbyWatcher struct {
+	BaseURL           string
+	APIKey            string
+	SkipLocalPlayback bool
+
+	flavor embyFlavor
+	events chan SessionEvent
+
+	mu sync.Mutex
+	// active is the last set this watcher reported as playing. It is
+	// the baseline every pushed list is diffed against, and it
+	// deliberately survives a reconnect: sessions that ended while the
+	// connection was down are then reported as stopped by the first
+	// list that arrives after it comes back.
+	active map[string]bool
+}
+
+// NewEmbyWatcher builds a watcher for an Emby server. apiKey is a key
+// created in Emby's dashboard, not a user password.
+func NewEmbyWatcher(baseURL, apiKey string, skipLocalPlayback bool) *EmbyWatcher {
+	return newEmbyWatcher(flavorEmby, baseURL, apiKey, skipLocalPlayback)
+}
+
+// NewJellyfinWatcher builds a watcher for a Jellyfin server. apiKey is
+// a key created under Dashboard > API Keys.
+func NewJellyfinWatcher(baseURL, apiKey string, skipLocalPlayback bool) *EmbyWatcher {
+	return newEmbyWatcher(flavorJellyfin, baseURL, apiKey, skipLocalPlayback)
+}
+
+func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool) *EmbyWatcher {
+	return &EmbyWatcher{
+		BaseURL:           strings.TrimRight(baseURL, "/"),
+		APIKey:            apiKey,
+		SkipLocalPlayback: skipLocalPlayback,
+		flavor:            f,
+		events:            make(chan SessionEvent, 16),
+		active:            make(map[string]bool),
+	}
+}
+
+func (w *EmbyWatcher) Events() <-chan SessionEvent { return w.events }
+
+func (w *EmbyWatcher) Run(ctx context.Context) {
+	runWithBackoff(ctx, strings.ToLower(w.flavor.name), w.BaseURL, w.connectAndListen)
+}
+
+// embySessionPushInterval is the cadence requested from the server for
+// pushed session lists, in milliseconds. Matches what these projects'
+// own web clients ask for. It bounds how long after pressing play a
+// throttle takes effect, so it is short; the payload is a small JSON
+// array on a LAN, and the server is sending it to its own web UI
+// anyway.
+const embySessionPushInterval = 1500
+
+// embyMessage is the envelope both directions of this protocol use.
+type embyMessage struct {
+	MessageType string          `json:"MessageType"`
+	Data        json.RawMessage `json:"Data,omitempty"`
+}
+
+// embyConn wraps one live connection with the state that belongs to
+// that connection rather than to the watcher.
+type embyConn struct {
+	c *websocket.Conn
+	// mu serialises writes. coder/websocket permits only one writer at
+	// a time, and the keepalive goroutine writes concurrently with the
+	// subscribe call on the read path.
+	mu sync.Mutex
+	// keepAliveOnce guards against the server repeating ForceKeepAlive
+	// on an already-live connection and spawning a second ticker.
+	keepAliveOnce sync.Once
+	// sawSessions records whether the subscription ever delivered
+	// anything. See warnIfSubscriptionSilent.
+	sawSessions atomic.Bool
+}
+
+func (e *embyConn) send(ctx context.Context, messageType string, data json.RawMessage) error {
+	b, err := json.Marshal(embyMessage{MessageType: messageType, Data: data})
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.c.Write(ctx, websocket.MessageText, b)
+}
+
+func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
+	// Bound the keepalive goroutine to this connection rather than to
+	// the caller's context, so a dropped connection stops it instead
+	// of leaving one running per reconnect for the process's life.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	c, _, err := websocket.Dial(ctx, w.webSocketURL(), nil)
+	if err != nil {
+		return fmt.Errorf("dialing %s: %w", w.BaseURL, err)
+	}
+	defer func() { _ = c.CloseNow() }()
+
+	conn := &embyConn{c: c}
+
+	// Nothing arrives until this is sent: the server pushes session
+	// lists only to clients that asked. "0,N" means start immediately,
+	// repeat every N ms.
+	subscribe := json.RawMessage(strconv.Quote(fmt.Sprintf("0,%d", embySessionPushInterval)))
+	if err := conn.send(ctx, "SessionsStart", subscribe); err != nil {
+		return fmt.Errorf("subscribing to sessions: %w", err)
+	}
+	go w.warnIfSubscriptionSilent(ctx, conn)
+
+	for {
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("reading: %w", err)
+		}
+		w.handleMessage(ctx, conn, data)
+	}
+}
+
+func (w *EmbyWatcher) handleMessage(ctx context.Context, conn *embyConn, data []byte) {
+	var msg embyMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return // not an envelope we recognise; these servers send several message types
+	}
+
+	switch msg.MessageType {
+	case "Sessions":
+		var sessions []embySession
+		if err := json.Unmarshal(msg.Data, &sessions); err != nil {
+			slog.Warn("decoding session list", "type", w.flavor.name, "error", err)
+			return
+		}
+		conn.sawSessions.Store(true)
+		w.handleSessions(ctx, sessions)
+
+	case "ForceKeepAlive":
+		// Data is the server's timeout in seconds.
+		var timeout int
+		if err := json.Unmarshal(msg.Data, &timeout); err != nil || timeout <= 0 {
+			timeout = 30
+		}
+		conn.keepAliveOnce.Do(func() {
+			go w.startKeepAlive(ctx, conn, time.Duration(timeout)*time.Second)
+		})
+	}
+}
+
+// embySubscriptionGrace is how long a connection may stay silent after
+// subscribing before that silence is treated as a symptom. Generously
+// longer than the push interval, so a slow or idle server is never
+// mistaken for a broken subscription.
+const embySubscriptionGrace = 30 * time.Second
+
+// warnIfSubscriptionSilent surfaces the one failure mode this protocol
+// has that looks exactly like success.
+//
+// A connection can be accepted, the subscription acknowledged, and the
+// keepalive honoured, while the server sends no session data at all —
+// reported for Jellyfin when authenticating with a bare API key rather
+// than a user access token from /Users/AuthenticateByName. Nothing
+// errors; the watcher simply believes nothing is ever playing, and the
+// app quietly never throttles.
+//
+// The reconciliation poll is the reason this degrades rather than
+// breaks: it reads the same sessions over REST, where the API key does
+// work, so throttling still happens at the poll interval instead of
+// within a second or two. This warning exists so that degradation is
+// visible in the log rather than inferred from the app feeling slow.
+func (w *EmbyWatcher) warnIfSubscriptionSilent(ctx context.Context, conn *embyConn) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(embySubscriptionGrace):
+	}
+	if conn.sawSessions.Load() {
+		return
+	}
+	slog.Warn("subscribed but received no session data; falling back to the reconciliation poll for playback detection",
+		"type", w.flavor.name,
+		"url", w.BaseURL,
+		"hint", "if this persists, the API key may not grant session access on the notification socket")
+}
+
+// startKeepAlive answers the server's ForceKeepAlive contract: stay
+// audible or be disconnected. Sends at half the stated timeout so a
+// single dropped message is not enough to trip it.
+func (w *EmbyWatcher) startKeepAlive(ctx context.Context, conn *embyConn, timeout time.Duration) {
+	interval := timeout / 2
+	if interval < time.Second {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := conn.send(ctx, "KeepAlive", nil); err != nil {
+				// The read loop sees the same broken connection and
+				// owns reconnecting; this goroutine just stops.
+				return
+			}
+		}
+	}
+}
+
+// handleSessions turns one pushed session list into the state changes
+// since the previous list, which is what SessionWatcher's contract
+// promises its consumers.
+func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession) {
+	next := w.activeSet(sessions)
+
+	w.mu.Lock()
+	previous := w.active
+	w.active = next
+	w.mu.Unlock()
+
+	for key := range next {
+		if !previous[key] {
+			w.emit(ctx, key, true)
+		}
+	}
+	for key := range previous {
+		if !next[key] {
+			w.emit(ctx, key, false)
+		}
+	}
+}
+
+// activeSet applies both filters — playback state and the
+// local-playback exemption — to a raw session list. The single
+// definition used by the WebSocket path and the snapshot path, so the
+// two cannot disagree about what counts.
+func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
+	active := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		if s.ID == "" || !embyStateCounts(s) {
+			continue
+		}
+		if w.SkipLocalPlayback && embySessionIsLocal(s.RemoteEndPoint) {
+			continue
+		}
+		active[s.ID] = true
+	}
+	return active
+}
+
+func (w *EmbyWatcher) emit(ctx context.Context, sessionKey string, active bool) {
+	select {
+	case w.events <- SessionEvent{SessionKey: sessionKey, Active: active}:
+	case <-ctx.Done():
+	}
+}
+
+// Snapshot reads the session list over REST, applying the same
+// filtering the event stream does.
+//
+// It also resets the diff baseline. The pushed lists are themselves
+// full snapshots, so the two views converging is expected rather than
+// notable — but if the socket is down, the REST read is the only
+// current truth, and leaving a stale baseline behind would make the
+// first push after reconnect emit changes that already happened.
+func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]string, error) {
+	sessions, err := fetchEmbySessions(ctx, w.flavor, w.BaseURL, w.APIKey)
+	if err != nil {
+		return nil, err
+	}
+
+	set := w.activeSet(sessions)
+
+	w.mu.Lock()
+	w.active = set
+	w.mu.Unlock()
+
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func (w *EmbyWatcher) webSocketURL() string {
+	return webSocketBase(w.BaseURL) + w.flavor.webSocketPath +
+		"?api_key=" + url.QueryEscape(w.APIKey) +
+		"&deviceId=" + url.QueryEscape(embyDeviceID)
+}

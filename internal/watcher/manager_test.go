@@ -186,3 +186,26 @@ func TestReconcileIsIdempotent(t *testing.T) {
 		t.Errorf("expected no watcher churn on an unchanged reconcile, got %v", got)
 	}
 }
+
+func TestSupportedTypes(t *testing.T) {
+	for _, msType := range []string{"plex", "emby", "jellyfin"} {
+		if !supportedType(msType) {
+			t.Errorf("supportedType(%q) = false, want true", msType)
+		}
+		w, err := newWatcher(db.MediaServer{Type: msType, URL: "http://host"}, "token")
+		if err != nil {
+			t.Errorf("newWatcher(%q): %v", msType, err)
+			continue
+		}
+		if w == nil {
+			t.Errorf("newWatcher(%q) returned a nil watcher", msType)
+		}
+	}
+
+	if supportedType("transmission") {
+		t.Error(`supportedType("transmission") = true, want false`)
+	}
+	if _, err := newWatcher(db.MediaServer{Type: "nope"}, "t"); err == nil {
+		t.Error("newWatcher for an unknown type should return an error")
+	}
+}

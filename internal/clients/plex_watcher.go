@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/coder/websocket"
 )
@@ -45,35 +44,7 @@ func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 // silently-dropped connection and re-establish it (plan.md's
 // "reliability net": the event-driven design's one real failure mode).
 func (w *PlexWatcher) Run(ctx context.Context) {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
-
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		connectedAt := time.Now()
-		err := w.connectAndListen(ctx)
-		if ctx.Err() != nil {
-			return
-		}
-		if err != nil {
-			slog.Warn("plex watcher disconnected, reconnecting", "url", w.BaseURL, "error", err)
-		}
-		if time.Since(connectedAt) > maxBackoff {
-			backoff = time.Second // connection was healthy for a while; don't punish it for one drop
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		backoff *= 2
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
-	}
+	runWithBackoff(ctx, "plex", w.BaseURL, w.connectAndListen)
 }
 
 func (w *PlexWatcher) connectAndListen(ctx context.Context) error {
@@ -279,12 +250,5 @@ func (w *PlexWatcher) isSessionLocal(ctx context.Context, sessionKey string) (bo
 }
 
 func plexWebSocketURL(baseURL, token string) string {
-	wsURL := baseURL
-	switch {
-	case strings.HasPrefix(wsURL, "https://"):
-		wsURL = "wss://" + strings.TrimPrefix(wsURL, "https://")
-	case strings.HasPrefix(wsURL, "http://"):
-		wsURL = "ws://" + strings.TrimPrefix(wsURL, "http://")
-	}
-	return wsURL + "/:/websockets/notifications?X-Plex-Token=" + url.QueryEscape(token)
+	return webSocketBase(baseURL) + "/:/websockets/notifications?X-Plex-Token=" + url.QueryEscape(token)
 }
