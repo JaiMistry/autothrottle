@@ -16,7 +16,6 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/credential"
-	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
@@ -157,7 +156,6 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
 		s.mu.Unlock()
 		return
 	}
-	added, removed := diffSessionSets(current, next)
 	started, ended := changedSessionKeys(current, next)
 	if len(next) == 0 {
 		delete(s.active, mediaServerID)
@@ -176,13 +174,13 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
 	}
 
 	slog.Info("scheduler: corrected session state from snapshot",
-		"media_server_id", mediaServerID, "added", added, "removed", removed, "now_active", len(next))
+		"media_server_id", mediaServerID, "added", len(started), "removed", len(ended), "now_active", len(next))
 	s.ResolveAsync()
 }
 
 // changedSessionKeys names the sessions that started and ended between
-// two sets. diffSessionSets counts the same transitions for logging;
-// this returns the keys, which is what session history needs.
+// two sets — what session history records, and what the correction log
+// line counts.
 func changedSessionKeys(current, next map[string]bool) (started, ended []string) {
 	for key := range next {
 		if !current[key] {
@@ -209,28 +207,11 @@ func sameSessionSet(a, b map[string]bool) bool {
 	return true
 }
 
-// diffSessionSets reports how many keys the snapshot added and removed,
-// for a log line that says what the correction actually did rather
-// than just that one happened.
-func diffSessionSets(current, next map[string]bool) (added, removed int) {
-	for key := range next {
-		if !current[key] {
-			added++
-		}
-	}
-	for key := range current {
-		if !next[key] {
-			removed++
-		}
-	}
-	return added, removed
-}
 
 // Resolve re-evaluates every downloader against current configuration
 // and session state, applying any change. Exported so configuration
 // changes take effect immediately instead of waiting for the next
 // playback event.
-func (s *Scheduler) Resolve(ctx context.Context) { s.resolve(ctx) }
 
 // ResolveAsync runs Resolve on its own timeout-bound context, for
 // callers that must not block on downloader API calls — HTTP handlers
@@ -403,19 +384,10 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 		message = fmt.Sprintf("updated rate limits for %s", dl.Name)
 	}
 
-	var username, password string
-	if dl.CredentialEncrypted.Valid && dl.CredentialEncrypted.String != "" {
-		raw, err := crypto.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
-		if err != nil {
-			s.recordFailure(dl.ID, fmt.Sprintf("decrypting credential for %s: %v", dl.Name, err))
-			return
-		}
-		cred, err := credential.DecodeDownloader(raw)
-		if err != nil {
-			s.recordFailure(dl.ID, fmt.Sprintf("decoding credential for %s: %v", dl.Name, err))
-			return
-		}
-		username, password = cred.Username, cred.Password
+	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
+	if err != nil {
+		s.recordFailure(dl.ID, fmt.Sprintf("reading credential for %s: %v", dl.Name, err))
+		return
 	}
 
 	limiter := s.limiterFor(dl.Type)

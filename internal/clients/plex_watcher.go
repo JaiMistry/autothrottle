@@ -95,7 +95,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			w.mu.Lock()
 			delete(w.localCache, n.SessionKey)
 			w.mu.Unlock()
-			w.emit(ctx, n.SessionKey, false)
+			emit(ctx, w.events, n.SessionKey, false)
 			continue
 		}
 
@@ -121,7 +121,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			}
 		}
 
-		w.emit(ctx, n.SessionKey, true)
+		emit(ctx, w.events, n.SessionKey, true)
 	}
 }
 
@@ -132,12 +132,6 @@ func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
 	return v, ok
 }
 
-func (w *PlexWatcher) emit(ctx context.Context, sessionKey string, active bool) {
-	select {
-	case w.events <- SessionEvent{SessionKey: sessionKey, Active: active}:
-	case <-ctx.Done():
-	}
-}
 
 // Snapshot lists the sessions Plex currently reports as playing, with
 // local-playback exemption applied — the same filtering the event
@@ -207,29 +201,15 @@ func plexStateCounts(state string) bool {
 // this REST call backs both local-playback exemption and snapshot
 // reconciliation.
 func (w *PlexWatcher) fetchSessions(ctx context.Context) ([]plexSession, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.BaseURL+"/status/sessions", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-Plex-Token", w.Token)
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: testTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-
 	var out struct {
 		MediaContainer struct {
 			Metadata []plexSession `json:"Metadata"`
 		} `json:"MediaContainer"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	err := getJSON(ctx, w.BaseURL+"/status/sessions", func(r *http.Request) {
+		r.Header.Set("X-Plex-Token", w.Token)
+	}, &out)
+	if err != nil {
 		return nil, err
 	}
 	return out.MediaContainer.Metadata, nil

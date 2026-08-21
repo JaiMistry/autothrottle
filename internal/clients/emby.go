@@ -2,7 +2,6 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -176,26 +175,12 @@ func testEmbyFlavor(ctx context.Context, f embyFlavor, baseURL, apiKey string) e
 // WebSocket pushes. Backs both the snapshot reconciliation poll and
 // the connection test's session-shaped sibling.
 func fetchEmbySessions(ctx context.Context, f embyFlavor, baseURL, apiKey string) ([]embySession, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/Sessions", nil)
-	if err != nil {
-		return nil, err
-	}
-	f.setAuth(req, apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: testTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-
 	// Unlike Plex's MediaContainer wrapper, these return a bare array.
 	var sessions []embySession
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+	err := getJSON(ctx, baseURL+"/Sessions", func(r *http.Request) {
+		f.setAuth(r, apiKey)
+	}, &sessions)
+	if err != nil {
 		return nil, err
 	}
 	return sessions, nil

@@ -22,7 +22,7 @@ func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	if got := limiter.snapshot(); len(got) == 0 || got[len(got)-1].download != 500 {
 		t.Fatalf("expected the session to throttle first, got %+v", got)
 	}
@@ -33,7 +33,7 @@ func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 		t.Fatalf("ActiveSessionCount = %d, want 0 after the snapshot cleared it", n)
 	}
 
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	got := limiter.snapshot()
 	if last := got[len(got)-1]; last.download != 0 || last.upld != 0 {
 		t.Errorf("expected default rates restored, got %d/%d", last.download, last.upld)
@@ -54,7 +54,7 @@ func TestReplaceSessionsAddsSessionsTheEventStreamMissed(t *testing.T) {
 		t.Fatalf("ActiveSessionCount = %d, want 1", n)
 	}
 
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	got := limiter.snapshot()
 	if len(got) == 0 {
 		t.Fatal("expected a rate-limit call")
@@ -75,11 +75,11 @@ func TestReplaceSessionsWithNoChangeDoesNotReapply(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	before := len(limiter.snapshot())
 
 	s.ReplaceSessions(msID, []string{"session-1"})
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	if after := len(limiter.snapshot()); after != before {
 		t.Errorf("expected no additional rate-limit calls, got %d then %d", before, after)

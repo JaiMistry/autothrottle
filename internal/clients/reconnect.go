@@ -2,7 +2,10 @@ package clients
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -63,4 +66,45 @@ func webSocketBase(baseURL string) string {
 	default:
 		return baseURL
 	}
+}
+
+// emit offers a session event to a watcher's channel, abandoning it if
+// the watcher is shutting down. Identical for every protocol, so it
+// lives here rather than once per watcher.
+//
+// The abandon-on-cancel matters: the channel is buffered, and a
+// watcher whose consumer has already stopped would otherwise block
+// here forever once that buffer filled, leaking the goroutine.
+func emit(ctx context.Context, events chan<- SessionEvent, sessionKey string, active bool) {
+	select {
+	case events <- SessionEvent{SessionKey: sessionKey, Active: active}:
+	case <-ctx.Done():
+	}
+}
+
+// getJSON performs an authenticated GET and decodes a JSON body into
+// out. Every media server client needs exactly this shape — build,
+// authenticate, send, check the status, decode, close — and writing it
+// per call site is how a response body eventually goes unclosed.
+//
+// setAuth applies whatever the server expects, because they disagree:
+// Plex takes a token header, Emby takes its own, Jellyfin takes an
+// Authorization header it built itself.
+func getJSON(ctx context.Context, url string, setAuth func(*http.Request), out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
+	setAuth(req)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := (&http.Client{Timeout: testTimeout}).Do(req)
+	if err != nil {
+		return fmt.Errorf("connecting to %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
 }

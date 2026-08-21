@@ -492,19 +492,10 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var username, password string
-	if dl.CredentialEncrypted.Valid && dl.CredentialEncrypted.String != "" {
-		raw, err := crypto.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
-		if err != nil {
-			writeTestResult(w, false, "stored credential could not be decrypted")
-			return
-		}
-		cred, err := credential.DecodeDownloader(raw)
-		if err != nil {
-			writeTestResult(w, false, "stored credential is corrupt")
-			return
-		}
-		username, password = cred.Username, cred.Password
+	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
+	if err != nil {
+		writeTestResult(w, false, "stored credential could not be read")
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)

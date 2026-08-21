@@ -80,7 +80,7 @@ func TestMappingAddedWhileSessionActiveThrottles(t *testing.T) {
 	msID, dlID := addServerAndDownloader(t, database)
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	if got := limiter.snapshot(); len(got) != 1 || got[0].download != 0 {
 		t.Fatalf("expected one default-rate call before any mapping exists, got %+v", got)
 	}
@@ -88,7 +88,7 @@ func TestMappingAddedWhileSessionActiveThrottles(t *testing.T) {
 	if _, err := database.CreateMapping(msID, dlID); err != nil {
 		t.Fatalf("creating mapping: %v", err)
 	}
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	got := limiter.snapshot()
 	if len(got) != 2 {
@@ -109,7 +109,7 @@ func TestRateEditWhileThrottledIsPushed(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	dl, err := database.GetDownloader(dlID)
 	if err != nil {
@@ -119,7 +119,7 @@ func TestRateEditWhileThrottledIsPushed(t *testing.T) {
 	if err := database.UpdateDownloader(dl); err != nil {
 		t.Fatalf("updating downloader: %v", err)
 	}
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	got := limiter.snapshot()
 	if len(got) != 2 {
@@ -139,9 +139,9 @@ func TestUnchangedResolveIsNotReapplied(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
-	s.Resolve(context.Background())
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
+	s.resolve(context.Background())
+	s.resolve(context.Background())
 
 	if got := limiter.snapshot(); len(got) != 1 {
 		t.Fatalf("expected exactly one call for an unchanged state, got %d: %+v", len(got), got)
@@ -158,7 +158,7 @@ func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	ms, err := database.GetMediaServer(msID)
 	if err != nil {
@@ -168,7 +168,7 @@ func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 	if err := database.UpdateMediaServer(ms); err != nil {
 		t.Fatalf("disabling media server: %v", err)
 	}
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	got := limiter.snapshot()
 	if len(got) != 2 {
@@ -191,7 +191,7 @@ func TestClearSessionsReleasesThrottle(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 	if throttled, known := s.DownloaderThrottled(dlID); !known || !throttled {
 		t.Fatal("expected downloader to be throttled while a session is active")
 	}
@@ -199,7 +199,7 @@ func TestClearSessionsReleasesThrottle(t *testing.T) {
 	s.mu.Lock()
 	delete(s.active, msID)
 	s.mu.Unlock()
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	if throttled, _ := s.DownloaderThrottled(dlID); throttled {
 		t.Error("expected throttle to release once sessions are cleared")
@@ -218,7 +218,7 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "session-1", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	s.SetPaused(context.Background(), true)
 	if throttled, _ := s.DownloaderThrottled(dlID); throttled {
@@ -326,7 +326,7 @@ func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "42", true)
-	s.Resolve(context.Background())
+	s.resolve(context.Background())
 
 	events, err := database.ListEvents(10)
 	if err != nil {

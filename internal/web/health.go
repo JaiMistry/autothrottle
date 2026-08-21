@@ -96,16 +96,5 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 // for a downloader with a stored credential, or empty strings for one
 // with none (a legitimate no-auth configuration, not an error).
 func (s *Server) decodeDownloaderCredential(dl db.Downloader) (string, string, error) {
-	if !dl.CredentialEncrypted.Valid || dl.CredentialEncrypted.String == "" {
-		return "", "", nil
-	}
-	decrypted, err := crypto.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
-	if err != nil {
-		return "", "", err
-	}
-	cred, err := credential.DecodeDownloader(decrypted)
-	if err != nil {
-		return "", "", err
-	}
-	return cred.Username, cred.Password, nil
+	return credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 }

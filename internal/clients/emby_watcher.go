@@ -259,12 +259,12 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 
 	for key := range next {
 		if !previous[key] {
-			w.emit(ctx, key, true)
+			emit(ctx, w.events, key, true)
 		}
 	}
 	for key := range previous {
 		if !next[key] {
-			w.emit(ctx, key, false)
+			emit(ctx, w.events, key, false)
 		}
 	}
 }
@@ -287,12 +287,6 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
 	return active
 }
 
-func (w *EmbyWatcher) emit(ctx context.Context, sessionKey string, active bool) {
-	select {
-	case w.events <- SessionEvent{SessionKey: sessionKey, Active: active}:
-	case <-ctx.Done():
-	}
-}
 
 // Snapshot reads the session list over REST, applying the same
 // filtering the event stream does.

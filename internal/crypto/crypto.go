@@ -60,14 +60,20 @@ func LoadOrGenerateKey(envValue, keyPath string) ([]byte, error) {
 	return key, nil
 }
 
+// newGCM builds the AEAD both directions use, so the cipher choice is
+// made in exactly one place.
+func newGCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
 // Encrypt returns AES-256-GCM ciphertext, base64-encoded for storage as
 // SQLite TEXT. The nonce is prepended to the ciphertext.
 func Encrypt(key []byte, plaintext string) (string, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := newGCM(key)
 	if err != nil {
 		return "", err
 	}
@@ -85,11 +91,7 @@ func Decrypt(key []byte, encoded string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := newGCM(key)
 	if err != nil {
 		return "", err
 	}

@@ -15,7 +15,6 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/credential"
-	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
@@ -131,18 +130,7 @@ func (s *Sampler) sampleOne(ctx context.Context, dl db.Downloader, reporter clie
 }
 
 func (s *Sampler) credentials(dl db.Downloader) (username, password string, err error) {
-	if !dl.CredentialEncrypted.Valid || dl.CredentialEncrypted.String == "" {
-		return "", "", nil
-	}
-	raw, err := crypto.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
-	if err != nil {
-		return "", "", err
-	}
-	cred, err := credential.DecodeDownloader(raw)
-	if err != nil {
-		return "", "", err
-	}
-	return cred.Username, cred.Password, nil
+	return credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 }
 
 // noteFailure logs a failed sample without spamming: an unreachable
