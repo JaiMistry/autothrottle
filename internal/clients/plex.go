@@ -1,7 +1,10 @@
-// Package clients holds the HTTP clients for talking to media servers
-// and downloaders. Connection-testing lives here now; the full
-// event-driven WebSocket session clients (see plan.md's Real-time
-// architecture section) build on top of this later.
+// Package clients holds everything that talks to a media server or a
+// downloader: the connection tests below, the live session watchers
+// behind SessionWatcher, and the rate control behind RateLimiter.
+//
+// Each server's protocol quirks stay inside this package. Nothing
+// downstream names a concrete client — the rest of the app resolves
+// one of the interfaces in interfaces.go by type string.
 package clients
 
 import (

@@ -1,6 +1,13 @@
-// Package auth handles login: env-var credentials (no first-run setup
-// flow, no persisted password hash — see plan.md's Auth section for
-// why), sessions, CSRF, and login rate-limiting.
+// Package auth handles login: env-var credentials, sessions, CSRF, and
+// login rate-limiting.
+//
+// Credentials come from the environment rather than from a first-run
+// setup flow with a stored password hash. For a single-admin app
+// deployed from a compose file the env var is already the deployment's
+// source of truth, and a setup flow would add an unauthenticated
+// bootstrap route and a password-reset path to keep safe — both real
+// attack surface, for one account whose owner controls the host
+// anyway.
 package auth
 
 import (

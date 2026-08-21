@@ -225,7 +225,7 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			}
 			// Only the first failure and then every tenth are logged:
 			// an unreachable server would otherwise emit one line per
-			// interval forever (plan.md's no-log-spam commitment).
+			// interval forever.
 			if failures == 0 || failures%10 == 0 {
 				slog.Warn("watcher: session reconciliation failed", "media_server", name, "consecutive_failures", failures+1, "error", err)
 			}

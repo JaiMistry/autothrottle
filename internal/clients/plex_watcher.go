@@ -41,8 +41,9 @@ func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 
 // Run connects and reconnects with backoff until ctx is cancelled. This
 // isn't for detecting playback — it exists purely to notice a
-// silently-dropped connection and re-establish it (plan.md's
-// "reliability net": the event-driven design's one real failure mode).
+// silently-dropped connection and re-establish it — the one real
+// failure mode an event-driven design has, since a dead socket looks
+// exactly like a quiet one.
 func (w *PlexWatcher) Run(ctx context.Context) {
 	runWithBackoff(ctx, "plex", w.BaseURL, w.connectAndListen)
 }

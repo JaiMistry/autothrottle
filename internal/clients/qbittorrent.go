@@ -45,8 +45,10 @@ func TestQBittorrent(ctx context.Context, baseURL, username, password string) er
 
 // SetQBittorrentLimits authenticates (when credentials are set) and
 // sets qBittorrent's global download/upload speed limits. Deliberately
-// global limits, not per-torrent — matches plan.md's scope of
-// throttling the whole client, not individual torrents. Limits are
+// global limits, not per-torrent: the point is to free up the WAN link
+// while something is streaming, not to prioritise between torrents,
+// and a client-wide limit is the only setting that reliably does that
+// no matter what is queued. Limits are
 // KB/s per the app's schema convention; qBittorrent's API takes
 // bytes/sec. 0 means unlimited on both sides.
 func SetQBittorrentLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {

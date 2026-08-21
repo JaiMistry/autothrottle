@@ -32,8 +32,9 @@ type healthResponse struct {
 }
 
 // healthHandler reports real per-backend reachability, not just "the
-// internal loop is alive" — per plan.md's Security section, this was
-// one of the original app's known bugs.
+// internal loop is alive". The app this replaces reported healthy
+// while a backend was unreachable, which made its health endpoint
+// useless for precisely the failure it existed to catch.
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 	defer cancel()

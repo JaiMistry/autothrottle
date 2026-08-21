@@ -1,9 +1,9 @@
 // Package scheduler resolves media-server session activity into
 // downloader throttle state via the mappings table, and applies it.
-// See plan.md's "Throttle logic" section for the full design this
-// implements: rates live on the downloader, mappings only decide which
-// servers' sessions count toward it, and a downloader is throttled if
-// any enabled mapping points at a server with active sessions.
+// The whole design in one sentence: rates live on the downloader,
+// mappings only decide which servers' sessions count toward it, and a
+// downloader is throttled if any enabled mapping points at a server
+// with active sessions.
 package scheduler
 
 import (
@@ -66,8 +66,8 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 	}
 }
 
-// SetPaused toggles the manual override (plan.md's Dashboard spec) that
-// forces every downloader back to its default rate regardless of
+// SetPaused toggles the manual dashboard override, which forces every
+// downloader back to its default rate regardless of
 // session activity, without discarding the tracked session state —
 // unpausing immediately re-resolves against whatever's still playing.
 func (s *Scheduler) SetPaused(ctx context.Context, paused bool) {

@@ -1,6 +1,10 @@
 // Package crypto encrypts credentials for connected services (media
-// server tokens, downloader passwords) at rest. Never store these
-// plaintext — see plan.md's Security section for why.
+// server tokens, downloader passwords) at rest.
+//
+// Never store these plaintext. They grant control of the services they
+// belong to, and this app's database is a single file on a home server
+// — copied into backups, moved between hosts, and handled far more
+// casually than anything that looks like a credential store.
 package crypto
 
 import (
