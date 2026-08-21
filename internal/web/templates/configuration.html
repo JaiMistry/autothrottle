@@ -138,7 +138,7 @@
         <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Type</span>
         <select name="type" class="select select-bordered w-full">
           <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
-          <option value="transmission" disabled {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission (coming in v2)</option>
+          <option value="transmission" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
         </select>
       </label>
       <label class="form-control">

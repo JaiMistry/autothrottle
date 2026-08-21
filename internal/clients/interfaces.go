@@ -85,9 +85,8 @@ type SessionEvent struct {
 // RateLimiter applies a download client's global speed limits. Limits
 // are KB/s, matching the app's schema convention; 0 means unlimited.
 //
-// Transmission slots in here as a second implementation — the
-// scheduler resolves one of these by downloader type and never names a
-// concrete client.
+// Implemented by QBittorrent and Transmission. The scheduler resolves
+// one of these by downloader type and never names a concrete client.
 type RateLimiter interface {
 	SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error
 }
@@ -99,6 +98,43 @@ type RateLimiter interface {
 // needs to read.
 type RateReporter interface {
 	Rates(ctx context.Context, baseURL, username, password string) (downloadBytesPerSec, uploadBytesPerSec int64, err error)
+}
+
+// DownloaderType names one supported download client, for a UI that
+// renders the set generically. Mirrors MediaServerTypes.
+type DownloaderType struct {
+	Value string
+	Label string
+}
+
+// DownloaderTypes lists every type with a working rate limiter, in the
+// order a UI should offer them.
+var DownloaderTypes = []DownloaderType{
+	{Value: "qbittorrent", Label: "qBittorrent"},
+	{Value: "transmission", Label: "Transmission"},
+}
+
+// SupportedDownloaderType reports whether a type string names a
+// download client this build can actually control.
+func SupportedDownloaderType(dlType string) bool {
+	for _, t := range DownloaderTypes {
+		if t.Value == dlType {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDownloader runs the connection test for a downloader's type.
+func TestDownloader(ctx context.Context, dlType, baseURL, username, password string) error {
+	switch dlType {
+	case "qbittorrent":
+		return TestQBittorrent(ctx, baseURL, username, password)
+	case "transmission":
+		return TestTransmission(ctx, baseURL, username, password)
+	default:
+		return fmt.Errorf("unsupported downloader type %q", dlType)
+	}
 }
 
 // QBittorrent implements RateLimiter and RateReporter against
@@ -113,6 +149,18 @@ func (QBittorrent) Rates(ctx context.Context, baseURL, username, password string
 	return QBittorrentRates(ctx, baseURL, username, password)
 }
 
+// Transmission implements RateLimiter and RateReporter against
+// Transmission's JSON-RPC API.
+type Transmission struct{}
+
+func (Transmission) SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
+	return SetTransmissionLimits(ctx, baseURL, username, password, downloadLimitKBps, uploadLimitKBps)
+}
+
+func (Transmission) Rates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
+	return TransmissionRates(ctx, baseURL, username, password)
+}
+
 // RateLimiterFor resolves a downloader's type to its implementation.
 // Returns nil for an unsupported type; callers report that as a
 // configuration error rather than silently doing nothing.
@@ -120,6 +168,8 @@ func RateLimiterFor(downloaderType string) RateLimiter {
 	switch downloaderType {
 	case "qbittorrent":
 		return QBittorrent{}
+	case "transmission":
+		return Transmission{}
 	default:
 		return nil
 	}
@@ -132,6 +182,8 @@ func RateReporterFor(downloaderType string) RateReporter {
 	switch downloaderType {
 	case "qbittorrent":
 		return QBittorrent{}
+	case "transmission":
+		return Transmission{}
 	default:
 		return nil
 	}

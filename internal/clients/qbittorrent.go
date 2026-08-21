@@ -48,9 +48,9 @@ func TestQBittorrent(ctx context.Context, baseURL, username, password string) er
 // global limits, not per-torrent: the point is to free up the WAN link
 // while something is streaming, not to prioritise between torrents,
 // and a client-wide limit is the only setting that reliably does that
-// no matter what is queued. Limits are
-// KB/s per the app's schema convention; qBittorrent's API takes
-// bytes/sec. 0 means unlimited on both sides.
+// no matter what is queued. Limits are KB/s per the app's schema
+// convention; qBittorrent's API takes bytes/sec. 0 means unlimited on
+// both sides.
 func SetQBittorrentLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	baseURL = strings.TrimRight(baseURL, "/")
 

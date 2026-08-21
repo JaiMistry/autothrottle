@@ -361,7 +361,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	enabled := r.FormValue("enabled") == "on"
 
-	if name == "" || rawURL == "" || dlType != "qbittorrent" {
+	if name == "" || rawURL == "" || !clients.SupportedDownloaderType(dlType) {
 		s.renderConfigError(w, r, "downloaders", "Name, URL, and a supported type are required.")
 		return
 	}
@@ -458,9 +458,14 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		writeTestResult(w, false, "bad form data")
 		return
 	}
+	dlType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
 		writeTestResult(w, false, "enter a URL first")
+		return
+	}
+	if !clients.SupportedDownloaderType(dlType) {
+		writeTestResult(w, false, "choose a supported downloader type first")
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
@@ -468,7 +473,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
-	if err := clients.TestQBittorrent(ctx, rawURL, username, password); err != nil {
+	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
 		writeTestResult(w, false, err.Error())
 		return
 	}
@@ -504,7 +509,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
-	if err := clients.TestQBittorrent(ctx, dl.URL, username, password); err != nil {
+	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
 		writeTestResult(w, false, err.Error())
 		return
 	}
