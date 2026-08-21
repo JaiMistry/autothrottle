@@ -52,6 +52,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Sessions that were playing when the process last stopped are
+	// still marked open. Nothing observed them ending, so close them
+	// before anything reads history — otherwise they read as playing
+	// right now, and every downloader they map to looks throttled for
+	// the whole outage.
+	if closed, err := database.CloseDanglingSessions(); err != nil {
+		logger.Error("closing sessions left open by the previous run", "error", err)
+	} else if closed > 0 {
+		logger.Info("closed sessions left open by the previous run", "sessions", closed)
+	}
+
 	store := settings.New(database)
 	sched := scheduler.New(database, encryptionKey, store)
 	watchers := watcher.NewManager(database, encryptionKey, sched, store)

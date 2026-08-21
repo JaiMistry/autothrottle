@@ -127,6 +127,13 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Lock()
 	delete(s.active, mediaServerID)
 	s.mu.Unlock()
+
+	// Nothing is watching this server any more, so its open sessions
+	// can never be observed ending. Left open they would run to the
+	// right edge of every future chart.
+	if err := s.db.CloseSessionsForServer(mediaServerID); err != nil {
+		slog.Error("scheduler: closing session history", "media_server_id", mediaServerID, "error", err)
+	}
 	s.ResolveAsync()
 }
 
@@ -151,6 +158,7 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
 		return
 	}
 	added, removed := diffSessionSets(current, next)
+	started, ended := changedSessionKeys(current, next)
 	if len(next) == 0 {
 		delete(s.active, mediaServerID)
 	} else {
@@ -158,9 +166,35 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
 	}
 	s.mu.Unlock()
 
+	// The snapshot is authoritative, so anything it reveals as started
+	// or ended is history the event stream missed.
+	for _, key := range started {
+		s.recordSession(mediaServerID, key, true)
+	}
+	for _, key := range ended {
+		s.recordSession(mediaServerID, key, false)
+	}
+
 	slog.Info("scheduler: corrected session state from snapshot",
 		"media_server_id", mediaServerID, "added", added, "removed", removed, "now_active", len(next))
 	s.ResolveAsync()
+}
+
+// changedSessionKeys names the sessions that started and ended between
+// two sets. diffSessionSets counts the same transitions for logging;
+// this returns the keys, which is what session history needs.
+func changedSessionKeys(current, next map[string]bool) (started, ended []string) {
+	for key := range next {
+		if !current[key] {
+			started = append(started, key)
+		}
+	}
+	for key := range current {
+		if !next[key] {
+			ended = append(ended, key)
+		}
+	}
+	return started, ended
 }
 
 func sameSessionSet(a, b map[string]bool) bool {
@@ -228,13 +262,35 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, sessionKey string, a
 	}
 	s.mu.Unlock()
 
+	s.recordSession(mediaServerID, sessionKey, active)
 	s.ResolveAsync()
+}
+
+// recordSession persists a session's start or end for the Analytics
+// page. Failures are logged and swallowed: history is a reporting
+// concern, and losing a row must never stop throttling from being
+// applied, which is the job that actually matters.
+func (s *Scheduler) recordSession(mediaServerID int64, sessionKey string, active bool) {
+	var err error
+	if active {
+		err = s.db.OpenSession(mediaServerID, sessionKey)
+	} else {
+		err = s.db.CloseSession(mediaServerID, sessionKey)
+	}
+	if err != nil {
+		slog.Error("scheduler: recording session history",
+			"media_server_id", mediaServerID, "session", sessionKey, "active", active, "error", err)
+	}
 }
 
 type resolution struct {
 	downloader      db.Downloader
 	throttled       bool
 	causeServerName string
+	// causeServerID makes the cause queryable. The name alone only
+	// exists inside the event's message text, which analytics would
+	// have to parse back out of prose to attribute a throttle.
+	causeServerID int64
 }
 
 func (s *Scheduler) resolve(ctx context.Context) {
@@ -282,6 +338,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		}
 		throttled := false
 		causeServerName := ""
+		causeServerID := int64(0)
 		if !paused {
 			for _, m := range byDownloader[dl.ID] {
 				if _, enabled := msNameByID[m.MediaServerID]; !enabled {
@@ -290,11 +347,17 @@ func (s *Scheduler) resolve(ctx context.Context) {
 				if len(s.active[m.MediaServerID]) > 0 {
 					throttled = true
 					causeServerName = msNameByID[m.MediaServerID]
+					causeServerID = m.MediaServerID
 					break
 				}
 			}
 		}
-		toApply = append(toApply, resolution{downloader: dl, throttled: throttled, causeServerName: causeServerName})
+		toApply = append(toApply, resolution{
+			downloader:      dl,
+			throttled:       throttled,
+			causeServerName: causeServerName,
+			causeServerID:   causeServerID,
+		})
 	}
 
 	// Forget downloaders that are gone or switched off, so a later
@@ -312,11 +375,11 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	s.mu.Unlock()
 
 	for _, r := range toApply {
-		s.applyState(ctx, r.downloader, r.throttled, r.causeServerName)
+		s.applyState(ctx, r.downloader, r.throttled, r.causeServerName, r.causeServerID)
 	}
 }
 
-func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled bool, causeServerName string) {
+func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled bool, causeServerName string, causeServerID int64) {
 	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
 	if throttled {
@@ -367,9 +430,10 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 	}
 
 	if err := s.db.InsertEvent(db.Event{
-		Level:        "info",
-		Message:      message,
-		DownloaderID: sql.NullInt64{Int64: dl.ID, Valid: true},
+		Level:         "info",
+		Message:       message,
+		DownloaderID:  sql.NullInt64{Int64: dl.ID, Valid: true},
+		MediaServerID: sql.NullInt64{Int64: causeServerID, Valid: causeServerID != 0},
 	}); err != nil {
 		slog.Error("scheduler: recording event", "error", err)
 	}

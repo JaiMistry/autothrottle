@@ -67,4 +67,14 @@ func (r *Runner) RunOnce() {
 	} else if deleted > 0 {
 		slog.Info("retention: pruned history events", "rows", deleted)
 	}
+
+	// Session history shares the event retention window: both answer
+	// "what happened, and when", and splitting them would mean a
+	// timeline whose sessions and events disagree about how far back
+	// the page can look.
+	if deleted, err := r.db.PruneSessionHistory(now.Add(-r.settings.EventRetention())); err != nil {
+		slog.Error("retention: pruning session history", "error", err)
+	} else if deleted > 0 {
+		slog.Info("retention: pruned session history", "rows", deleted)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
@@ -230,5 +231,114 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 	}
 	if got := limiter.snapshot(); len(got) != 3 {
 		t.Errorf("expected throttle, release, re-throttle, got %+v", got)
+	}
+}
+
+// Session history feeds the Analytics timeline, so playback has to be
+// persisted as it happens — it cannot be reconstructed later from the
+// event log, which only records throttle transitions.
+func TestSessionEventsAreRecordedToHistory(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, _ := addServerAndDownloader(t, database)
+	window := time.Now().Add(-time.Hour)
+
+	s.HandleSessionEvent(msID, "42", true)
+	sessions, err := database.ListSessions(window, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].Ended() {
+		t.Fatalf("expected one open session, got %+v", sessions)
+	}
+
+	s.HandleSessionEvent(msID, "42", false)
+	sessions, err = database.ListSessions(window, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 || !sessions[0].Ended() {
+		t.Fatalf("expected the session to be closed, got %+v", sessions)
+	}
+}
+
+// Reconciliation snapshots are authoritative, so a session the event
+// stream missed must still land in history.
+func TestReplaceSessionsRecordsHistory(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, _ := addServerAndDownloader(t, database)
+	window := time.Now().Add(-time.Hour)
+
+	s.ReplaceSessions(msID, []string{"a", "b"})
+	sessions, err := database.ListSessions(window, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("expected two sessions from the snapshot, got %+v", sessions)
+	}
+
+	// "a" ended, "b" continues.
+	s.ReplaceSessions(msID, []string{"b"})
+	sessions, err = database.ListSessions(window, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range sessions {
+		switch session.SessionKey {
+		case "a":
+			if !session.Ended() {
+				t.Error("a session missing from the snapshot must be closed")
+			}
+		case "b":
+			if session.Ended() {
+				t.Error("a session still in the snapshot must stay open")
+			}
+		}
+	}
+}
+
+// A stopped watcher can never observe its sessions ending, so they must
+// not be left running to the right edge of every future chart.
+func TestClearSessionsClosesHistory(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, _ := addServerAndDownloader(t, database)
+
+	s.HandleSessionEvent(msID, "42", true)
+	s.ClearSessions(msID)
+
+	sessions, err := database.ListSessions(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || !sessions[0].Ended() {
+		t.Fatalf("expected the session to be closed, got %+v", sessions)
+	}
+}
+
+// Analytics needs to attribute a throttle to the server that caused it.
+// The server's name is only inside the message text; the id is what a
+// query can actually use.
+func TestThrottleEventNamesTheCausingServer(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, dlID := addServerAndDownloader(t, database)
+	if _, err := database.CreateMapping(msID, dlID); err != nil {
+		t.Fatal(err)
+	}
+
+	s.HandleSessionEvent(msID, "42", true)
+	s.Resolve(context.Background())
+
+	events, err := database.ListEvents(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range events {
+		if e.MediaServerID.Valid && e.MediaServerID.Int64 == msID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no event attributed to media server %d: %+v", msID, events)
 	}
 }

@@ -91,3 +91,25 @@ CREATE INDEX IF NOT EXISTS idx_events_level ON events(level);
 CREATE INDEX IF NOT EXISTS idx_samples_sampled_at ON bandwidth_samples(sampled_at);
 CREATE INDEX IF NOT EXISTS idx_samples_downloader ON bandwidth_samples(downloader_id, sampled_at);
 CREATE INDEX IF NOT EXISTS idx_rollups_hour ON bandwidth_rollups_hourly(hour);
+
+-- Session history: one row per playback session, opened when it starts
+-- counting toward throttling and closed when it stops.
+--
+-- The scheduler tracks active sessions in memory because that is what
+-- resolving throttle state needs; this table exists so the Analytics
+-- page can answer "what was playing, and when" after the fact. A NULL
+-- ended_at means still playing — or that the process died while it
+-- was, which CloseDanglingSessions resolves at startup.
+CREATE TABLE IF NOT EXISTS session_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_server_id INTEGER NOT NULL REFERENCES media_servers(id) ON DELETE CASCADE,
+    session_key TEXT NOT NULL,
+    started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    ended_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_history_started ON session_history(started_at);
+CREATE INDEX IF NOT EXISTS idx_session_history_server ON session_history(media_server_id, started_at);
+-- Session keys are reused by media servers over time, so "the open row
+-- for this server and key" is the only safe way to find what to close.
+CREATE INDEX IF NOT EXISTS idx_session_history_open ON session_history(media_server_id, session_key) WHERE ended_at IS NULL;
