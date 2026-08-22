@@ -18,7 +18,7 @@
   min-height: 100vh;
   background: var(--bg);
 }
-.at-shell[data-collapsed="1"] { grid-template-columns: 58px 1fr; }
+html[data-rail="collapsed"] .at-shell { grid-template-columns: 58px 1fr; }
 
 .at-rail {
   background: var(--surface-2);
@@ -34,7 +34,7 @@
   overflow-y: auto;
   transition: width var(--dur-base) var(--ease-out), padding var(--dur-base) var(--ease-out);
 }
-.at-shell[data-collapsed="1"] .at-rail { padding: var(--space-9) var(--space-4); }
+html[data-rail="collapsed"] .at-shell .at-rail { padding: var(--space-9) var(--space-4); }
 
 .at-rail-head {
   display: flex;
@@ -44,7 +44,7 @@
   padding: 0 2px 0 6px;
   margin-bottom: var(--space-10);
 }
-.at-shell[data-collapsed="1"] .at-rail-head { justify-content: center; padding: 0; }
+html[data-rail="collapsed"] .at-shell .at-rail-head { justify-content: center; padding: 0; }
 
 .at-rail-toggle {
   display: inline-flex;
@@ -63,8 +63,8 @@
 }
 .at-rail-toggle:hover { color: var(--text-dim); }
 .at-shell[data-collapsed="0"] .at-rail-toggle-expand { display: none; }
-.at-shell[data-collapsed="1"] .at-rail-toggle-collapse { display: none; }
-.at-shell[data-collapsed="1"] .at-rail-toggle-expand { align-self: center; margin-bottom: var(--space-6); }
+html[data-rail="collapsed"] .at-shell .at-rail-toggle-collapse { display: none; }
+html[data-rail="collapsed"] .at-shell .at-rail-toggle-expand { align-self: center; margin-bottom: var(--space-6); }
 
 /* The active nav item is the only elevated thing on the page — a
    raised surface, not an accent bar. */
@@ -90,12 +90,12 @@
 }
 .at-nav-item[aria-current="page"] .at-nav-icon { color: var(--accent); }
 .at-nav-icon { display: inline-flex; flex-shrink: 0; }
-.at-shell[data-collapsed="1"] .at-nav-item { justify-content: center; padding: 9px 0; }
-.at-shell[data-collapsed="1"] .at-nav-label,
-.at-shell[data-collapsed="1"] .at-rail-name { display: none; }
+html[data-rail="collapsed"] .at-shell .at-nav-item { justify-content: center; padding: 9px 0; }
+html[data-rail="collapsed"] .at-shell .at-nav-label,
+html[data-rail="collapsed"] .at-shell .at-rail-name { display: none; }
 
 .at-rail-foot { margin-top: auto; display: grid; gap: var(--space-4); }
-.at-shell[data-collapsed="1"] .at-rail-foot { justify-items: center; }
+html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
 .at-brand { display: inline-flex; align-items: center; gap: var(--space-5); min-width: 0; text-decoration: none; color: var(--text); }
 .at-brand img { display: block; flex-shrink: 0; }
@@ -140,8 +140,8 @@
 .at-drawer-close { display: none; }
 
 @media (max-width: 760px) {
-  .at-shell, .at-shell[data-collapsed="1"] { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .at-shell[data-collapsed="1"] .at-rail { padding: var(--pad-nav); }
+  .at-shell, html[data-rail="collapsed"] .at-shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  html[data-rail="collapsed"] .at-shell .at-rail { padding: var(--pad-nav); }
   .at-rail {
     position: fixed;
     top: 0;
@@ -159,9 +159,9 @@
   /* Collapsing is a desktop affordance; the drawer is already the
      narrow answer. */
   .at-rail-toggle { display: none; }
-  .at-shell[data-collapsed="1"] .at-nav-label,
-  .at-shell[data-collapsed="1"] .at-rail-name { display: inline; }
-  .at-shell[data-collapsed="1"] .at-nav-item { justify-content: flex-start; padding: 8px 10px; }
+  html[data-rail="collapsed"] .at-shell .at-nav-label,
+  html[data-rail="collapsed"] .at-shell .at-rail-name { display: inline; }
+  html[data-rail="collapsed"] .at-shell .at-nav-item { justify-content: flex-start; padding: 8px 10px; }
   .at-drawer-close {
     display: inline-flex;
     position: absolute;

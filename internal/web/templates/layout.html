@@ -21,15 +21,37 @@
       else { r.removeAttribute("data-theme"); m = "system"; }
       r.setAttribute("data-theme-mode", m);
       try { if (localStorage.getItem("at-rail") === "1") r.setAttribute("data-rail", "collapsed"); } catch (e) {}
+      // Suppressed until the first frame, so nothing that is merely
+      // arriving animates as though it changed.
+      r.className = "at-boot";
     })();
   </script>
+  <style>
+    /* Critical, inline, before the stylesheet: the page's ground
+       colour has to be correct on the very first paint. Left to the
+       external sheet, every navigation flashes the browser default
+       white before the CSS lands — and on a server-rendered app that
+       is every click. Values are the palette's raw ink and paper; the
+       full token layer redefines them a moment later with the same
+       numbers. */
+    :root { color-scheme: light; background: #f2f5f9; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { color-scheme: dark; background: #0a0f1a; }
+    }
+    :root[data-theme="dark"] { color-scheme: dark; background: #0a0f1a; }
+    :root[data-theme="light"] { color-scheme: light; background: #f2f5f9; }
+    html { margin: 0; }
+    body { margin: 0; background: inherit; }
+    /* Nothing transitions while the document is still arriving. */
+    html.at-boot *, html.at-boot *::before, html.at-boot *::after { transition: none !important; }
+  </style>
   <link rel="stylesheet" href="/static/css/tailwind.css">
   <script src="/static/js/htmx.min.js" defer></script>
   <script src="/static/js/app.js" defer></script>
 </head>
 <body>
 {{if .Authenticated}}
-  <div class="at-shell" data-collapsed="0" id="at-shell">
+  <div class="at-shell" id="at-shell">
     <header class="at-topbar">
       <button type="button" class="at-barbtn" data-drawer-open aria-label="Open menu" aria-expanded="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>

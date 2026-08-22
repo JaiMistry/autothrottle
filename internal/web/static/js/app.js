@@ -27,18 +27,22 @@
     applyTheme(MODES[(MODES.indexOf(current) + 1) % MODES.length]);
   });
 
-  /* ── Sidebar rail ───────────────────────────────────────────────── */
-  var shell = document.getElementById("at-shell");
-  if (shell) {
-    var collapsed = false;
-    try { collapsed = localStorage.getItem("at-rail") === "1"; } catch (e) {}
-    shell.setAttribute("data-collapsed", collapsed ? "1" : "0");
-  }
+  /* ── Sidebar rail ───────────────────────────────────────────────
+     The blocking head script has already applied the stored state to
+     <html>, so the rail is the right width on the first paint and
+     never animates itself into position on load. This only handles
+     the toggle. */
   document.addEventListener("click", function (e) {
-    if (!e.target.closest("[data-rail-toggle]") || !shell) return;
-    var next = shell.getAttribute("data-collapsed") === "1" ? "0" : "1";
-    shell.setAttribute("data-collapsed", next);
-    try { localStorage.setItem("at-rail", next); } catch (e2) {}
+    if (!e.target.closest("[data-rail-toggle]")) return;
+    var collapsed = root.getAttribute("data-rail") === "collapsed";
+    if (collapsed) root.removeAttribute("data-rail");
+    else root.setAttribute("data-rail", "collapsed");
+    try { localStorage.setItem("at-rail", collapsed ? "0" : "1"); } catch (e2) {}
+  });
+
+  /* Release the transition suppression once a frame has been painted. */
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { root.classList.remove("at-boot"); });
   });
 
   /* ── Mobile drawer ──────────────────────────────────────────────
