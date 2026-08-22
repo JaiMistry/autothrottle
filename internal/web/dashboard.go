@@ -171,7 +171,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	data.SessionFootnote = sessionFootnote(paused, totalSessions)
 	if len(unreachable) > 0 {
 		data.UnreachableNote = fmt.Sprintf("%s is currently unreachable. Please check the configuration.",
-			joinNames(unreachable))
+			strings.Join(unreachable, " / "))
 	}
 
 	s.render(w, "dashboard", data)

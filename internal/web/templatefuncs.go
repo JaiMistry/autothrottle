@@ -12,8 +12,16 @@ import (
 // handler where it can be tested, not in a template.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"dict":     dict,
-		"cond":     cond,
+		"dict": dict,
+		"cond": cond,
+		// Counts appear in prose all over this UI, and "1 servers"
+		// undoes the care everywhere else.
+		"plural": func(n int64, one, many string) string {
+			if n == 1 {
+				return fmt.Sprintf(one, n)
+			}
+			return fmt.Sprintf(many, n)
+		},
 		"mapkey":   func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
 		"rate":     rateLabel,
 		"bytes":    byteLabel,
