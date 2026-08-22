@@ -5,6 +5,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "^4",
     "tailwindcss": "^4",
-    "daisyui": "^5"
+    "daisyui": "^5",
+    "apexcharts": "^4"
   }
 }

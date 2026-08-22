@@ -1,24 +1,28 @@
 {{define "content"}}
-<div class="card w-full max-w-sm bg-base-200 border border-base-300 shadow-lg">
-  <div class="card-body">
-    <div class="flex items-center gap-2 font-bold mb-4">
-      <span class="w-5 h-5 rounded-md bg-primary shrink-0"></span>
-      AutoThrottle
-    </div>
-    {{if .Error}}
-    <div class="alert alert-error text-sm py-2 mb-2">{{.Error}}</div>
-    {{end}}
-    <form method="post" action="/login" class="flex flex-col gap-3">
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Username</span>
-        <input type="text" name="username" class="input input-bordered w-full" autofocus required>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Password</span>
-        <input type="password" name="password" class="input input-bordered w-full" required>
-      </label>
-      <button type="submit" class="btn btn-primary mt-2">Log in</button>
-    </form>
+<div style="width:100%;max-width:360px">
+  <div style="display:grid;justify-items:center;margin-bottom:var(--space-12)">
+    <img src="/static/img/logo-lockup.svg" alt="AutoThrottle" style="height:34px">
   </div>
+  <section class="at-card">
+    {{if .Error}}
+      <div style="margin-bottom:var(--space-6)">
+        {{template "alert" dict "Tone" "error" "Title" "Could not sign in" "Body" .Error}}
+      </div>
+    {{end}}
+    <form method="post" action="/login" class="at-stack">
+      <label class="at-field">
+        <span class="at-field-label">Username</span>
+        <input class="at-input" type="text" name="username" autocomplete="username" autofocus required>
+      </label>
+      <label class="at-field">
+        <span class="at-field-label">Password</span>
+        <input class="at-input" type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="at-btn at-btn--primary at-btn--md at-btn--block">Log in</button>
+    </form>
+  </section>
+  <p style="text-align:center;margin:var(--space-8) 0 0;font-size:var(--text-label);color:var(--text-faint)">
+    Credentials come from the environment this app was deployed with.
+  </p>
 </div>
 {{end}}

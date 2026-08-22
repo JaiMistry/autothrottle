@@ -1,7 +1,10 @@
 ---
 services:
   autothrottle:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     image: autothrottle-local:latest
     pull_policy: never
     container_name: autothrottle

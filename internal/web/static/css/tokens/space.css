@@ -1,0 +1,37 @@
+/* Spacing and radii. Values are the ones the app actually uses — dense,
+   4px-based, with a couple of odd numbers (5px pill padding, 7px stripe)
+   kept verbatim rather than snapped to the grid. */
+:root{
+  --space-1:2px;
+  --space-2:4px;
+  --space-3:6px;
+  --space-4:8px;
+  --space-5:10px;
+  --space-6:12px;
+  --space-7:14px;
+  --space-8:16px;
+  --space-9:20px;
+  --space-10:24px;
+  --space-12:28px;
+  --space-14:32px;
+  --space-16:48px;
+
+  --pad-card:14px 16px;        /* stat card */
+  --pad-card-lg:16px 18px;     /* content card */
+  --pad-pill:5px 12px 5px 8px; /* asymmetric: dot side is tighter */
+  --pad-row:6px 0;             /* list/log row */
+  --pad-view:24px 26px;        /* main content area */
+  --pad-nav:20px 14px;         /* sidebar */
+
+  --radius-xs:4px;    /* focus ring, level badge */
+  --radius-sm:6px;    /* brand mark */
+  --radius-md:8px;    /* inputs, nav items, buttons */
+  --radius-lg:10px;   /* cards (daisyUI --radius-box: 0.625rem) */
+  --radius-xl:14px;   /* app frame */
+  --radius-pill:999px;
+
+  --border-width:1px;
+  --stripe-size:7px;  /* pill status dot */
+  --mark-size:20px;   /* sidebar brand mark; must read at 16px too */
+  --sidebar-width:216px;  /* brand lockup + collapse control, with air between them */
+}

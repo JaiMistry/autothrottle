@@ -1,106 +1,64 @@
 @import "tailwindcss";
+
+/* The design system's tokens are the source of truth for every value.
+   They publish both semantic names (--surface, --text-dim, --good) and
+   daisyUI parity names (--color-base-100, --color-primary), so wiring
+   the theme once keeps the compiled daisyUI layer and hand-written
+   components in sync. */
+@import "./tokens/palette.css";
+@import "./tokens/theme.css";
+@import "./tokens/typography.css";
+@import "./tokens/space.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";
+@import "./tokens/base.css";
+
+/* The design system's components, expressed as classes. */
+@import "./components.css";
+
+/* themes:false on purpose. daisyUI's own theme blocks would emit
+   [data-theme] rules that fight the token layer, and — more
+   importantly — daisyUI expects a data-theme attribute to always be
+   present, which breaks "System": System means NO attribute, so that
+   prefers-color-scheme can apply. tokens/theme.css already covers all
+   three cases (bare :root, the media query, and an explicit
+   [data-theme]), so daisyUI just reads the vars it finds. */
 @plugin "daisyui" {
   themes: false;
 }
-@plugin "daisyui/theme" {
-  name: "autothrottle-dark";
-  default: true;
-  prefersdark: true;
-  color-scheme: dark;
-  --color-base-100: #0a0f1a;
-  --color-base-200: #131b2c;
-  --color-base-300: #1a2438;
-  --color-base-content: #e7edf6;
-  --color-primary: #38bdf8;
-  --color-primary-content: #06202b;
-  --color-success: #4ade80;
-  --color-warning: #f5a623;
-  --color-error: #f2545b;
-  --radius-box: 0.625rem;
-  --radius-field: 0.5rem;
-}
-@plugin "daisyui/theme" {
-  name: "autothrottle-light";
-  default: false;
-  prefersdark: false;
-  color-scheme: light;
-  --color-base-100: #f2f5f9;
-  --color-base-200: #ffffff;
-  --color-base-300: #e7ecf3;
-  --color-base-content: #16202f;
-  --color-primary: #38bdf8;
-  --color-primary-content: #06202b;
-  --color-success: #4ade80;
-  --color-warning: #f5a623;
-  --color-error: #f2545b;
-  --radius-box: 0.625rem;
-  --radius-field: 0.5rem;
-}
 
+/* Structural values daisyUI components read but the token files don't
+   publish, since nothing outside daisyUI uses them. Radii come from
+   the design's scale: 4px badges and checkboxes, 8px fields and
+   buttons, 10px cards — all denser than daisyUI's defaults. */
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --radius-selector: 4px;
+  --radius-field: 8px;
+  --radius-box: 10px;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+
+  --font-sans: "Lexend", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-}
 
-@layer utilities {
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
-  }
-}
+  /* The type scale is exact pixel values lifted from the identity, not
+     a rounded ramp. Mapping these onto Tailwind's default text-sm /
+     text-base rounds every one of them, and the density is the design
+     — so they get their own utilities instead. */
+  --text-page-title: 32px;
+  --text-display: 30px;
+  --text-metric: 23px;
+  --text-section: 19px;
+  --text-body: 16px;
+  --text-ui: 14px;
+  --text-caption: 13px;
+  --text-label: 12px;
+  --text-badge: 11px;
 
-/* Status pill with a glowing dot — the visual-identity preview's
-   signature state indicator (a page-level "Throttling active" pill,
-   plus per-item variants). Not a daisyUI component; daisyUI's plain
-   badge covers static labels but has no equivalent for "live state
-   worth a glance," which is what this exists for. */
-@layer components {
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.3125rem 0.75rem 0.3125rem 0.5rem;
-    border-radius: 999px;
-    line-height: 1;
-  }
-  .pill .stripe {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .pill-warn {
-    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-    color: var(--color-warning);
-  }
-  .pill-warn .stripe {
-    background: var(--color-warning);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning) 25%, transparent);
-  }
-  .pill-good {
-    background: color-mix(in srgb, var(--color-success) 16%, transparent);
-    color: var(--color-success);
-  }
-  .pill-good .stripe {
-    background: var(--color-success);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
-  }
-  .pill-accent {
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-primary);
-  }
-  .pill-accent .stripe {
-    background: var(--color-primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
-  }
-  .pill-neutral {
-    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
-    color: var(--color-base-content);
-    opacity: 0.7;
-  }
-  .pill-neutral .stripe {
-    background: currentColor;
-    opacity: 0.5;
-  }
+  --leading-tight: 1.15;
+  --leading-ui: 1.35;
+  --leading-body: 1.5;
 }

@@ -1,6 +1,9 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 type MediaServer struct {
 	ID                   int64
@@ -222,4 +225,24 @@ func (d *DB) InsertEvent(e Event) error {
 		e.OccurredAt, e.Level, e.Message, e.MappingID, e.MediaServerID, e.DownloaderID,
 	)
 	return err
+}
+
+// SetMappingForPair turns the mapping between one media server and one
+// downloader on or off, creating it if it has never existed.
+//
+// The mappings matrix addresses cells by the pair they join rather than
+// by id, because an unticked cell has no row yet — and a user ticking
+// it back on expects the same mapping, not a duplicate. The UNIQUE
+// constraint on the pair is what makes the upsert safe.
+func (d *DB) SetMappingForPair(mediaServerID, downloaderID int64, enabled bool) error {
+	_, err := d.conn.Exec(
+		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(media_server_id, downloader_id) DO UPDATE SET enabled = excluded.enabled`,
+		mediaServerID, downloaderID, enabled,
+	)
+	if err != nil {
+		return fmt.Errorf("setting mapping: %w", err)
+	}
+	return nil
 }

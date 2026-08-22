@@ -1,259 +1,283 @@
 {{define "content"}}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-lg font-bold">Configuration</h1>
+{{$csrf := .CSRFToken}}{{$tab := .Tab}}
+<header class="at-page-head">
+  <div style="display:grid;gap:var(--space-2)">
+    <h1 class="at-page-title">Configuration</h1>
+    <p class="at-page-sub">Connections, mappings, and app-level settings.</p>
+  </div>
+</header>
+
+<div class="at-tabs" role="tablist" style="margin-bottom:var(--space-8)">
+  <a class="at-tab" role="tab" {{if eq $tab "media-servers"}}aria-selected="true"{{end}} href="/configuration?tab=media-servers">Media Servers</a>
+  <a class="at-tab" role="tab" {{if eq $tab "downloaders"}}aria-selected="true"{{end}} href="/configuration?tab=downloaders">Downloaders</a>
+  <a class="at-tab" role="tab" {{if eq $tab "mappings"}}aria-selected="true"{{end}} href="/configuration?tab=mappings">Mappings</a>
+  <a class="at-tab" role="tab" {{if eq $tab "about"}}aria-selected="true"{{end}} href="/configuration?tab=about">About</a>
 </div>
 
-{{if .FormError}}
-<div class="alert alert-error text-sm mb-4">{{.FormError}}</div>
-{{end}}
+{{if .FormError}}{{template "alert" dict "Tone" "error" "Title" "That didn't save" "Body" .FormError}}<div style="height:var(--space-6)"></div>{{end}}
 
-<div role="tablist" class="tabs tabs-lift mb-6">
-  <a role="tab" href="/configuration?tab=media-servers" class="tab {{if eq .Tab "media-servers"}}tab-active{{end}}">Media Servers</a>
-  <a role="tab" href="/configuration?tab=downloaders" class="tab {{if eq .Tab "downloaders"}}tab-active{{end}}">Downloaders</a>
-  <a role="tab" href="/configuration?tab=mappings" class="tab {{if eq .Tab "mappings"}}tab-active{{end}}">Mappings</a>
-</div>
-
-{{if eq .Tab "media-servers"}}
-<div class="overflow-x-auto mb-6">
-  <table class="table">
-    <thead>
-      <tr><th>Name</th><th>Type</th><th>URL</th><th>Local exempt</th><th>Status</th><th></th></tr>
-    </thead>
-    <tbody>
-      {{range .MediaServers}}
-      <tr>
-        <td>{{.Name}}</td>
-        <td>{{.Type}}</td>
-        <td class="font-mono text-xs">{{.URL}}</td>
-        <td>{{if .SkipLocalPlayback}}Yes{{else}}No{{end}}</td>
-        <td>{{if .Enabled}}<span class="badge badge-success badge-sm">enabled</span>{{else}}<span class="badge badge-ghost badge-sm">disabled</span>{{end}}</td>
-        <td>
-          <div class="flex items-center gap-2">
-            <a href="/configuration?tab=media-servers&edit={{.ID}}" class="btn btn-xs">Edit</a>
-            <button type="button" class="btn btn-xs" hx-post="/configuration/media-servers/{{.ID}}/test" hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}' hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">Test</button>
-            <form method="post" action="/configuration/media-servers/{{.ID}}/delete" onsubmit="return confirm('Delete this media server?');">
-              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <button type="submit" class="btn btn-xs btn-error btn-outline">Delete</button>
+{{if eq $tab "media-servers"}}
+<div class="at-stack">
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">Media servers</h2></header>
+    <div class="at-tablewrap">
+      <table class="at-table">
+        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Local playback</th><th>Enabled</th><th></th></tr></thead>
+        <tbody>
+        {{range .MediaServers}}
+          <tr>
+            <td style="font-weight:var(--weight-semibold)">{{.Name}}</td>
+            <td>{{template "badge" dict "Tone" "info" "Label" .Type}}</td>
+            <td class="at-mono" style="color:var(--text-dim)">{{.URL}}</td>
+            <td style="color:var(--text-dim)">{{if .SkipLocalPlayback}}Exempt{{else}}Counted{{end}}</td>
+            <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "On"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "Off"}}{{end}}</td>
+            <td>
+              <span style="display:inline-flex;gap:var(--space-4);justify-content:flex-end">
+                <a class="at-btn at-btn--ghost at-btn--xs" href="/configuration?tab=media-servers&edit={{.ID}}">Edit</a>
+                <form method="post" action="/configuration/media-servers/{{.ID}}/test" hx-post="/configuration/media-servers/{{.ID}}/test" hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">
+                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                  <button class="at-btn at-btn--ghost at-btn--xs" type="submit">Test</button>
+                </form>
+                <button class="at-btn at-btn--ghost at-btn--xs" style="color:var(--critical)"
+                        onclick="document.getElementById('del-ms-{{.ID}}').showModal()">Delete</button>
+              </span>
+            </td>
+          </tr>
+          <tr><td colspan="6" style="padding-top:0"><div id="ms-test-{{.ID}}"></div></td></tr>
+          <dialog class="at-dialog" id="del-ms-{{.ID}}">
+            <form method="dialog" class="at-dialog-panel">
+              <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
+              <p class="at-dialog-body">Its mappings are removed too. History entries are kept.</p>
+              <div class="at-dialog-actions">
+                <button class="at-btn" value="cancel">Cancel</button>
+              </div>
             </form>
-          </div>
-        </td>
-      </tr>
-      <tr><td colspan="6" class="py-0"><div id="ms-test-{{.ID}}"></div></td></tr>
-      {{else}}
-      <tr><td colspan="6" class="text-center text-base-content/60 py-6">No media servers yet.</td></tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
+            <form method="post" action="/configuration/media-servers/{{.ID}}/delete" style="position:absolute;bottom:20px;right:24px">
+              <input type="hidden" name="csrf_token" value="{{$csrf}}">
+              <button class="at-btn at-btn--danger" type="submit">Delete</button>
+            </form>
+          </dialog>
+        {{else}}
+          <tr><td colspan="6" style="color:var(--text-faint)">No media servers yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-<div class="card bg-base-200 border border-base-300 max-w-lg">
-  <div class="card-body">
-    <h2 class="font-bold text-sm mb-2">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2>
-    <form method="post" action="/configuration/media-servers" class="flex flex-col gap-3" id="ms-form">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <input type="hidden" name="id" value="{{.EditMediaServerID}}">
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Name</span>
-        <input type="text" name="name" value="{{.EditMediaServer.Name}}" placeholder="Living room Plex" class="input input-bordered w-full" required>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Type</span>
-        <select name="type" class="select select-bordered w-full">
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
+    <form method="post" action="/configuration/media-servers" id="ms-form" class="at-stack" style="max-width:520px">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
+      <label class="at-field"><span class="at-field-label">Name</span>
+        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}" placeholder="Living Room Plex" required></label>
+      <label class="at-field"><span class="at-field-label">Type</span>
+        <select class="at-select" name="type">
           <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
           <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
           <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
-        </select>
+        </select></label>
+      <label class="at-field"><span class="at-field-label">URL</span>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.12:32400" required></label>
+      <label class="at-field">
+        <span class="at-field-label">Token{{if .EditMediaServer.HasCredential}} — leave blank to keep the stored value{{end}}</span>
+        <input class="at-input at-input--mono" type="password" name="token" placeholder="••••••••••••" autocomplete="off">
+        <span class="at-field-hint">A Plex token, or an Emby/Jellyfin API key. Never displayed once saved.</span>
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">URL</span>
-        <input type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.12:32400" class="input input-bordered w-full" required>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Token{{if .EditMediaServer.HasCredential}} (leave blank to keep existing){{end}}</span>
-        <input type="password" name="token" placeholder="{{if .EditMediaServer.HasCredential}}••••••••{{else}}Plex token or Emby/Jellyfin API key{{end}}" class="input input-bordered w-full" autocomplete="off">
-      </label>
-      <label class="label cursor-pointer justify-start gap-2">
-        <input type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}} class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Exempt sessions playing from the local network</span>
-      </label>
-      <label class="label cursor-pointer justify-start gap-2">
-        <input type="checkbox" name="enabled" {{if or .EditMediaServer.Enabled (not .EditMediaServerID)}}checked{{end}} class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Enabled</span>
-      </label>
+      <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
+        Ignore playback on your local network</label>
+      <span class="at-field-hint" style="margin-top:-6px">Off by default. A stream on the LAN does not compete with downloads for your internet link — but a VPN client also looks local while its stream does cross it.</span>
+      <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditMediaServer.Enabled (not .EditMediaServerID)}}checked{{end}}> Enabled</label>
       <div id="ms-form-test"></div>
-      <div class="flex gap-2 mt-2">
-        <button type="submit" class="btn btn-primary btn-sm">{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
-        <button type="button" class="btn btn-sm" hx-post="/configuration/media-servers/test" hx-include="#ms-form" hx-target="#ms-form-test" hx-swap="innerHTML">Test connection</button>
-        {{if .EditMediaServerID}}<a href="/configuration?tab=media-servers" class="btn btn-sm btn-ghost">Cancel</a>{{end}}
+      <div style="display:flex;gap:var(--space-4)">
+        <button type="submit" class="at-btn at-btn--primary">{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
+        <button type="button" class="at-btn" hx-post="/configuration/media-servers/test" hx-include="#ms-form" hx-target="#ms-form-test" hx-swap="innerHTML">Test connection</button>
+        {{if .EditMediaServerID}}<a href="/configuration?tab=media-servers" class="at-btn at-btn--ghost">Cancel</a>{{end}}
       </div>
     </form>
-  </div>
+  </section>
 </div>
 
-{{else if eq .Tab "downloaders"}}
-<div class="overflow-x-auto mb-6">
-  <table class="table">
-    <thead>
-      <tr><th>Name</th><th>Type</th><th>URL</th><th>Default (D/U)</th><th>Throttled (D/U)</th><th>Status</th><th></th></tr>
-    </thead>
-    <tbody>
-      {{range .Downloaders}}
-      <tr>
-        <td>{{.Name}}</td>
-        <td>{{.Type}}</td>
-        <td class="font-mono text-xs">{{.URL}}</td>
-        <td class="tabular-nums text-xs">{{.DefaultDownloadLimit}} / {{.DefaultUploadLimit}} KB/s</td>
-        <td class="tabular-nums text-xs">{{.BackupDownloadLimit}} / {{.BackupUploadLimit}} KB/s</td>
-        <td>{{if .Enabled}}<span class="badge badge-success badge-sm">enabled</span>{{else}}<span class="badge badge-ghost badge-sm">disabled</span>{{end}}</td>
-        <td>
-          <div class="flex items-center gap-2">
-            <a href="/configuration?tab=downloaders&edit={{.ID}}" class="btn btn-xs">Edit</a>
-            <button type="button" class="btn btn-xs" hx-post="/configuration/downloaders/{{.ID}}/test" hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}' hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">Test</button>
-            <form method="post" action="/configuration/downloaders/{{.ID}}/delete" onsubmit="return confirm('Delete this downloader?');">
-              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <button type="submit" class="btn btn-xs btn-error btn-outline">Delete</button>
+{{else if eq $tab "downloaders"}}
+<div class="at-stack">
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">Download clients</h2></header>
+    <div class="at-tablewrap">
+      <table class="at-table">
+        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Default</th><th>Throttled</th><th>Enabled</th><th></th></tr></thead>
+        <tbody>
+        {{range .Downloaders}}
+          <tr>
+            <td style="font-weight:var(--weight-semibold)">{{.Name}}</td>
+            <td>{{template "badge" dict "Tone" "info" "Label" .Type}}</td>
+            <td class="at-mono" style="color:var(--text-dim)">{{.URL}}</td>
+            <td>{{template "ratefigure" dict "Down" .DefaultDownloadLimit "Up" .DefaultUploadLimit}}</td>
+            <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
+            <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "On"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "Off"}}{{end}}</td>
+            <td>
+              <span style="display:inline-flex;gap:var(--space-4);justify-content:flex-end">
+                <a class="at-btn at-btn--ghost at-btn--xs" href="/configuration?tab=downloaders&edit={{.ID}}">Edit</a>
+                <form method="post" action="/configuration/downloaders/{{.ID}}/test" hx-post="/configuration/downloaders/{{.ID}}/test" hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">
+                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                  <button class="at-btn at-btn--ghost at-btn--xs" type="submit">Test</button>
+                </form>
+                <button class="at-btn at-btn--ghost at-btn--xs" style="color:var(--critical)"
+                        onclick="document.getElementById('del-dl-{{.ID}}').showModal()">Delete</button>
+              </span>
+            </td>
+          </tr>
+          <tr><td colspan="7" style="padding-top:0"><div id="dl-test-{{.ID}}"></div></td></tr>
+          <dialog class="at-dialog" id="del-dl-{{.ID}}">
+            <form method="dialog" class="at-dialog-panel">
+              <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
+              <p class="at-dialog-body">Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it.</p>
+              <div class="at-dialog-actions"><button class="at-btn" value="cancel">Cancel</button></div>
             </form>
-          </div>
-        </td>
-      </tr>
-      <tr><td colspan="7" class="py-0"><div id="dl-test-{{.ID}}"></div></td></tr>
-      {{else}}
-      <tr><td colspan="7" class="text-center text-base-content/60 py-6">No downloaders yet.</td></tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
+            <form method="post" action="/configuration/downloaders/{{.ID}}/delete" style="position:absolute;bottom:20px;right:24px">
+              <input type="hidden" name="csrf_token" value="{{$csrf}}">
+              <button class="at-btn at-btn--danger" type="submit">Delete</button>
+            </form>
+          </dialog>
+        {{else}}
+          <tr><td colspan="7" style="color:var(--text-faint)">No download clients yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-<div class="card bg-base-200 border border-base-300 max-w-lg">
-  <div class="card-body">
-    <h2 class="font-bold text-sm mb-2">{{if .EditDownloaderID}}Edit downloader{{else}}Add a downloader{{end}}</h2>
-    <form method="post" action="/configuration/downloaders" class="flex flex-col gap-3" id="dl-form">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <input type="hidden" name="id" value="{{.EditDownloaderID}}">
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Name</span>
-        <input type="text" name="name" value="{{.EditDownloader.Name}}" placeholder="qBittorrent" class="input input-bordered w-full" required>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Type</span>
-        <select name="type" class="select select-bordered w-full">
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
+    <form method="post" action="/configuration/downloaders" id="dl-form" class="at-stack" style="max-width:520px">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
+      <label class="at-field"><span class="at-field-label">Name</span>
+        <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}" placeholder="qBittorrent" required></label>
+      <label class="at-field"><span class="at-field-label">Type</span>
+        <select class="at-select" name="type">
           <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
           <option value="transmission" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
-        </select>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">URL</span>
-        <input type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" class="input input-bordered w-full" required>
-      </label>
-      <div class="grid grid-cols-2 gap-3">
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Username{{if .EditDownloader.HasCredential}} (leave blank to keep existing){{end}}</span>
-          <input type="text" name="username" class="input input-bordered w-full" autocomplete="off">
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Password</span>
-          <input type="password" name="password" class="input input-bordered w-full" autocomplete="off">
-        </label>
+        </select></label>
+      <label class="at-field"><span class="at-field-label">URL</span>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required></label>
+      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
+        <label class="at-field"><span class="at-field-label">Username</span>
+          <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>
+        <label class="at-field"><span class="at-field-label">Password{{if .EditDownloader.HasCredential}} — leave blank to keep{{end}}</span>
+          <input class="at-input" type="password" name="password" placeholder="••••••••••••" autocomplete="off"></label>
       </div>
-      {{if .EditDownloader.HasCredential}}
-      <label class="label cursor-pointer justify-start gap-2">
-        <input type="checkbox" name="clear_credentials" class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Remove saved credentials (no WebUI auth)</span>
-      </label>
-      {{end}}
-      <div class="grid grid-cols-2 gap-3">
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Default download (KB/s, 0=unlimited)</span>
-          <input type="number" min="0" name="default_download_limit" value="{{.EditDownloader.DefaultDownloadLimit}}" class="input input-bordered w-full">
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Default upload (KB/s, 0=unlimited)</span>
-          <input type="number" min="0" name="default_upload_limit" value="{{.EditDownloader.DefaultUploadLimit}}" class="input input-bordered w-full">
-        </label>
+      <div class="at-section-label" style="margin-top:var(--space-4)">Default rates</div>
+      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
+        {{template "ratefield" dict "Name" "default_download_limit" "Label" "Download" "Value" .EditDownloader.DefaultDownloadLimit}}
+        {{template "ratefield" dict "Name" "default_upload_limit" "Label" "Upload" "Value" .EditDownloader.DefaultUploadLimit}}
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Throttled download (KB/s)</span>
-          <input type="number" min="0" name="backup_download_limit" value="{{.EditDownloader.BackupDownloadLimit}}" class="input input-bordered w-full">
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Throttled upload (KB/s)</span>
-          <input type="number" min="0" name="backup_upload_limit" value="{{.EditDownloader.BackupUploadLimit}}" class="input input-bordered w-full">
-        </label>
+      <div class="at-section-label" style="margin-top:var(--space-4)">Throttled rates</div>
+      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
+        {{template "ratefield" dict "Name" "backup_download_limit" "Label" "Download" "Value" .EditDownloader.BackupDownloadLimit}}
+        {{template "ratefield" dict "Name" "backup_upload_limit" "Label" "Upload" "Value" .EditDownloader.BackupUploadLimit}}
       </div>
-      <label class="label cursor-pointer justify-start gap-2">
-        <input type="checkbox" name="enabled" {{if or .EditDownloader.Enabled (not .EditDownloaderID)}}checked{{end}} class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Enabled</span>
-      </label>
+      <span class="at-field-hint">Rates are KB/s. 0 means unlimited.</span>
       <div id="dl-form-test"></div>
-      <div class="flex gap-2 mt-2">
-        <button type="submit" class="btn btn-primary btn-sm">{{if .EditDownloaderID}}Save changes{{else}}Add downloader{{end}}</button>
-        <button type="button" class="btn btn-sm" hx-post="/configuration/downloaders/test" hx-include="#dl-form" hx-target="#dl-form-test" hx-swap="innerHTML">Test connection</button>
-        {{if .EditDownloaderID}}<a href="/configuration?tab=downloaders" class="btn btn-sm btn-ghost">Cancel</a>{{end}}
+      <div style="display:flex;gap:var(--space-4)">
+        <button type="submit" class="at-btn at-btn--primary">{{if .EditDownloaderID}}Save changes{{else}}Add download client{{end}}</button>
+        <button type="button" class="at-btn" hx-post="/configuration/downloaders/test" hx-include="#dl-form" hx-target="#dl-form-test" hx-swap="innerHTML">Test connection</button>
+        {{if .EditDownloaderID}}<a href="/configuration?tab=downloaders" class="at-btn at-btn--ghost">Cancel</a>{{end}}
       </div>
     </form>
-  </div>
+  </section>
 </div>
 
-{{else if eq .Tab "mappings"}}
-<div class="overflow-x-auto mb-6">
-  <table class="table">
-    <thead>
-      <tr><th>Media server</th><th>Downloader</th><th>Status</th><th></th></tr>
-    </thead>
-    <tbody>
-      {{range .Mappings}}
-      <tr>
-        <td>{{.MediaServerName}}</td>
-        <td>{{.DownloaderName}}</td>
-        <td>{{if .Enabled}}<span class="badge badge-success badge-sm">enabled</span>{{else}}<span class="badge badge-ghost badge-sm">disabled</span>{{end}}</td>
-        <td>
-          <div class="flex items-center gap-2">
-            <form method="post" action="/configuration/mappings/{{.ID}}/toggle">
-              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <button type="submit" class="btn btn-xs">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
-            </form>
-            <form method="post" action="/configuration/mappings/{{.ID}}/delete" onsubmit="return confirm('Remove this mapping?');">
-              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <button type="submit" class="btn btn-xs btn-error btn-outline">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {{else}}
-      <tr><td colspan="4" class="text-center text-base-content/60 py-6">No mappings yet.</td></tr>
+{{else if eq $tab "mappings"}}
+<section class="at-card">
+  <header class="at-card-head">
+    <div>
+      <h2 class="at-card-title">Mappings</h2>
+      <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Which servers' playback throttles which clients. A mapping is only a server, a client, and whether it is on.</p>
+    </div>
+  </header>
+  {{if and .MediaServers .Downloaders}}
+  <div class="at-tablewrap">
+    <table class="at-table">
+      <thead><tr><th>Media server</th>{{range .Downloaders}}<th style="text-align:center">{{.Name}}</th>{{end}}</tr></thead>
+      <tbody>
+      {{$on := .MappingOn}}{{$dls := .Downloaders}}
+      {{range $ms := .MediaServers}}
+        <tr>
+          <td style="font-weight:var(--weight-semibold);white-space:nowrap">{{$ms.Name}}</td>
+          {{range $dl := $dls}}
+            <td style="text-align:center">
+              <form method="post" action="/configuration/mappings/set"
+                    hx-post="/configuration/mappings/set" hx-swap="none">
+                <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                <input type="hidden" name="media_server_id" value="{{$ms.ID}}">
+                <input type="hidden" name="downloader_id" value="{{$dl.ID}}">
+                <input class="at-checkbox" type="checkbox" name="enabled"
+                       {{if index $on (mapkey $ms.ID $dl.ID)}}checked{{end}}
+                       aria-label="{{$ms.Name}} throttles {{$dl.Name}}"
+                       onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+              </form>
+            </td>
+          {{end}}
+        </tr>
       {{end}}
-    </tbody>
-  </table>
-</div>
-
-{{if and .MediaServers .Downloaders}}
-<div class="card bg-base-200 border border-base-300 max-w-lg">
-  <div class="card-body">
-    <h2 class="font-bold text-sm mb-2">Add a mapping</h2>
-    <p class="text-xs text-base-content/60 mb-2">A mapping decides which media server's sessions trigger throttling on which downloader.</p>
-    <form method="post" action="/configuration/mappings" class="flex flex-col gap-3">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Media server</span>
-        <select name="media_server_id" class="select select-bordered w-full" required>
-          {{range .MediaServers}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
-        </select>
-      </label>
-      <label class="form-control">
-        <span class="label-text text-xs uppercase tracking-wide text-base-content/60 mb-1">Downloader</span>
-        <select name="downloader_id" class="select select-bordered w-full" required>
-          {{range .Downloaders}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
-        </select>
-      </label>
-      <button type="submit" class="btn btn-primary btn-sm w-fit">Add mapping</button>
-    </form>
+      </tbody>
+    </table>
   </div>
-</div>
+  {{else}}
+    {{template "emptystate" dict "Title" "Nothing to map yet" "Body" "Add at least one media server and one download client first — a mapping joins the two." "Action" ""}}
+  {{end}}
+</section>
+
 {{else}}
-<div class="card bg-base-200 border border-base-300 p-6 text-center max-w-lg">
-  <p class="text-base-content/70 text-sm">Add at least one media server and one downloader before creating a mapping.</p>
+<div class="at-stack" style="max-width:640px">
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">About</h2></header>
+    <div style="display:grid;gap:var(--space-5)">
+      <div style="display:flex;justify-content:space-between;gap:var(--space-8);padding:10px 0;border-bottom:1px solid var(--border)">
+        <span class="at-field-label">Version</span><span class="at-mono">v{{.Version}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:var(--space-8);padding:10px 0;border-bottom:1px solid var(--border)">
+        <span class="at-field-label">Source</span>
+        <a class="at-mono" style="color:var(--accent)" href="https://github.com/JaiMistry/autothrottle" target="_blank" rel="noreferrer">github.com/JaiMistry/autothrottle</a>
+      </div>
+      <p style="margin:0;font-size:var(--text-caption);color:var(--text-faint)">AutoThrottle never contacts an update service on its own.</p>
+    </div>
+  </section>
+
+  <section class="at-card">
+    <header class="at-card-head">
+      <div>
+        <h2 class="at-card-title">Settings</h2>
+        <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Timing and retention. Changes take effect on the next tick — no restart.</p>
+      </div>
+    </header>
+    <form method="post" action="/configuration/settings" class="at-stack">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      {{range .Settings}}
+        <label class="at-field">
+          <span class="at-field-label">{{.Label}}</span>
+          <span style="position:relative;display:block">
+            <input class="at-input at-input--mono" type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}" style="padding-right:76px">
+            <span class="at-ratefield-suffix">{{.Unit}}</span>
+          </span>
+          <span class="at-field-hint">{{.Description}}</span>
+        </label>
+      {{end}}
+      <div><button type="submit" class="at-btn at-btn--primary">Save settings</button></div>
+    </form>
+  </section>
 </div>
 {{end}}
 {{end}}
-{{end}}
+
+{{/* A rate field reads "unlimited" rather than "KB/s" at 0, because a
+     bare 0 in a rate box reads as "stopped". */}}
+{{define "ratefield"}}<label class="at-field">
+  <span class="at-field-label">{{.Label}}</span>
+  <span class="at-ratefield">
+    <input class="at-input" type="number" name="{{.Name}}" value="{{.Value}}" min="0"
+           oninput="this.closest('.at-ratefield').querySelector('.at-ratefield-suffix').textContent = (this.value === '' || this.value === '0') ? 'unlimited' : 'KB/s'">
+    <span class="at-ratefield-suffix">{{if eq .Value 0}}unlimited{{else}}KB/s{{end}}</span>
+  </span>
+</label>{{end}}

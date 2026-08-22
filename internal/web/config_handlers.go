@@ -15,6 +15,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 const testConnectionTimeout = 10 * time.Second
@@ -28,8 +29,11 @@ type mediaServerView struct {
 }
 
 type downloaderView struct {
-	ID                                       int64
-	Name, Type, URL                          string
+	ID              int64
+	Name, Type, URL string
+	// Username is not a secret and is round-tripped so an edit doesn't
+	// silently blank it. The password never is — see CredentialField.
+	Username                                 string
 	HasCredential                            bool
 	DefaultDownloadLimit, DefaultUploadLimit int64
 	BackupDownloadLimit, BackupUploadLimit   int64
@@ -43,12 +47,46 @@ type mappingView struct {
 	Enabled                         bool
 }
 
+// settingView renders one runtime knob generically, from the
+// definitions the settings package publishes — so a new setting needs
+// no template change.
+type settingView struct {
+	Key         string
+	Label       string
+	Description string
+	Unit        string
+	Value       string
+	Min, Max    int64
+}
+
+func settingViews(store *settings.Store) []settingView {
+	current := store.All()
+	out := make([]settingView, 0, len(settings.Definitions))
+	for _, def := range settings.Definitions {
+		value := current[def.Key]
+		if value == "" {
+			value = def.Default
+		}
+		out = append(out, settingView{
+			Key: def.Key, Label: def.Label, Description: def.Description,
+			Unit: def.Unit, Value: value, Min: def.Min, Max: def.Max,
+		})
+	}
+	return out
+}
+
+func mappingKey(mediaServerID, downloaderID int64) string {
+	return strconv.FormatInt(mediaServerID, 10) + ":" + strconv.FormatInt(downloaderID, 10)
+}
+
 type configPageData struct {
 	pageData
 	Tab               string
 	MediaServers      []mediaServerView
 	Downloaders       []downloaderView
 	Mappings          []mappingView
+	MappingOn         map[string]bool
+	Settings          []settingView
 	EditMediaServerID int64 // 0 means "add" mode
 	EditMediaServer   mediaServerView
 	EditDownloaderID  int64
@@ -68,8 +106,15 @@ func toMediaServerView(ms db.MediaServer) mediaServerView {
 	}
 }
 
-func toDownloaderView(dl db.Downloader) downloaderView {
+func (s *Server) toDownloaderView(dl db.Downloader) downloaderView {
+	// Only the username is read back. The password is never rendered,
+	// not even masked at its real length.
+	username, _, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
+	if err != nil {
+		slog.Warn("reading downloader username for the form", "downloader", dl.Name, "error", err)
+	}
 	return downloaderView{
+		Username:             username,
 		ID:                   dl.ID,
 		Name:                 dl.Name,
 		Type:                 dl.Type,
@@ -108,7 +153,7 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 	dlViews := make([]downloaderView, 0, len(downloaders))
 	for _, dl := range downloaders {
 		dlByID[dl.ID] = dl
-		dlViews = append(dlViews, toDownloaderView(dl))
+		dlViews = append(dlViews, s.toDownloaderView(dl))
 	}
 
 	mapViews := make([]mappingView, 0, len(mappings))
@@ -125,17 +170,22 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 
 	sessionToken := auth.SessionTokenFromContext(r.Context())
 
+	// The matrix asks "is this pair on?" per cell, so the mappings are
+	// indexed by pair rather than scanned per cell.
+	enabled := make(map[string]bool, len(mappings))
+	for _, m := range mappings {
+		enabled[mappingKey(m.MediaServerID, m.DownloaderID)] = m.Enabled
+	}
+
+	_ = sessionToken
 	return configPageData{
-		pageData: pageData{
-			Title:         "Configuration",
-			Active:        "configuration",
-			Authenticated: true,
-			CSRFToken:     s.csrf.TokenFor(sessionToken),
-		},
+		pageData:     s.page(r, "Configuration", "configuration"),
 		Tab:          tab,
 		MediaServers: msViews,
 		Downloaders:  dlViews,
 		Mappings:     mapViews,
+		MappingOn:    enabled,
+		Settings:     settingViews(s.settings),
 	}, nil
 }
 
@@ -177,7 +227,7 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 			case "downloaders":
 				if dl, err := s.db.GetDownloader(id); err == nil {
 					data.EditDownloaderID = dl.ID
-					data.EditDownloader = toDownloaderView(dl)
+					data.EditDownloader = s.toDownloaderView(dl)
 				}
 			}
 		}
@@ -588,11 +638,43 @@ func (s *Server) applyConfigChange(mediaServersChanged bool) {
 	s.scheduler.ResolveAsync()
 }
 
+// writeTestResult renders a connection test in a fixed-height box, so
+// the result never shifts the form under the reader's cursor, and with
+// a manual dismiss rather than a timer racing them to it. The backend's
+// own error string is shown verbatim in mono, wrapped by a
+// plain-language headline rather than replaced by one.
 func writeTestResult(w http.ResponseWriter, ok bool, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	cls, label := "alert-error", "Failed"
+	state, label := "fail", "Could not connect"
 	if ok {
-		cls, label = "alert-success", "Connected"
+		state, label = "ok", "Connected"
 	}
-	_, _ = w.Write([]byte(`<div class="alert ` + cls + ` text-xs py-1.5 px-2 mt-2">` + label + `: ` + template.HTMLEscapeString(message) + `</div>`))
+	_, _ = w.Write([]byte(
+		`<div class="at-testresult" data-state="` + state + `" role="status">` +
+			`<strong style="font-weight:var(--weight-bold)">` + label + `</strong>` +
+			`<span class="at-testresult-msg">` + template.HTMLEscapeString(message) + `</span>` +
+			`<button type="button" class="at-testresult-close" aria-label="Dismiss" ` +
+			`onclick="this.parentNode.remove()">✕</button>` +
+			`</div>`))
+}
+
+// saveSettings writes the runtime knobs. Each is validated by the
+// settings package against its own declared bounds; an out-of-range
+// value is reported rather than silently clamped on the way in.
+func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	for _, def := range settings.Definitions {
+		value := strings.TrimSpace(r.FormValue(def.Key))
+		if value == "" {
+			continue
+		}
+		if err := s.settings.Set(def.Key, value); err != nil {
+			s.renderConfigError(w, r, "about", err.Error())
+			return
+		}
+	}
+	http.Redirect(w, r, "/configuration?tab=about", http.StatusSeeOther)
 }

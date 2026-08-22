@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -129,4 +130,32 @@ func (d *DB) PruneEvents(before time.Time) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// CountEventsByLevel returns how many events match a filter at each
+// level, for the Logs page's level tabs — where the count is the
+// information, not decoration. The filter's own Levels field is
+// ignored: the point is to report every level under the same search
+// and time constraints.
+func (d *DB) CountEventsByLevel(f EventFilter) (map[string]int, error) {
+	f.Levels = nil
+	f.Limit, f.Offset = 0, 0
+	where, args := f.where()
+
+	rows, err := d.conn.Query(`SELECT level, COUNT(*) FROM events`+where+` GROUP BY level`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("counting events by level: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := map[string]int{"info": 0, "warn": 0, "error": 0}
+	for rows.Next() {
+		var level string
+		var n int
+		if err := rows.Scan(&level, &n); err != nil {
+			return nil, fmt.Errorf("scanning level count: %w", err)
+		}
+		out[level] = n
+	}
+	return out, rows.Err()
 }

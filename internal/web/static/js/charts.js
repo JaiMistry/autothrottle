@@ -1,0 +1,212 @@
+/* Analytics charts. Options lifted from the design's prototype; the
+   values here are deliberate and several of them are load-bearing.
+
+   window.ATCharts holds live instances so app.js can destroy them
+   before HTMX swaps their container — otherwise every swap leaks a
+   canvas and leaves stacked charts behind. */
+(function () {
+  "use strict";
+  window.ATCharts = window.ATCharts || {};
+
+  var payloadEl = document.getElementById("at-chart-data");
+  if (!payloadEl || typeof ApexCharts === "undefined") return;
+
+  var series;
+  try { series = JSON.parse(payloadEl.textContent); } catch (e) { return; }
+  if (!series || !series.down || !series.down.length) return;
+
+  function isDark() {
+    var explicit = document.documentElement.getAttribute("data-theme");
+    if (explicit) return explicit === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  /* Rates arrive as bytes/sec; limits were KB/s and are converted
+     server-side. Both read out in KB/s or MB/s. */
+  function rate(b) {
+    if (b == null) return "—";
+    return b >= 1024 * 900
+      ? (b / 1048576).toFixed(1) + " MB/s"
+      : Math.round(b / 1024).toLocaleString() + " KB/s";
+  }
+
+  function theme(dark) {
+    return {
+      chart: {
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        background: "transparent",
+        animations: { enabled: true, easing: "easeout", speed: 320 }
+      },
+      grid: { borderColor: dark ? "#232f45" : "#d7dee7", strokeDashArray: 0, padding: { left: 4, right: 4 } },
+      tooltip: { theme: dark ? "dark" : "light" },
+      legend: { show: false },
+      dataLabels: { enabled: false }
+    };
+  }
+  function axis(dark) { return { colors: dark ? "#5c6a80" : "#8593a5", fontSize: "11px" }; }
+
+  /* Sentinel fill: these rects are recoloured to a diagonal hatch after
+     render, so absence of data never reads as a muted variant of the
+     throttle band. They mean opposite things. */
+  var GAPFILL = "#00fe01";
+
+  function throughput(el, dark) {
+    var t = theme(dark);
+    var hasLimit = (series.limit || []).some(function (p) { return p.y != null; });
+
+    var bands = (series.bands || []).map(function (b) {
+      return { x: b.from, x2: b.to, fillColor: dark ? "#f0b132" : "#c98410", opacity: 0.1, borderColor: "transparent" };
+    });
+
+    var gaps = (series.gaps || []).map(function (g) {
+      // A 54-minute outage is under a pixel wide on a 30-day axis. Floor
+      // the band to the plotting stride so the break the line already
+      // shows has something legible behind it.
+      var mid = (g.from + g.to) / 2;
+      var half = Math.max((g.to - g.from) / 2, series.bucket * 0.6);
+      return {
+        x: Math.max(mid - half, series.from),
+        x2: Math.min(mid + half, series.to),
+        fillColor: GAPFILL, opacity: 1, borderColor: "transparent"
+      };
+    });
+
+    // No label key at all. An xaxis annotation carrying `label:
+    // undefined` makes ApexCharts silently drop the chart's entire
+    // tooltip — no console error, nothing.
+    var nowLine = { x: series.to, strokeDashArray: 3, borderColor: dark ? "#5c6a80" : "#8593a5" };
+
+    var data = [{ name: "Download", type: "line", data: series.down }];
+    var widths = [2.2], dashes = [0], colors = ["#38bdf8"];
+    data.push({ name: "Upload", type: "line", data: series.up });
+    // #4ade80 at 1.4px reads as a highlighter smudge on a light ground.
+    widths.push(1.4); dashes.push(0); colors.push(dark ? "#4ade80" : "#1f9d55");
+    if (hasLimit) {
+      data.push({ name: "Limit in effect", type: "line", data: series.limit });
+      widths.push(1.5); dashes.push(5); colors.push(dark ? "#f0b132" : "#c98410");
+    }
+    var limitIdx = hasLimit ? data.length - 1 : -1;
+
+    var chart = new ApexCharts(el, Object.assign({}, t, {
+      series: data,
+      chart: Object.assign({}, t.chart, { type: "line", height: 250 }),
+      colors: colors,
+      stroke: {
+        curve: hasLimit ? ["smooth", "smooth", "stepline"] : ["smooth", "smooth"],
+        width: widths, dashArray: dashes
+      },
+      annotations: { xaxis: bands.concat(gaps).concat([nowLine]) },
+      xaxis: {
+        type: "datetime", min: series.from, max: series.to, tickAmount: 6,
+        labels: { datetimeUTC: false, format: series.range === "24h" ? "HH:mm" : "d MMM", style: axis(dark) },
+        axisBorder: { show: false }, axisTicks: { show: false }
+      },
+      yaxis: { min: 0, labels: { formatter: rate, style: axis(dark) } },
+      tooltip: Object.assign({}, t.tooltip, {
+        shared: true,
+        x: { format: series.range === "24h" ? "HH:mm" : "d MMM HH:mm" },
+        y: {
+          formatter: function (v, o) {
+            if (v != null) return rate(v);
+            // A null limit means no ceiling was in force, which is not
+            // the same as having no sample. Only a real gap — where
+            // download is null too — reads "no sample".
+            var p = o && o.w && o.w.config.series[0].data[o.dataPointIndex];
+            var missing = !p || p.y == null;
+            return o && o.seriesIndex === limitIdx && !missing ? "Unlimited" : "no sample";
+          }
+        }
+      }),
+      markers: { size: 0 }
+    }));
+
+    chart.render().then(function () {
+      var svg = el.querySelector(".apexcharts-svg");
+      if (!svg) return;
+      var NS = "http://www.w3.org/2000/svg";
+      var id = "at-gap-hatch-" + (dark ? "d" : "l");
+      var ink = dark ? "#7d8ba1" : "#8593a5";
+      var defs = svg.querySelector("defs");
+      if (!defs) { defs = document.createElementNS(NS, "defs"); svg.insertBefore(defs, svg.firstChild); }
+      if (!defs.querySelector("#" + id)) {
+        var pat = document.createElementNS(NS, "pattern");
+        pat.setAttribute("id", id);
+        pat.setAttribute("width", "6"); pat.setAttribute("height", "6");
+        pat.setAttribute("patternUnits", "userSpaceOnUse");
+        pat.setAttribute("patternTransform", "rotate(45)");
+        var line = document.createElementNS(NS, "line");
+        line.setAttribute("x1", "0"); line.setAttribute("y1", "0");
+        line.setAttribute("x2", "0"); line.setAttribute("y2", "6");
+        line.setAttribute("stroke", ink);
+        line.setAttribute("stroke-width", "1.4");
+        line.setAttribute("stroke-opacity", "0.6");
+        pat.appendChild(line);
+        defs.appendChild(pat);
+      }
+      svg.querySelectorAll('.apexcharts-xaxis-annotations rect[fill="' + GAPFILL + '"]').forEach(function (r) {
+        r.setAttribute("fill", "url(#" + id + ")");
+        r.setAttribute("stroke", ink);
+        r.setAttribute("stroke-width", "1");
+        r.setAttribute("stroke-dasharray", "3 3");
+        r.setAttribute("stroke-opacity", "0.75");
+      });
+    });
+    return chart;
+  }
+
+  function sessions(el, dark) {
+    var rows = series.sessions || [];
+    if (!rows.length) return null;
+    var names = [];
+    rows.forEach(function (s) { if (names.indexOf(s.server) < 0) names.push(s.server); });
+
+    var t = theme(dark);
+    var chart = new ApexCharts(el, Object.assign({}, t, {
+      series: [{
+        data: rows.map(function (s) {
+          return {
+            x: s.server,
+            y: [s.start, s.end],
+            // The ongoing session runs to the right edge in full accent
+            // so it reads as still happening, not as merely recent.
+            fillColor: s.ongoing ? "#38bdf8" : (dark ? "#2b6c8a" : "#8fd3f2")
+          };
+        })
+      }],
+      chart: Object.assign({}, t.chart, { type: "rangeBar", height: Math.max(96, names.length * 46 + 40) }),
+      plotOptions: { bar: { horizontal: true, barHeight: "44%", rangeBarGroupRows: true, borderRadius: 3 } },
+      annotations: { xaxis: [{ x: series.to, strokeDashArray: 3, borderColor: dark ? "#5c6a80" : "#8593a5" }] },
+      xaxis: {
+        type: "datetime", min: series.from, max: series.to, tickAmount: 6,
+        labels: { datetimeUTC: false, format: series.range === "24h" ? "HH:mm" : "d MMM", style: axis(dark) },
+        axisBorder: { show: false }, axisTicks: { show: false }
+      },
+      yaxis: { labels: { style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "12px" } } },
+      tooltip: Object.assign({}, t.tooltip, { x: { format: "d MMM HH:mm" } })
+    }));
+    chart.render();
+    return chart;
+  }
+
+  function build() {
+    var dark = isDark();
+    ["at-chart-throughput", "at-chart-sessions"].forEach(function (id) {
+      if (window.ATCharts[id]) { try { window.ATCharts[id].destroy(); } catch (e) {} delete window.ATCharts[id]; }
+    });
+    var tp = document.getElementById("at-chart-throughput");
+    if (tp) window.ATCharts["at-chart-throughput"] = throughput(tp, dark);
+    var se = document.getElementById("at-chart-sessions");
+    if (se) window.ATCharts["at-chart-sessions"] = sessions(se, dark);
+  }
+
+  build();
+
+  // Both themes are first-class, and the charts carry their own colours
+  // rather than inheriting them, so a theme change has to rebuild them.
+  new MutationObserver(build).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+    if (!document.documentElement.getAttribute("data-theme")) build();
+  });
+})();

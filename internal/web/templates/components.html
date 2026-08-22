@@ -1,0 +1,150 @@
+{{/* Shared partials mirroring the design system's components one-to-one.
+     Each takes a dict so call sites read as named arguments. */}}
+
+{{/* StatusFlag — a state readout, not a badge: no plate, no fill. The
+     icon carries the colour and the motion. Movement always means the
+     state is live, so faults hold perfectly still and let colour carry
+     the alarm.
+     Args: Tone (good|warn|critical|accent|neutral), Icon, Label, Size. */}}
+{{define "statusflag"}}<span class="at-flag{{if eq (or .Size "md") "sm"}} at-flag--sm{{end}}" data-tone="{{.Tone}}">
+  <span class="at-flag-icon">{{template "flagicon" dict "Icon" .Icon "Size" (or .Size "md")}}</span>
+  {{.Label}}
+</span>{{end}}
+
+{{define "flagicon"}}{{$s := 16}}{{if eq .Size "sm"}}{{$s = 14}}{{end}}
+{{- if eq .Icon "throttled" -}}
+  {{/* A bright segment runs the length of a monitor trace, clears the
+       end, then repeats. The numbers are exact: pathLength 100 with a
+       "26 115" dash and a 141→0 offset over 1.45s linear. Eyeballing
+       these gives a different-feeling instrument. */}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2.6 12h3.9l2.9-8.6 3.9 17.2 2.9-8.6h3.9" pathLength="100" opacity="0.55"/>
+    <path d="M2.6 12h3.9l2.9-8.6 3.9 17.2 2.9-8.6h3.9" pathLength="100" stroke-dasharray="26 115" class="at-pulse-trace"/>
+  </svg>
+{{- else if eq .Icon "playing" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <rect x="4.1" y="6.5" width="2.8" height="13" rx="1.4" class="at-wave-bar"/>
+    <rect x="9.1" y="6.5" width="2.8" height="13" rx="1.4" class="at-wave-bar" style="animation-delay:.17s"/>
+    <rect x="14.1" y="6.5" width="2.8" height="13" rx="1.4" class="at-wave-bar" style="animation-delay:.34s"/>
+    <rect x="19.1" y="6.5" width="2.8" height="13" rx="1.4" class="at-wave-bar" style="animation-delay:.51s"/>
+  </svg>
+{{- else if eq .Icon "connecting" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="7.6" opacity="0.25"/>
+    <circle cx="12" cy="12" r="7.6" pathLength="100" stroke-dasharray="26 74" class="at-flag-spin"/>
+  </svg>
+{{- else if or (eq .Icon "normal") (eq .Icon "idle") -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/></svg>
+{{- else if eq .Icon "paused" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M19.9 9.1A8.4 8.4 0 1 1 14.9 4.1"/><path d="M13.2 1.7 14.9 4.1 12 4.9"/>
+  </svg>
+{{- else if eq .Icon "unreachable" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/>
+  </svg>
+{{- else if eq .Icon "disabled" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6.2 12h11.6"/></svg>
+{{- else -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="7.4" pathLength="100" stroke-dasharray="9.5 6.5"/>
+  </svg>
+{{- end}}{{end}}
+
+{{/* Args: Label, Value, Unit, Tone, Footnote */}}
+{{define "statcard"}}<div class="at-stat">
+  <div class="at-stat-label">{{.Label}}</div>
+  <div class="at-stat-value"{{if .Tone}} data-tone="{{.Tone}}"{{end}}>{{.Value}}{{if .Unit}}<span class="at-stat-unit">{{.Unit}}</span>{{end}}</div>
+  {{if .Footnote}}<div class="at-stat-foot">{{.Footnote}}</div>{{end}}
+</div>{{end}}
+
+{{/* Args: Tone (info|good|warn|error), Label */}}
+{{define "badge"}}<span class="at-badge{{if .Tone}} at-badge--{{.Tone}}{{end}}">{{.Label}}</span>{{end}}
+
+{{/* Args: Tone, Title, Body */}}
+{{define "alert"}}<div class="at-alert{{if .Tone}} at-alert--{{.Tone}}{{end}}" role="{{if eq .Tone "error"}}alert{{else}}status{{end}}">
+  <div>
+    {{if .Title}}<div class="at-alert-title">{{.Title}}</div>{{end}}
+    <div>{{.Body}}</div>
+  </div>
+</div>{{end}}
+
+{{/* Args: Title, Body, Action */}}
+{{define "emptystate"}}<div class="at-empty">
+  <div class="at-empty-title">{{.Title}}</div>
+  <div class="at-empty-body">{{.Body}}</div>
+  {{if .Action}}<div>{{.Action}}</div>{{end}}
+</div>{{end}}
+
+{{/* Rates in force. Never a hand-written rate string — 0 is unlimited
+     and must not render as a bare 0. */}}
+{{define "ratefigure"}}<span class="at-rate">
+  <b>↓ {{rate .Down}}</b><span class="at-rate-sep">·</span><b>↑ {{rate .Up}}</b>
+</span>{{end}}
+
+{{/* One media server's live state.
+     Args: Name, Type, State, Sessions, Detail */}}
+{{define "serverrow"}}<div class="at-row">
+  <div style="display:flex;align-items:center;gap:var(--space-6);justify-content:space-between">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:baseline;gap:var(--space-4)">
+        <span class="at-dlrow-name">{{.Name}}</span>
+        <span class="at-dlrow-type">{{.Type}}</span>
+      </div>
+      {{if .Detail}}<div class="at-dlrow-cause">{{.Detail}}</div>{{end}}
+    </div>
+    <div style="display:flex;align-items:center;gap:var(--space-6);flex-shrink:0">
+      {{if eq .State "playing"}}
+        {{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d active" .Sessions) "Size" "sm"}}
+      {{else if eq .State "unreachable"}}
+        {{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
+      {{else if eq .State "connecting"}}
+        {{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting" "Size" "sm"}}
+      {{else if eq .State "disabled"}}
+        {{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
+      {{else}}
+        {{template "statusflag" dict "Tone" "neutral" "Icon" "idle" "Label" "Idle" "Size" "sm"}}
+      {{end}}
+    </div>
+  </div>
+</div>{{end}}
+
+{{/* One downloader's throttle state with its cause. Throttling is
+     per-downloader; there is no global "on".
+     Args: Name, Type, State, Cause, Down, Up, AppliedAt */}}
+{{define "downloaderrow"}}<div class="at-dlrow-wrap at-row">
+  <div class="at-dlrow">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:baseline;gap:var(--space-4)">
+        <span class="at-dlrow-name">{{.Name}}</span>
+        <span class="at-dlrow-type">{{.Type}}</span>
+      </div>
+      {{if .Cause}}<div class="at-dlrow-cause">{{.Cause}}</div>{{end}}
+    </div>
+    <div class="at-dlrow-right">
+      {{if eq .State "throttled"}}
+        {{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled" "Size" "sm"}}
+      {{else if eq .State "normal"}}
+        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal" "Size" "sm"}}
+      {{else if eq .State "unreachable"}}
+        {{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
+      {{else if eq .State "disabled"}}
+        {{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
+      {{else}}
+        {{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
+      {{end}}
+      {{template "ratefigure" dict "Down" .Down "Up" .Up}}
+      {{if .AppliedAt}}<span class="at-dlrow-applied">{{.AppliedAt}}</span>{{end}}
+    </div>
+  </div>
+</div>{{end}}
+
+{{/* One event. The message is the backend's own string, shown verbatim
+     — the cause is already in it. Args: Time, Level, Message, Cause */}}
+{{define "logrow"}}<div class="at-logrow" data-level="{{.Level}}">
+  <span class="at-logrow-time">{{.Time}}</span>
+  {{if eq .Level "error"}}{{template "badge" dict "Tone" "error" "Label" "Error"}}
+  {{else if eq .Level "warn"}}{{template "badge" dict "Tone" "warn" "Label" "Warn"}}
+  {{else}}{{template "badge" dict "Tone" "info" "Label" "Info"}}{{end}}
+  <span class="at-logrow-msg">{{.Message}}{{if .Cause}} <span class="at-logrow-cause">{{.Cause}}</span>{{end}}</span>
+</div>{{end}}

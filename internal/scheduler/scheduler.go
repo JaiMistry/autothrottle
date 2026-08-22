@@ -48,6 +48,28 @@ type Scheduler struct {
 type appliedState struct {
 	throttled                  bool
 	downloadLimit, uploadLimit int64
+	// cause names the media server whose sessions produced this state,
+	// and appliedAt is when it was pushed. Both exist for the
+	// Dashboard: "Throttled, because Living Room Plex is playing" is
+	// the whole product, and it cannot be reconstructed from the
+	// throttled flag alone.
+	cause     string
+	appliedAt time.Time
+	// failure holds the last error from applying this downloader's
+	// limits, so a row can read Unreachable with the machine's own
+	// words rather than a guess.
+	failure string
+}
+
+// DownloaderState is one downloader's live state, for the Dashboard.
+type DownloaderState struct {
+	Throttled    bool
+	Cause        string
+	DownloadKBps int64
+	UploadKBps   int64
+	AppliedAt    time.Time
+	Failure      string
+	Known        bool
 }
 
 func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Scheduler {
@@ -104,6 +126,22 @@ func (s *Scheduler) AppliedLimits(downloaderID int64) (throttled bool, downloadK
 	defer s.mu.Unlock()
 	state, known := s.applied[downloaderID]
 	return state.throttled, state.downloadLimit, state.uploadLimit, known
+}
+
+// State returns everything the Dashboard needs about one downloader.
+func (s *Scheduler) State(downloaderID int64) DownloaderState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, known := s.applied[downloaderID]
+	return DownloaderState{
+		Throttled:    state.throttled,
+		Cause:        state.cause,
+		DownloadKBps: state.downloadLimit,
+		UploadKBps:   state.uploadLimit,
+		AppliedAt:    state.appliedAt,
+		Failure:      state.failure,
+		Known:        known,
+	}
 }
 
 // DownloaderThrottled reports a downloader's last-applied throttle
@@ -366,14 +404,26 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 		downloadLimit, uploadLimit = dl.BackupDownloadLimit, dl.BackupUploadLimit
 		message = fmt.Sprintf("throttled %s because %s is playing", dl.Name, causeServerName)
 	}
-	want := appliedState{throttled: throttled, downloadLimit: downloadLimit, uploadLimit: uploadLimit}
+	want := appliedState{
+		throttled:     throttled,
+		downloadLimit: downloadLimit,
+		uploadLimit:   uploadLimit,
+		cause:         causeServerName,
+	}
 
 	s.mu.Lock()
 	prev, known := s.applied[dl.ID]
-	if known && prev == want {
+	// appliedAt and failure are bookkeeping, not part of "is this the
+	// same state" — comparing them would make every pass look like a
+	// change and fire an API call per resolve.
+	if known && prev.throttled == want.throttled &&
+		prev.downloadLimit == want.downloadLimit &&
+		prev.uploadLimit == want.uploadLimit &&
+		prev.cause == want.cause && prev.failure == "" {
 		s.mu.Unlock()
 		return
 	}
+	want.appliedAt = time.Now()
 	// Recorded optimistically so concurrent resolves don't both fire
 	// the same call; a failure below un-records it.
 	s.applied[dl.ID] = want
@@ -416,7 +466,11 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 func (s *Scheduler) recordFailure(downloaderID int64, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
+	// The attempted state is un-recorded so the next event retries, but
+	// the reason is kept: a downloader that failed to apply must read
+	// Unreachable with the machine's own words, never Normal.
 	delete(s.applied, downloaderID)
+	s.applied[downloaderID] = appliedState{failure: message, appliedAt: time.Now()}
 	s.mu.Unlock()
 	if err := s.db.InsertEvent(db.Event{
 		Level:        "error",

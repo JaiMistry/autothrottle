@@ -1,91 +1,110 @@
 {{define "content"}}
-<div class="flex items-center justify-between mb-6 gap-4">
-  <div class="flex items-center gap-3">
-    <h1 class="text-lg font-bold">Dashboard</h1>
-    {{if .HasMediaServers}}
-    {{if eq .OverallStatus "throttling"}}
-    <span class="pill pill-warn"><span class="stripe"></span>Throttling active</span>
-    {{else if eq .OverallStatus "paused"}}
-    <span class="pill pill-neutral"><span class="stripe"></span>Paused</span>
-    {{else}}
-    <span class="pill pill-good"><span class="stripe"></span>Idle</span>
-    {{end}}
-    {{end}}
-  </div>
-  {{if .HasMediaServers}}
-  <form method="post" action="/pause-toggle">
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    {{if .Paused}}
-    <button type="submit" class="btn btn-warning btn-sm">Resume throttling</button>
-    {{else}}
-    <button type="submit" class="btn btn-ghost btn-sm">Pause all throttling</button>
-    {{end}}
-  </form>
-  {{end}}
-</div>
-
-{{if .HasMediaServers}}
-<div class="grid grid-cols-3 gap-3 mb-6">
-  <div class="card bg-base-200 border border-base-300 p-4">
-    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Media servers</div>
-    <div class="text-xl font-bold font-mono tabular-nums">{{.MediaServerCount}}</div>
-  </div>
-  <div class="card bg-base-200 border border-base-300 p-4">
-    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Downloaders</div>
-    <div class="text-xl font-bold font-mono tabular-nums">{{.DownloaderCount}}</div>
-  </div>
-  <div class="card bg-base-200 border border-base-300 p-4">
-    <div class="text-xs uppercase tracking-wide text-base-content/60 font-semibold mb-1">Active mappings</div>
-    <div class="text-xl font-bold font-mono tabular-nums">{{.MappingCount}}</div>
-  </div>
-</div>
-
-<div class="grid grid-cols-2 gap-4">
-  <div class="card bg-base-200 border border-base-300">
-    <div class="card-body">
-      <h2 class="font-bold text-sm mb-3">Media servers</h2>
-      <div class="flex flex-col gap-2">
-        {{range .MediaServers}}
-        <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
-          <span>{{.Name}}</span>
-          {{if not .Enabled}}
-          <span class="pill pill-neutral"><span class="stripe"></span>disabled</span>
-          {{else if gt .ActiveSessions 0}}
-          <span class="pill pill-accent"><span class="stripe"></span>{{.ActiveSessions}} playing</span>
-          {{else}}
-          <span class="pill pill-neutral"><span class="stripe"></span>idle</span>
-          {{end}}
-        </div>
-        {{end}}
-      </div>
+<header class="at-page-head">
+  <div style="display:grid;gap:var(--space-2)">
+    <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
+      <h1 class="at-page-title">Dashboard</h1>
+      {{if .Paused}}
+        <span style="transform:translateY(1px)">{{template "statusflag" dict "Tone" "neutral" "Icon" "paused" "Label" "Not throttling"}}</span>
+      {{end}}
     </div>
   </div>
-  <div class="card bg-base-200 border border-base-300">
-    <div class="card-body">
-      <h2 class="font-bold text-sm mb-3">Downloaders</h2>
-      <div class="flex flex-col gap-2">
-        {{range .Downloaders}}
-        <div class="flex items-center justify-between text-sm py-1.5 border-b border-base-300 last:border-0">
-          <span>{{.Name}}</span>
-          {{if not .Enabled}}
-          <span class="pill pill-neutral"><span class="stripe"></span>disabled</span>
-          {{else if not .StateKnown}}
-          <span class="pill pill-neutral"><span class="stripe"></span>unknown</span>
-          {{else if .Throttled}}
-          <span class="pill pill-warn"><span class="stripe"></span>throttled</span>
-          {{else}}
-          <span class="pill pill-good"><span class="stripe"></span>default rate</span>
-          {{end}}
-        </div>
-        {{end}}
-      </div>
+  <div class="at-page-actions">
+    <form method="post" action="/pause-toggle">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="at-btn">{{if .Paused}}Resume throttling{{else}}Stop throttling{{end}}</button>
+    </form>
+  </div>
+</header>
+
+{{if not .Configured}}
+  {{/* First run: the page has exactly one job. */}}
+  <div class="at-card">
+    {{template "emptystate" dict
+      "Title" "Nothing configured yet"
+      "Body" "AutoThrottle needs one media server, one downloader, and a mapping between them before it can throttle anything."
+      "Action" "" }}
+    <div style="display:grid;justify-items:center">
+      <a href="/configuration" class="at-btn at-btn--primary at-btn--md">Go to Configuration</a>
     </div>
   </div>
-</div>
 {{else}}
-<div class="card bg-base-200 border border-base-300 p-8 text-center">
-  <p class="text-base-content/70 mb-4">No media servers configured yet — add one to get started.</p>
-  <a href="/configuration" class="btn btn-primary btn-sm inline-block w-fit mx-auto">Go to Configuration</a>
+
+<div class="at-stack">
+  {{/* Hero: one sentence naming what is throttled and why. The border
+       turns warn while anything is throttled. */}}
+  <section class="at-card" style="padding:20px{{if eq .Hero.Tone "warn"}};border-color:var(--warn){{end}}">
+    <div class="at-grid-hero">
+      <div>
+        <p style="margin:0;font-size:var(--text-display);font-weight:var(--weight-bold);letter-spacing:var(--tracking-title);line-height:var(--leading-tight);text-wrap:balance;color:{{if eq .Hero.Tone "warn"}}var(--warn){{else if eq .Hero.Tone "good"}}var(--good){{else if eq .Hero.Tone "dim"}}var(--text-dim){{else}}var(--text){{end}}">{{.Hero.Statement}}</p>
+        <p style="margin:var(--space-5) 0 0;font-size:var(--text-body);color:var(--text-dim);max-width:58ch;line-height:var(--leading-body)">{{.Hero.Reason}}</p>
+      </div>
+      <div class="at-stack">
+        {{template "statcard" dict
+          "Label" "Active sessions"
+          "Value" .ActiveSessions
+          "Tone" (cond (gt .ActiveSessions 0) "accent" "")
+          "Footnote" .SessionFootnote}}
+        {{template "statcard" dict
+          "Label" "Throttled downloaders"
+          "Value" .ThrottledLabel
+          "Tone" (cond (gt .ThrottledCount 0) "warn" "")}}
+      </div>
+    </div>
+  </section>
+
+  {{if .Paused}}
+    {{template "alert" dict "Tone" "warn" "Title" "Throttling is off"
+      "Body" "Downloaders are held at their default rates regardless of playback. Resume throttling to hand control back to the scheduler."}}
+  {{end}}
+  {{if .UnreachableNote}}
+    {{template "alert" dict "Tone" "error" "Title" "A backend is not answering" "Body" .UnreachableNote}}
+  {{end}}
+
+  <div class="at-grid-lists">
+    <section class="at-card">
+      <header class="at-card-head">
+        <h2 class="at-card-title">Downloaders</h2>
+        <span class="at-card-action" style="font-size:var(--text-label);color:var(--text-faint)">rates in force</span>
+      </header>
+      <div class="at-rowlist" data-cap-rows>
+        {{range .Downloaders}}
+          {{template "downloaderrow" dict "Name" .Name "Type" .Type "State" .State "Cause" .Cause "Down" .Down "Up" .Up "AppliedAt" .AppliedAt}}
+        {{else}}
+          <p style="font-size:var(--text-caption);color:var(--text-faint);padding:var(--space-4) 0">No downloaders configured.</p>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="at-card">
+      <header class="at-card-head">
+        <h2 class="at-card-title">Media servers</h2>
+        <span class="at-card-action" style="font-size:var(--text-label);color:var(--text-faint)">active sessions</span>
+      </header>
+      <div class="at-rowlist" data-cap-rows>
+        {{range .Servers}}
+          {{template "serverrow" dict "Name" .Name "Type" .Type "State" .State "Sessions" .Sessions "Detail" .Detail}}
+        {{else}}
+          <p style="font-size:var(--text-caption);color:var(--text-faint);padding:var(--space-4) 0">No media servers configured.</p>
+        {{end}}
+      </div>
+    </section>
+  </div>
+
+  <section class="at-card">
+    <header class="at-card-head">
+      <h2 class="at-card-title">Recent activity</h2>
+      <span class="at-card-action">
+        <a href="/logs" class="at-btn at-btn--ghost at-btn--xs">All logs</a>
+      </span>
+    </header>
+    <div class="at-rowlist">
+      {{range .Events}}
+        {{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Cause" .Cause}}
+      {{else}}
+        <p style="font-size:var(--text-caption);color:var(--text-faint);padding:var(--space-4) 0">No events yet.</p>
+      {{end}}
+    </div>
+  </section>
 </div>
 {{end}}
 {{end}}

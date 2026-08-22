@@ -1,0 +1,40 @@
+/* One webfont: Lexend, self-hosted from /static/fonts. Its wide apertures and even rhythm hold up at
+   the 14px label sizes this panel leans on. Loaded with display:swap behind the
+   system stack and served from this app rather than a CDN, so a box with no
+   outbound network renders instantly and legibly. Anything numeric stays on the system mono stack with tabular-nums
+   so live figures do not jitter as they update. */
+@font-face{font-family:"Lexend";font-style:normal;font-weight:400;font-display:swap;src:url("/static/fonts/lexend-400.woff2") format("woff2");}
+@font-face{font-family:"Lexend";font-style:normal;font-weight:500;font-display:swap;src:url("/static/fonts/lexend-500.woff2") format("woff2");}
+@font-face{font-family:"Lexend";font-style:normal;font-weight:700;font-display:swap;src:url("/static/fonts/lexend-700.woff2") format("woff2");}
+:root{
+  --font-sans:"Lexend",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  /* Sizes — lifted from the identity page, not rounded to a scale */
+  --text-page-title:32px;   /* page h1 */
+  --text-display:30px;      /* hero state statement */
+  --text-metric:23px;       /* stat card value */
+  --text-section:19px;      /* view heading */
+  --text-body:16px;         /* prose, primary rows */
+  --text-ui:14px;           /* nav items, buttons, dense rows */
+  --text-caption:13px;      /* labels, pills, log lines */
+  --text-label:12px;        /* stat-card keys */
+  --text-badge:11px;        /* history level badge */
+
+  --leading-tight:1.15;
+  --leading-ui:1.35;
+  --leading-body:1.5;
+
+  --weight-regular:400;
+  --weight-medium:500;
+  --weight-semibold:600;
+  --weight-bold:700;
+
+  --tracking-title:-0.01em;
+  --tracking-caption:0.06em;   /* uppercase captions */
+  --tracking-kicker:0.08em;    /* section eyebrows */
+  --tracking-label:0.05em;     /* stat-card keys */
+
+  --measure-prose:65ch;
+  --measure-narrow:46ch;
+}

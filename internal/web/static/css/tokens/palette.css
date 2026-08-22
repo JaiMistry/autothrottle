@@ -1,0 +1,31 @@
+/* Raw palette — the fixed hexes from autothrottle_visual_identity.html.
+   Theme-independent. Never reference these directly in components;
+   use the semantic aliases in theme.css. */
+:root{
+  --at-ink:#0a0f1a;
+  --at-surface-dark:#131b2c;
+  --at-surface-dark-2:#1a2438;
+  --at-paper:#f2f5f9;
+  --at-surface-light:#ffffff;
+  --at-surface-light-2:#e7ecf3;
+
+  --at-text-dark:#e7edf6;
+  --at-text-dark-dim:#9aa8bc;
+  --at-text-dark-faint:#5c6a80;
+  --at-border-dark:#232f45;
+
+  --at-text-light:#16202f;
+  --at-text-light-dim:#4a5768;
+  --at-text-light-faint:#8593a5;
+  --at-border-light:#d7dee7;
+
+  /* HUD cyan — interactive and active only, never decorative */
+  --at-accent:#38bdf8;
+  --at-accent-dim:#0ea5c7;
+  --at-accent-contrast:#06202b;
+
+  /* State colors — state only, never emphasis */
+  --at-good:#4ade80;
+  --at-warn:#f5a623;
+  --at-critical:#f2545b;
+}

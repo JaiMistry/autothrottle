@@ -1,0 +1,25 @@
+/* One shadow, two theme values. Elevation separates the active nav item
+   and floating surfaces (modals, the theme toggle) — cards use a 1px
+   border and a surface change instead, so a dense page stays flat. */
+:root{
+  --shadow:0 1px 2px rgba(20,30,45,0.06),0 8px 24px -12px rgba(20,30,45,0.18);
+  --shadow-modal:0 4px 8px rgba(20,30,45,0.08),0 24px 48px -16px rgba(20,30,45,0.28);
+  --scrim:rgba(10,15,26,0.45);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --shadow:0 1px 2px rgba(0,0,0,0.3),0 8px 24px -12px rgba(0,0,0,0.5);
+    --shadow-modal:0 4px 8px rgba(0,0,0,0.4),0 24px 48px -16px rgba(0,0,0,0.7);
+    --scrim:rgba(0,0,0,0.6);
+  }
+}
+:root[data-theme="dark"],[data-theme="dark"],[data-theme="autothrottle-dark"]{
+  --shadow:0 1px 2px rgba(0,0,0,0.3),0 8px 24px -12px rgba(0,0,0,0.5);
+  --shadow-modal:0 4px 8px rgba(0,0,0,0.4),0 24px 48px -16px rgba(0,0,0,0.7);
+  --scrim:rgba(0,0,0,0.6);
+}
+:root[data-theme="light"],[data-theme="light"],[data-theme="autothrottle-light"]{
+  --shadow:0 1px 2px rgba(20,30,45,0.06),0 8px 24px -12px rgba(20,30,45,0.18);
+  --shadow-modal:0 4px 8px rgba(20,30,45,0.08),0 24px 48px -16px rgba(20,30,45,0.28);
+  --scrim:rgba(10,15,26,0.45);
+}

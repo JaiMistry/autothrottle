@@ -6,9 +6,14 @@
 *.db-shm
 .env
 internal/web/static/css/tailwind.css
+internal/web/static/js/apexcharts.min.js
 tailwindcss
+node_modules/
 
-# Local working notes, not part of the public project
+# Local working files
 idea.md
 plan.md
 .claude/
+
+# UI design system
+handoff/

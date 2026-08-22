@@ -1,0 +1,24 @@
+/* Motion is deliberate and small: a pill changing state, a row arriving,
+   a theme swap. Nothing loops, nothing bounces, nothing slides in from
+   off-screen. Everything respects prefers-reduced-motion. */
+:root{
+  /* press feedback */
+  --dur-instant:80ms; /* @kind other */
+  /* hover, focus */
+  --dur-fast:120ms; /* @kind other */
+  /* state change, theme swap */
+  --dur-base:200ms; /* @kind other */
+  /* row arrival in a live region */
+  --dur-slow:320ms; /* @kind other */
+  --ease-standard:ease; /* @kind other */
+  --ease-out:cubic-bezier(0.2,0.7,0.3,1); /* @kind other */
+  --transition-theme:background var(--dur-base) var(--ease-standard),color var(--dur-base) var(--ease-standard);
+}
+@media (prefers-reduced-motion:reduce){
+  :root{
+    --dur-instant:0ms; /* @kind other */
+    --dur-fast:0ms; /* @kind other */
+    --dur-base:0ms; /* @kind other */
+    --dur-slow:0ms; /* @kind other */
+  }
+}

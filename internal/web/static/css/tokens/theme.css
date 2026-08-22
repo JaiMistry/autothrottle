@@ -1,0 +1,77 @@
+/* Semantic aliases. Light is the default; dark follows
+   prefers-color-scheme and an explicit [data-theme] override, exactly as
+   the app's layout.html does it. Both themes are first-class.
+   daisyUI-shaped aliases (--color-base-100 …) are published alongside so
+   the compiled Tailwind/daisyUI layer and these tokens stay in sync. */
+:root{
+  --bg:var(--at-paper);
+  --surface:var(--at-surface-light);
+  --surface-2:var(--at-surface-light-2);
+  --text:var(--at-text-light);
+  --text-dim:var(--at-text-light-dim);
+  --text-faint:var(--at-text-light-faint);
+  --border:var(--at-border-light);
+
+  --accent:var(--at-accent);
+  --accent-dim:var(--at-accent-dim);
+  --accent-contrast:var(--at-accent-contrast);
+  --good:var(--at-good);
+  --warn:var(--at-warn);
+  --critical:var(--at-critical);
+
+  /* Tinted state fills — 16% of the state color, the pill recipe */
+  --fill-good:color-mix(in srgb, var(--good) 16%, transparent);
+  --fill-warn:color-mix(in srgb, var(--warn) 16%, transparent);
+  --fill-critical:color-mix(in srgb, var(--critical) 16%, transparent);
+  --fill-accent:color-mix(in srgb, var(--accent) 16%, transparent);
+  --fill-neutral:color-mix(in srgb, var(--text) 10%, transparent);
+  --glow-good:0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);
+  --glow-warn:0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);
+  --glow-critical:0 0 0 3px color-mix(in srgb, var(--critical) 25%, transparent);
+  --glow-accent:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+
+  /* daisyUI parity */
+  --color-base-100:var(--bg);
+  --color-base-200:var(--surface);
+  --color-base-300:var(--surface-2);
+  --color-base-content:var(--text);
+  --color-primary:var(--accent);
+  --color-primary-content:var(--accent-contrast);
+  --color-success:var(--good);
+  --color-warning:var(--warn);
+  --color-error:var(--critical);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:var(--at-ink);
+    --surface:var(--at-surface-dark);
+    --surface-2:var(--at-surface-dark-2);
+    --text:var(--at-text-dark);
+    --text-dim:var(--at-text-dark-dim);
+    --text-faint:var(--at-text-dark-faint);
+    --border:var(--at-border-dark);
+    --fill-neutral:color-mix(in srgb, var(--text) 10%, transparent);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"],[data-theme="dark"],[data-theme="autothrottle-dark"]{
+  --bg:var(--at-ink);
+  --surface:var(--at-surface-dark);
+  --surface-2:var(--at-surface-dark-2);
+  --text:var(--at-text-dark);
+  --text-dim:var(--at-text-dark-dim);
+  --text-faint:var(--at-text-dark-faint);
+  --border:var(--at-border-dark);
+  color-scheme:dark;
+}
+:root[data-theme="light"],[data-theme="light"],[data-theme="autothrottle-light"]{
+  --bg:var(--at-paper);
+  --surface:var(--at-surface-light);
+  --surface-2:var(--at-surface-light-2);
+  --text:var(--at-text-light);
+  --text-dim:var(--at-text-light-dim);
+  --text-faint:var(--at-text-light-faint);
+  --border:var(--at-border-light);
+  color-scheme:light;
+}

@@ -69,7 +69,7 @@ func main() {
 	samples := sampler.New(database, encryptionKey, store, sched)
 	maintenance := retention.New(database, store)
 
-	srv, err := web.New(database, authCfg, encryptionKey, sched, watchers)
+	srv, err := web.New(database, authCfg, encryptionKey, sched, watchers, store)
 	if err != nil {
 		logger.Error("initializing web server", "error", err)
 		os.Exit(1)
