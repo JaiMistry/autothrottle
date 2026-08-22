@@ -19,6 +19,13 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
+    # The app is a static Go binary over an embedded SQLite file and
+    # sits at ~22 MiB in practice. The cap is not about this container
+    # being greedy — it is about it being unable to become the reason
+    # something else on the host dies. Docker advertises the host's
+    # full RAM to every container, so nothing self-limits by default.
+    mem_limit: 256m
+    memswap_limit: 256m
 
 volumes:
   autothrottle_data:

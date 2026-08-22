@@ -26,6 +26,13 @@ COPY . .
 COPY --from=tailwind /out/tailwind.css internal/web/static/css/tailwind.css
 COPY --from=tailwind /out/apexcharts.min.js internal/web/static/js/apexcharts.min.js
 ARG VERSION=dev
+# Compilation is the memory peak of this image, and modernc.org/sqlite
+# is a very large package to build. Unbounded, the toolchain starts one
+# compile per core and the peak scales with the build machine's core
+# count rather than its RAM — which is how a build on a busy host
+# becomes an out-of-memory kill. Two at a time keeps the peak flat and
+# costs a few seconds.
+ENV GOFLAGS=-p=2 GOMAXPROCS=2
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION}" \
       -o /out/autothrottle ./cmd/autothrottle
