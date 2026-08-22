@@ -20,6 +20,7 @@ func templateFuncs() template.FuncMap {
 		// The analytics stats carry int64 counts.
 		"count64":   func(n int64, one, many string) string { return count(int(n), one, many) },
 		"levelTone": levelTone,
+		"gapBody":   gapBody,
 		"mapkey":    func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
 		"rate":      rateLabel,
 		"bytes":     byteLabel,
@@ -86,6 +87,44 @@ func levelTone(level string) string {
 		return "warn"
 	default:
 		return "info"
+	}
+}
+
+// gapBody writes the sentence under the chart naming every hole in the
+// record. The reason is fixed: the sampler cannot log its own downtime,
+// so the only honest thing to say is that the app was not running.
+func gapBody(gaps []gapNote) string {
+	parts := make([]string, 0, len(gaps))
+	for _, g := range gaps {
+		parts = append(parts, fmt.Sprintf("%s from %s", g.Duration, g.Started))
+	}
+	return strings.Join(parts, " · ") +
+		" — AutoThrottle was not running. The chart breaks the line across these spans " +
+		"rather than joining the ends, which would draw throughput that never happened."
+}
+
+// analyticsDuration matches the Analytics screen's own formatting:
+// minutes alone under an hour, otherwise hours with zero-padded
+// minutes, so a column of them stays aligned.
+func analyticsDuration(d time.Duration) string {
+	m := int(d.Round(time.Minute).Minutes())
+	if m < 60 {
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%dh %02dm", m/60, m%60)
+}
+
+// splitBytes renders a byte total as a value and its unit separately,
+// because a stat card sets the unit in smaller, dimmer type than the
+// figure it qualifies.
+func splitBytes(b int64) (string, string) {
+	switch {
+	case b >= 1<<40:
+		return fmt.Sprintf("%.1f", float64(b)/(1<<40)), "TB"
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f", float64(b)/(1<<30)), "GB"
+	default:
+		return strconv.FormatInt(int64(float64(b)/(1<<20)+0.5), 10), "MB"
 	}
 }
 

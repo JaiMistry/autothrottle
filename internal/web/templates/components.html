@@ -169,3 +169,9 @@
 {{- else if eq . "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
 {{- else if eq . "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
 {{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal" "Size" "sm"}}{{end}}{{end}}
+
+{{/* Args: Shape (line|dashed|area|hatch), Color, Label */}}
+{{define "legenditem"}}<span class="at-legenditem">
+  <span class="at-swatch at-swatch--{{.Shape}}"{{if .Color}} style="{{if eq .Shape "line"}}border-top-color:{{.Color}}{{else if eq .Shape "dashed"}}border-top-color:{{.Color}}{{else if eq .Shape "area"}}background:color-mix(in srgb,{{.Color}} 35%,transparent){{else}}outline-color:{{.Color}};background:repeating-linear-gradient(45deg,{{.Color}} 0 1.4px,transparent 1.4px 5px){{end}}"{{end}}></span>
+  {{.Label}}
+</span>{{end}}

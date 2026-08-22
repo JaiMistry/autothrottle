@@ -415,3 +415,58 @@ func TestDailyBandwidthSkipsDaysWithNoData(t *testing.T) {
 		t.Fatalf("got %d days, want 2 — a day with no data must not be invented", len(days))
 	}
 }
+
+// The sampling interval is user-adjustable at runtime, so the stored
+// samples were recorded at whatever it used to be. Anything that
+// multiplies a sample count by the *current* setting reports history at
+// the wrong scale — this is how "5h 20m throttled" became "1h 17m".
+func TestObservedSampleIntervalMeasuresTheStoredSpacing(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	base := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+
+	// Recorded a minute apart, whatever the setting now says.
+	for i := 0; i < 30; i++ {
+		addSample(t, d, id, base.Add(time.Duration(i)*time.Minute), 1000, 100, false, 0)
+	}
+
+	got, ok := d.ObservedSampleInterval(id, base.Add(-time.Hour), base.Add(time.Hour))
+	if !ok {
+		t.Fatal("expected an observed interval from 30 samples")
+	}
+	if got != time.Minute {
+		t.Errorf("observed interval = %s, want 1m", got)
+	}
+}
+
+// A single outage must not drag the estimate — that is why it is a
+// median rather than a mean.
+func TestObservedSampleIntervalIgnoresAnOutage(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	base := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 20; i++ {
+		addSample(t, d, id, base.Add(time.Duration(i)*time.Minute), 1000, 100, false, 0)
+	}
+	// ... six hours of nothing, then sampling resumes.
+	for i := 0; i < 20; i++ {
+		addSample(t, d, id, base.Add(6*time.Hour+time.Duration(i)*time.Minute), 1000, 100, false, 0)
+	}
+
+	got, ok := d.ObservedSampleInterval(id, base.Add(-time.Hour), base.Add(12*time.Hour))
+	if !ok || got != time.Minute {
+		t.Errorf("observed interval = %s (ok=%v), want 1m despite the gap", got, ok)
+	}
+}
+
+func TestObservedSampleIntervalNeedsEnoughSamples(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	now := time.Now()
+	addSample(t, d, id, now, 1000, 100, false, 0)
+
+	if _, ok := d.ObservedSampleInterval(id, now.Add(-time.Hour), now.Add(time.Hour)); ok {
+		t.Error("one sample cannot establish a spacing; caller must fall back to the setting")
+	}
+}

@@ -399,3 +399,63 @@ func (d *DB) DailyBandwidth(downloaderID int64, since, until time.Time, sampleIn
 	}
 	return out, nil
 }
+
+// ObservedSampleInterval reports how far apart a downloader's samples
+// actually are in a window, as the median gap between consecutive raw
+// samples.
+//
+// This exists because the configured sampling interval is a statement
+// about the future, not about the past. It is user-adjustable at
+// runtime, so the moment it changes, every stored sample was recorded
+// at some other spacing — and anything that multiplies a sample count
+// by the *current* interval to get a duration silently reports a
+// window at the wrong scale. The median is used rather than the mean so
+// one outage does not drag the estimate.
+//
+// ok is false when there are too few samples to tell, and the caller
+// should fall back to the configured interval.
+func (d *DB) ObservedSampleInterval(downloaderID int64, since, until time.Time) (time.Duration, bool) {
+	rows, err := d.conn.Query(
+		`SELECT sampled_at FROM bandwidth_samples
+		 WHERE downloader_id = ? AND sampled_at >= ? AND sampled_at <= ?
+		 ORDER BY sampled_at`,
+		downloaderID, FormatTime(since), FormatTime(until),
+	)
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deltas []time.Duration
+	var prev time.Time
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return 0, false
+		}
+		at, err := time.Parse(TimeFormat, raw)
+		if err != nil {
+			continue
+		}
+		if !prev.IsZero() {
+			if gap := at.Sub(prev); gap > 0 {
+				deltas = append(deltas, gap)
+			}
+		}
+		prev = at
+	}
+	if rows.Err() != nil || len(deltas) < 3 {
+		return 0, false
+	}
+
+	sortDurations(deltas)
+	return deltas[len(deltas)/2], true
+}
+
+func sortDurations(v []time.Duration) {
+	for i := 1; i < len(v); i++ {
+		for j := i; j > 0 && v[j] < v[j-1]; j-- {
+			v[j], v[j-1] = v[j-1], v[j]
+		}
+	}
+}

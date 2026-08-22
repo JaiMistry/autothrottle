@@ -4,16 +4,20 @@
     <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
       <h1 class="at-page-title">Analytics</h1>
     </div>
-    <p class="at-page-sub">Polled from each download client's own rate counters every {{.Interval}}. Full-resolution samples for {{.RawDays}} days, hourly averages for {{.RollupDays}} days.</p>
+    <p class="at-page-sub">{{if .HasClients}}{{.Subtitle}}{{else}}Per-client throughput, sampled from the client's own rate counters.{{end}}</p>
   </div>
-  <div class="at-page-actions">
-    <form method="get" action="/analytics" style="display:flex;gap:var(--space-4);align-items:center">
+  {{if .HasClients}}
+  <div class="at-page-actions" style="flex-wrap:wrap">
+    {{if gt (len .Downloaders) 1}}
+    <form method="get" action="/analytics" style="display:flex">
       <input type="hidden" name="range" value="{{.RangeKey}}">
-      <select class="at-select" name="client" style="width:auto" onchange="this.form.submit()" aria-label="Download client">
+      <select class="at-select" name="client" style="width:178px;padding:6px 9px;font-size:var(--text-caption)"
+              onchange="this.form.submit()" aria-label="Download client">
         <option value="all" {{if eq .Selected "all"}}selected{{end}}>All downloaders</option>
         {{range .Downloaders}}<option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>{{end}}
       </select>
     </form>
+    {{end}}
     <div class="at-tabs at-tabs--sm" role="tablist">
       {{$sel := .Selected}}{{$cur := .RangeKey}}
       {{range .Ranges}}
@@ -22,85 +26,77 @@
       {{end}}
     </div>
   </div>
+  {{end}}
 </header>
 
 {{if not .HasClients}}
-  <div class="at-card">
-    {{template "emptystate" dict
-      "Title" "No download client configured"
-      "Body" "Analytics charts what a download client is doing. Add one in Configuration and samples start arriving on the next poll."
-      "Action" ""}}
-    <div style="display:grid;justify-items:center">
-      <a href="/configuration?tab=downloaders" class="at-btn at-btn--primary at-btn--md">Go to Configuration</a>
-    </div>
-  </div>
+  {{template "emptystate" dict
+    "Tone" "accent"
+    "Title" "No download client configured"
+    "Body" "Analytics reads each download client's own rate counters. With no client there is nothing to sample and nothing to chart."
+    "ActionHref" "/configuration?tab=downloaders"
+    "ActionLabel" "Add a download client"}}
+
 {{else if not .HasSamples}}
-  <div class="at-card">
-    {{template "emptystate" dict
-      "Title" "No samples yet"
-      "Body" "Nothing has been recorded for this window. A fresh install takes one polling interval to collect its first sample — this is the normal first-run state, not an error."
-      "Action" ""}}
-  </div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)">
+  {{template "emptystate" dict
+    "Title" "No samples yet"
+    "Body" (printf "Polling is configured and the first rate sample lands within %s of setup, filling the chart in from there. This is what a fresh install looks like — nothing is wrong." .Interval)}}
+  {{template "alert" dict "Tone" "info" "Title" "What gets recorded"
+    "Body" "One row per poll per client: observed download and upload rate, and the speed limit in force at that moment. Throttle periods come from the state-change log, sessions from each media server. Nothing is charted until real samples exist — a flat line at zero would be a lie about a system that has not measured anything yet."}}
+</div>
+
 {{else}}
-
-<div class="at-stack">
-  <div class="at-grid-cards">
-    {{template "statcard" dict "Label" "Data transferred" "Value" .Transferred "Tone" "accent" "Footnote" (printf "last %s" .RangeKey)}}
+<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:var(--space-6)">
+    {{template "statcard" dict "Label" "Data transferred" "Value" .TransferValue "Unit" .TransferUnit "Tone" "accent" "Footnote" (printf "last %s" .RangeKey)}}
     {{template "statcard" dict "Label" "Time throttled" "Value" .Throttled "Tone" "warn" "Footnote" (printf "%d%% of observed time" .Stats.ThrottledPct)}}
-    {{template "statcard" dict "Label" "Throttle periods" "Value" .Stats.Periods "Footnote" (printf "avg %s" .AvgPeriod)}}
-    {{template "statcard" dict "Label" "Sessions" "Value" .Stats.Sessions "Footnote" (printf "across %s" (count64 .Stats.Servers "server" "servers"))}}
+    {{template "statcard" dict "Label" "Throttle periods" "Value" .Stats.Periods "Footnote" .PeriodsNote}}
+    {{template "statcard" dict "Label" "Sessions" "Value" .Stats.Sessions "Footnote" .SessionsNote}}
   </div>
 
-  <section class="at-card">
-    <header class="at-card-head">
-      <div>
-        <h2 class="at-card-title">Throughput</h2>
-        <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">What the client actually transferred, and when it was throttled</p>
+  {{if .Hourly}}
+    {{template "alert" dict "Tone" "info" "Title" "Hourly averages at this range"
+      "Body" (printf "Full-resolution samples are kept for %d days. Past that only hourly averages survive, so this line is smoother than what the client actually did — a spike inside an hour is averaged away. The speed limit in force is not retained this far back, so that series drops out entirely rather than being drawn from data that does not exist." .RawDays)}}
+  {{end}}
+
+  <section class="at-chartcard">
+    <header class="at-chartcard-head">
+      <div class="at-chartcard-titles">
+        <h2 class="at-chartcard-title">Throughput</h2>
+        <span class="at-chartcard-caption">{{if .MultiClient}}Combined throughput across all download clients, and when any of them was throttled{{else}}What this client actually transferred, and when it was throttled{{end}}</span>
       </div>
-      <span class="at-card-action">{{template "badge" dict "Tone" "info" "Label" .Grain}}</span>
+      {{template "badge" dict "Tone" (cond .Hourly "warn" "info") "Label" .Grain}}
     </header>
-    <div id="at-chart-throughput"></div>
-    <div style="display:flex;gap:var(--space-8);flex-wrap:wrap;padding-top:var(--space-5);font-size:var(--text-label);color:var(--text-faint)">
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:2px;background:#38bdf8;border-radius:2px"></span>Download</span>
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:2px;background:var(--good);border-radius:2px"></span>Upload</span>
-      {{if ne .RangeKey "30d"}}
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed var(--warn)"></span>Limit in effect</span>
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:9px;background:color-mix(in srgb,var(--warn) 22%,transparent);border-radius:2px"></span>Throttling active</span>
-      {{end}}
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:9px;border:1px dashed var(--text-faint);border-radius:2px"></span>No samples — app was down</span>
-    </div>
-    {{if eq .RangeKey "30d"}}
-      <p style="margin:var(--space-5) 0 0;font-size:var(--text-label);color:var(--text-faint)">
-        Past the full-resolution window only hourly averages survive, so the applied-limit line and the throttle bands are not drawn at this range. The figures above still come from the full record.
-      </p>
-    {{end}}
+    <div class="at-chartcard-body" style="height:250px"><div id="at-chart-throughput"></div></div>
+    <footer class="at-chartcard-legend">
+      {{template "legenditem" dict "Shape" "line" "Color" "#38bdf8" "Label" "Download"}}
+      {{template "legenditem" dict "Shape" "line" "Color" "var(--good)" "Label" "Upload"}}
+      {{template "legenditem" dict "Shape" "dashed" "Color" (cond .HasLimit "var(--warn)" "var(--text-faint)") "Label" .LimitLegend}}
+      {{if .HasBands}}{{template "legenditem" dict "Shape" "area" "Color" "var(--warn)" "Label" "Throttling active"}}{{end}}
+      {{template "legenditem" dict "Shape" "hatch" "Color" "var(--text-faint)" "Label" "No samples — app was down"}}
+    </footer>
   </section>
 
   {{if .Gaps}}
     {{$n := len .Gaps}}
-    <div class="at-alert at-alert--warn">
-      <div>
-        <div class="at-alert-title">{{$n}} gap{{if ne $n 1}}s{{end}} in the sample record</div>
-        <div>
-          {{range $i, $g := .Gaps}}{{if $i}} · {{end}}{{$g.Duration}} from {{$g.Started}}{{end}} — AutoThrottle was not running.
-          The chart breaks the line across these spans rather than joining the ends, which would draw throughput that never happened.
-        </div>
-      </div>
-    </div>
+    {{template "alert" dict "Tone" "warn"
+      "Title" (count $n "gap in the sample record" "gaps in the sample record")
+      "Body" (gapBody .Gaps)}}
   {{end}}
 
-  <section class="at-card">
-    <header class="at-card-head">
-      <div>
-        <h2 class="at-card-title">Sessions</h2>
-        <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Playback that drove the throttling above, on the same time axis</p>
+  <section class="at-chartcard">
+    <header class="at-chartcard-head">
+      <div class="at-chartcard-titles">
+        <h2 class="at-chartcard-title">Sessions</h2>
+        <span class="at-chartcard-caption">Playback that drove the throttling above, on the same time axis</span>
       </div>
     </header>
-    <div id="at-chart-sessions"></div>
-    <div style="display:flex;gap:var(--space-8);flex-wrap:wrap;padding-top:var(--space-5);font-size:var(--text-label);color:var(--text-faint)">
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:9px;background:#8fd3f2;border-radius:2px"></span>Session</span>
-      <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:9px;background:#38bdf8;border-radius:2px"></span>Still playing</span>
-    </div>
+    <div class="at-chartcard-body" style="height:{{.SessionHeight}}px"><div id="at-chart-sessions"></div></div>
+    <footer class="at-chartcard-legend">
+      {{template "legenditem" dict "Shape" "area" "Color" "#7fc4e0" "Label" "Session"}}
+      {{template "legenditem" dict "Shape" "area" "Color" "#38bdf8" "Label" "Still playing"}}
+    </footer>
   </section>
 </div>
 

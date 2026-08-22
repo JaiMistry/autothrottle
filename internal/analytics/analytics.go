@@ -104,6 +104,7 @@ type Store interface {
 	BandwidthSeries(downloaderID int64, since, until time.Time, bucket time.Duration) ([]db.BandwidthPoint, error)
 	ThrottlePeriods(downloaderID int64, since, until time.Time, sampleInterval time.Duration) ([]db.ThrottlePeriod, error)
 	BandwidthSummary(downloaderID int64, since, until time.Time, sampleInterval time.Duration) (db.BandwidthSummary, error)
+	ObservedSampleInterval(downloaderID int64, since, until time.Time) (time.Duration, bool)
 	ListSessions(downloaderID int64, since, until time.Time) ([]db.SessionRecord, error)
 	SessionSummary(downloaderID int64, since, until time.Time) (int64, int64, error)
 	ListMediaServers() ([]db.MediaServer, error)
@@ -125,6 +126,16 @@ func Build(store Store, ids []int64, rng Range, sampleInterval time.Duration, no
 	}
 
 	since, until := now.Add(-rng.Span), now
+
+	// Durations here are sample counts multiplied by how far apart the
+	// samples are. The configured interval describes the next sample,
+	// not the ones already stored — so measure the stored spacing and
+	// only fall back to the setting when there is too little data to
+	// tell. Without this, changing the interval rescales all history.
+	if observed, ok := store.ObservedSampleInterval(ids[0], since, until); ok {
+		sampleInterval = observed
+	}
+
 	view := View{
 		Range:  rng.Key,
 		Grain:  rng.Grain,
