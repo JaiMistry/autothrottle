@@ -136,7 +136,7 @@ func (m *Manager) Reconcile() {
 			continue
 		}
 
-		w, err := newWatcher(ms, token)
+		w, err := m.newWatcher(ms, token)
 		if err != nil {
 			slog.Error("watcher: unsupported media server", "media_server", ms.Name, "type", ms.Type, "error", err)
 			continue
@@ -156,14 +156,30 @@ func (m *Manager) Reconcile() {
 // type. Everything downstream — the manager's own lifecycle handling,
 // the scheduler, the web layer — sees only the interface, so a new
 // server type is a case here and a case in supportedType.
-func newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
+func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
+	// Read at the point of use rather than captured, so changing the
+	// timeout takes effect without restarting a watcher — and so it
+	// stays out of the fingerprint that decides when one must restart.
+	pausedTimeout := func() time.Duration {
+		if m.settings == nil {
+			return 0
+		}
+		return m.settings.PausedSessionTimeout()
+	}
+
 	switch ms.Type {
 	case "plex":
-		return clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
+		w := clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
+		w.PausedSessionTimeout = pausedTimeout
+		return w, nil
 	case "emby":
-		return clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
+		w := clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback)
+		w.PausedSessionTimeout = pausedTimeout
+		return w, nil
 	case "jellyfin":
-		return clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback), nil
+		w := clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback)
+		w.PausedSessionTimeout = pausedTimeout
+		return w, nil
 	default:
 		return nil, fmt.Errorf("no watcher implementation for type %q", ms.Type)
 	}

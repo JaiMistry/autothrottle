@@ -19,6 +19,7 @@ import (
 const (
 	KeyPaused                    = "throttle.paused"
 	KeySessionReconcileInterval  = "sessions.reconcile_interval_seconds"
+	KeyPausedSessionTimeout      = "sessions.paused_timeout_seconds"
 	KeyBandwidthSampleInterval   = "bandwidth.sample_interval_seconds"
 	KeyBandwidthRawRetentionDays = "bandwidth.raw_retention_days"
 	KeyBandwidthRollupRetention  = "bandwidth.rollup_retention_days"
@@ -29,6 +30,7 @@ const (
 // Defaults, applied whenever a key has never been written.
 const (
 	DefaultSessionReconcileInterval  = 60 * time.Second
+	DefaultPausedSessionTimeout      = 30 * time.Minute
 	DefaultBandwidthSampleInterval   = 60 * time.Second
 	DefaultBandwidthRawRetentionDays = 7
 	DefaultBandwidthRollupRetention  = 90
@@ -55,6 +57,11 @@ var Definitions = []Definition{
 		Key: KeySessionReconcileInterval, Label: "Session reconcile interval",
 		Description: "How often to re-check each media server's live sessions against what the watcher believes is playing.",
 		Unit:        "seconds", Default: "60", Min: 10, Max: 3600,
+	},
+	{
+		Key: KeyPausedSessionTimeout, Label: "Paused session timeout",
+		Description: "How long a paused stream keeps downloads throttled before it is treated as abandoned. A pause does not end a stream, so it keeps counting until this expires.",
+		Unit:        "seconds", Default: "1800", Min: 60, Max: 86400,
 	},
 	{
 		Key: KeyBandwidthSampleInterval, Label: "Bandwidth sample interval",
@@ -103,6 +110,12 @@ func (s *Store) SetPaused(paused bool) error {
 
 func (s *Store) SessionReconcileInterval() time.Duration {
 	return s.duration(KeySessionReconcileInterval, DefaultSessionReconcileInterval)
+}
+
+// PausedSessionTimeout caps how long a continuously paused session
+// goes on counting toward throttling.
+func (s *Store) PausedSessionTimeout() time.Duration {
+	return s.duration(KeyPausedSessionTimeout, DefaultPausedSessionTimeout)
 }
 
 func (s *Store) BandwidthSampleInterval() time.Duration {

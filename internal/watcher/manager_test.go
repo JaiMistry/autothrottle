@@ -192,7 +192,7 @@ func TestSupportedTypes(t *testing.T) {
 		if !supportedType(msType) {
 			t.Errorf("supportedType(%q) = false, want true", msType)
 		}
-		w, err := newWatcher(db.MediaServer{Type: msType, URL: "http://host"}, "token")
+		w, err := (&Manager{}).newWatcher(db.MediaServer{Type: msType, URL: "http://host"}, "token")
 		if err != nil {
 			t.Errorf("newWatcher(%q): %v", msType, err)
 			continue
@@ -205,7 +205,7 @@ func TestSupportedTypes(t *testing.T) {
 	if supportedType("transmission") {
 		t.Error(`supportedType("transmission") = true, want false`)
 	}
-	if _, err := newWatcher(db.MediaServer{Type: "nope"}, "t"); err == nil {
+	if _, err := (&Manager{}).newWatcher(db.MediaServer{Type: "nope"}, "t"); err == nil {
 		t.Error("newWatcher for an unknown type should return an error")
 	}
 }

@@ -78,14 +78,18 @@ type embySession struct {
 }
 
 // embyStateCounts mirrors plexStateCounts: the single definition of
-// which sessions count toward throttling, shared by the WebSocket path
-// and the snapshot path so the two can never disagree.
+// which sessions still exist, shared by the WebSocket path and the
+// snapshot path so the two can never disagree.
 //
-// Emby and Jellyfin have no equivalent of Plex's "buffering" state —
-// a buffering client is still reported with NowPlayingItem set and
-// IsPaused false, so it counts here for free.
+// NowPlayingItem is the whole test. It is absent for an idle connected
+// client and present for one with media loaded — including a paused
+// one, which is the point: a pause does not end a stream. Buffering
+// needs no special case either, since these servers report it as
+// ordinary playback rather than as a distinct state the way Plex does.
+//
+// How long a paused session goes on counting is pausedTracker's job.
 func embyStateCounts(s embySession) bool {
-	return s.NowPlayingItem != nil && !s.PlayState.IsPaused
+	return s.NowPlayingItem != nil
 }
 
 // embySessionIsLocal reports whether a session's client is on the

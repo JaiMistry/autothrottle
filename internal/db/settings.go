@@ -29,4 +29,3 @@ func (d *DB) SetSetting(key, value string) error {
 	)
 	return err
 }
-

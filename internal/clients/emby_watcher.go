@@ -42,9 +42,13 @@ type EmbyWatcher struct {
 	BaseURL           string
 	APIKey            string
 	SkipLocalPlayback bool
+	// PausedSessionTimeout caps how long a continuously paused session
+	// keeps counting. Nil uses the built-in default.
+	PausedSessionTimeout func() time.Duration
 
 	flavor embyFlavor
 	events chan SessionEvent
+	paused *pausedTracker
 
 	mu sync.Mutex
 	// active is the last set this watcher reported as playing. It is
@@ -68,7 +72,7 @@ func NewJellyfinWatcher(baseURL, apiKey string, skipLocalPlayback bool) *EmbyWat
 }
 
 func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool) *EmbyWatcher {
-	return &EmbyWatcher{
+	w := &EmbyWatcher{
 		BaseURL:           strings.TrimRight(baseURL, "/"),
 		APIKey:            apiKey,
 		SkipLocalPlayback: skipLocalPlayback,
@@ -76,6 +80,13 @@ func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool
 		events:            make(chan SessionEvent, 16),
 		active:            make(map[string]bool),
 	}
+	w.paused = newPausedTracker(func() time.Duration {
+		if w.PausedSessionTimeout == nil {
+			return 0
+		}
+		return w.PausedSessionTimeout()
+	})
+	return w
 }
 
 func (w *EmbyWatcher) Events() <-chan SessionEvent { return w.events }
@@ -275,18 +286,29 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 // two cannot disagree about what counts.
 func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
 	active := make(map[string]bool, len(sessions))
+	present := make(map[string]bool, len(sessions))
+	now := time.Now()
 	for _, s := range sessions {
-		if s.ID == "" || !embyStateCounts(s) {
+		if s.ID == "" {
+			continue
+		}
+		present[s.ID] = true
+		if !embyStateCounts(s) {
 			continue
 		}
 		if w.SkipLocalPlayback && embySessionIsLocal(s.RemoteEndPoint) {
 			continue
 		}
+		if !w.paused.counts(s.ID, s.PlayState.IsPaused, now) {
+			continue
+		}
 		active[s.ID] = true
 	}
+	// Every push is a full session list, so this is always the complete
+	// picture of what still exists.
+	w.paused.retain(present)
 	return active
 }
-
 
 // Snapshot reads the session list over REST, applying the same
 // filtering the event stream does.

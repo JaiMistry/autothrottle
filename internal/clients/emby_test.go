@@ -22,10 +22,12 @@ func TestEmbyStateCounts(t *testing.T) {
 	idle := embySession{ID: "2"} // connected client, nothing loaded
 
 	if !embyStateCounts(playing) {
-		t.Error("a session with media loaded and not paused should count")
+		t.Error("a session with media loaded should count")
 	}
-	if embyStateCounts(paused) {
-		t.Error("a paused session should not count")
+	// A pause does not end a stream. How long it goes on counting is
+	// pausedTracker's job, not this rule's.
+	if !embyStateCounts(paused) {
+		t.Error("a paused session still has media loaded, so it should count")
 	}
 	if embyStateCounts(idle) {
 		t.Error("a session with no NowPlayingItem should not count")
@@ -115,8 +117,10 @@ func TestEmbyHandleSessionsDiffsAgainstPrevious(t *testing.T) {
 	assertEvent(t, w, "b", false)
 }
 
-// A session that pauses stays in the list; only its PlayState changes.
-func TestEmbyHandleSessionsReportsPauseAsStop(t *testing.T) {
+// Pausing must not release the throttle. Letting a pause restore full
+// rates hands the uplink to the download client for exactly the gap
+// before playback resumes — the moment the stream can least afford it.
+func TestEmbyPausedSessionKeepsCounting(t *testing.T) {
 	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
 	ctx := context.Background()
 
@@ -126,7 +130,37 @@ func TestEmbyHandleSessionsReportsPauseAsStop(t *testing.T) {
 	paused := playingSession("a", "8.8.8.8")
 	paused.PlayState.IsPaused = true
 	w.handleSessions(ctx, []embySession{paused})
+	assertNoEvent(t, w)
+
+	// Resuming is likewise not a change worth reporting.
+	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
+	assertNoEvent(t, w)
+
+	// Only the session actually ending stops it.
+	w.handleSessions(ctx, nil)
 	assertEvent(t, w, "a", false)
+}
+
+// Someone who pauses and never comes back would otherwise throttle
+// downloads for as long as their client holds the session open.
+func TestEmbyAbandonedPauseStopsCounting(t *testing.T) {
+	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
+	w.PausedSessionTimeout = func() time.Duration { return 50 * time.Millisecond }
+	ctx := context.Background()
+
+	paused := playingSession("a", "8.8.8.8")
+	paused.PlayState.IsPaused = true
+
+	w.handleSessions(ctx, []embySession{paused})
+	assertEvent(t, w, "a", true) // counts at first
+
+	time.Sleep(60 * time.Millisecond)
+	w.handleSessions(ctx, []embySession{paused})
+	assertEvent(t, w, "a", false) // past the timeout, treated as abandoned
+
+	// Resuming must bring it straight back.
+	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
+	assertEvent(t, w, "a", true)
 }
 
 func assertEvent(t *testing.T, w *EmbyWatcher, key string, active bool) {
@@ -170,13 +204,24 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	if len(keys) != 1 || keys[0] != "remote" {
-		t.Fatalf("got %v, want only [remote]", keys)
+	// "lan" is exempted and "idle" has nothing loaded; "paused" counts,
+	// because a pause does not end a stream.
+	got := map[string]bool{}
+	for _, k := range keys {
+		got[k] = true
+	}
+	if len(keys) != 2 || !got["remote"] || !got["paused"] {
+		t.Fatalf("got %v, want [remote paused]", keys)
 	}
 
 	// The baseline must now match, so a push of the same state is
 	// silent rather than re-announcing what is already known.
-	w.handleSessions(context.Background(), []embySession{playingSession("remote", "8.8.8.8")})
+	stillPaused := playingSession("paused", "8.8.8.8")
+	stillPaused.PlayState.IsPaused = true
+	w.handleSessions(context.Background(), []embySession{
+		playingSession("remote", "8.8.8.8"),
+		stillPaused,
+	})
 	assertNoEvent(t, w)
 }
 

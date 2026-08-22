@@ -207,7 +207,6 @@ func sameSessionSet(a, b map[string]bool) bool {
 	return true
 }
 
-
 // Resolve re-evaluates every downloader against current configuration
 // and session state, applying any change. Exported so configuration
 // changes take effect immediately instead of waiting for the next

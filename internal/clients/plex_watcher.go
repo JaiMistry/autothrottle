@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -20,21 +21,32 @@ type PlexWatcher struct {
 	BaseURL           string
 	Token             string
 	SkipLocalPlayback bool
+	// PausedSessionTimeout caps how long a continuously paused session
+	// keeps counting. Nil uses the built-in default.
+	PausedSessionTimeout func() time.Duration
 
 	events chan SessionEvent
+	paused *pausedTracker
 
 	mu         sync.Mutex
 	localCache map[string]bool // sessionKey -> is-local, cached while active
 }
 
 func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher {
-	return &PlexWatcher{
+	w := &PlexWatcher{
 		BaseURL:           strings.TrimRight(baseURL, "/"),
 		Token:             token,
 		SkipLocalPlayback: skipLocalPlayback,
 		events:            make(chan SessionEvent, 16),
 		localCache:        make(map[string]bool),
 	}
+	w.paused = newPausedTracker(func() time.Duration {
+		if w.PausedSessionTimeout == nil {
+			return 0
+		}
+		return w.PausedSessionTimeout()
+	})
+	return w
 }
 
 func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
@@ -89,12 +101,16 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		if n.SessionKey == "" {
 			continue
 		}
-		active := plexStateCounts(n.State)
-
-		if !active {
+		if !plexStateCounts(n.State) {
 			w.mu.Lock()
 			delete(w.localCache, n.SessionKey)
 			w.mu.Unlock()
+			w.paused.forget(n.SessionKey)
+			emit(ctx, w.events, n.SessionKey, false)
+			continue
+		}
+		// A pause keeps counting, but not forever — see pausedTracker.
+		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Now()) {
 			emit(ctx, w.events, n.SessionKey, false)
 			continue
 		}
@@ -132,7 +148,6 @@ func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
 	return v, ok
 }
 
-
 // Snapshot lists the sessions Plex currently reports as playing, with
 // local-playback exemption applied — the same filtering the event
 // stream does, so the two are directly comparable. Used by the watcher
@@ -145,6 +160,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
 
 	present := make(map[string]bool, len(sessions))
 	active := make([]string, 0, len(sessions))
+	now := time.Now()
 	for _, s := range sessions {
 		if s.SessionKey == "" {
 			continue
@@ -156,8 +172,15 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
 		if w.SkipLocalPlayback && s.Player.Local {
 			continue
 		}
+		// The snapshot is also where an abandoned pause is noticed:
+		// the event stream sends one "paused" notification and then
+		// nothing, so this poll is the only thing that re-evaluates it.
+		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", now) {
+			continue
+		}
 		active = append(active, s.SessionKey)
 	}
+	w.paused.retain(present)
 
 	// The snapshot is the freshest full view of what exists, so it's
 	// also the right moment to drop locality entries for sessions that
@@ -188,12 +211,16 @@ type plexSession struct {
 	} `json:"Player"`
 }
 
-// plexStateCounts mirrors the event stream's rule for which playback
-// states count toward throttling. Kept as one function so the
-// WebSocket path and the reconciliation path can never disagree about
-// what "playing" means.
+// plexStateCounts reports which playback states mean a session still
+// exists. Kept as one function so the WebSocket path and the
+// reconciliation path can never disagree.
+//
+// "paused" counts: the stream is in progress and the viewer is coming
+// back. Only "stopped" — and a session vanishing from the list — ends
+// it. How long a paused session goes on counting is pausedTracker's
+// job, not this one's.
 func plexStateCounts(state string) bool {
-	return state == "playing" || state == "buffering"
+	return state == "playing" || state == "buffering" || state == "paused"
 }
 
 // fetchSessions reads /status/sessions. The WebSocket "playing"
