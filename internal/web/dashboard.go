@@ -332,21 +332,6 @@ func logRows(events []db.Event, servers []db.MediaServer, downloaders []db.Downl
 	return out
 }
 
-// joinNames writes a list the way a sentence does: "A", "A and B",
-// "A, B and C".
-func joinNames(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	case 2:
-		return names[0] + " and " + names[1]
-	default:
-		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-	}
-}
-
 func count(n int, one, many string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, one)
