@@ -56,3 +56,81 @@ func TestCommasGroupsThousands(t *testing.T) {
 		}
 	}
 }
+
+// Parsing is not enough: html/template resolves its contextual escaping
+// at execution, so a tag left unclosed by an edit parses cleanly and
+// then fails on the request. Rendering each page with representative
+// data catches that here instead of in the browser.
+func TestPagesRender(t *testing.T) {
+	funcs := templateFuncs()
+	cases := map[string]any{
+		"login": pageData{Title: "Log in", Version: "test"},
+		"dashboard": dashboardData{
+			pageData: pageData{Title: "Dashboard", Authenticated: true, Version: "test"},
+			Hero:     heroState{Statement: "Nothing is throttled", Reason: "…", Tone: "good"},
+			Overall:  overallFlag{Tone: "good", Label: "Idle", Icon: "normal"},
+			Servers:  []serverRowView{{Name: "Plex", Type: "plex", State: "playing", Sessions: 2, Detail: "…"}},
+			Downloaders: []downloaderRowView{
+				{Name: "qBittorrent", Type: "qbittorrent", State: "throttled", Cause: "because Plex is playing", Down: 2200, Up: 512},
+			},
+			Events: []logRowView{{Time: "12:00:00", Level: "info", Message: "hello", Downloader: "qBittorrent"}},
+		},
+		"logs": logsData{
+			pageData: pageData{Title: "Logs", Authenticated: true, Version: "test"},
+			Rows: logRowsData{
+				Events: []logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}},
+				Counts: map[string]int{"info": 1, "warn": 0, "error": 1}, PerPage: 20, Page: 1, Pages: 1, Total: 2, Window: 200,
+			},
+		},
+		"configuration": configPageData{
+			pageData:     pageData{Title: "Configuration", Authenticated: true, Version: "test"},
+			Tab:          "media-servers",
+			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true, Sessions: 2}},
+			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
+			MappingOn:    map[string]bool{"1:1": true},
+			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+		},
+		"analytics": analyticsData{
+			pageData:   pageData{Title: "Analytics", Authenticated: true, Version: "test"},
+			RangeKey:   "24h",
+			HasClients: true,
+			HasSamples: false,
+		},
+	}
+
+	for page, data := range cases {
+		tmpl, err := parsePage(page, funcs)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", page, err)
+		}
+		if err := tmpl.ExecuteTemplate(discard{}, "layout", data); err != nil {
+			t.Errorf("rendering %s: %v", page, err)
+		}
+	}
+}
+
+// Every Configuration tab is its own branch, and a broken one only
+// shows when someone clicks it.
+func TestConfigurationTabsRender(t *testing.T) {
+	tmpl, err := parsePage("configuration", templateFuncs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tab := range []string{"media-servers", "downloaders", "mappings", "about"} {
+		data := configPageData{
+			pageData:     pageData{Title: "Configuration", Authenticated: true},
+			Tab:          tab,
+			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true}},
+			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
+			MappingOn:    map[string]bool{"1:1": true},
+			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+		}
+		if err := tmpl.ExecuteTemplate(discard{}, "layout", data); err != nil {
+			t.Errorf("rendering tab %s: %v", tab, err)
+		}
+	}
+}
+
+type discard struct{}
+
+func (discard) Write(p []byte) (int, error) { return len(p), nil }

@@ -160,3 +160,12 @@
     {{if .Sub}}<p class="at-page-sub">{{.Sub}}</p>{{end}}
   </div>
 </header>{{end}}
+
+{{/* One downloader's live state as a flag. Paused reads as Normal: the
+     configured default rate is in force either way. */}}
+{{define "dlstateflag"}}
+{{- if eq . "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled" "Size" "sm"}}
+{{- else if eq . "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
+{{- else if eq . "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
+{{- else if eq . "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
+{{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal" "Size" "sm"}}{{end}}{{end}}

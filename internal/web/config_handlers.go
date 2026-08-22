@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -26,6 +27,9 @@ type mediaServerView struct {
 	SkipLocalPlayback bool
 	Enabled           bool
 	HasCredential     bool
+	// Sessions is the live count, so the table answers "is this server
+	// doing anything" without a trip to the Dashboard.
+	Sessions int
 }
 
 type downloaderView struct {
@@ -38,6 +42,9 @@ type downloaderView struct {
 	DefaultDownloadLimit, DefaultUploadLimit int64
 	BackupDownloadLimit, BackupUploadLimit   int64
 	Enabled                                  bool
+	// State is the downloader's live throttle state, for the table's
+	// "Now" column.
+	State string
 }
 
 type mappingView struct {
@@ -73,6 +80,27 @@ func settingViews(store *settings.Store) []settingView {
 		})
 	}
 	return out
+}
+
+// downloaderState collapses the scheduler's view into the one word the
+// tables and rows render. A failed apply reads Unreachable, never
+// Normal: the rates on the client are not the rates this app believes
+// it set.
+func (s *Server) downloaderState(dl db.Downloader) string {
+	switch state := s.scheduler.State(dl.ID); {
+	case !dl.Enabled:
+		return "disabled"
+	case state.Failure != "":
+		return "unreachable"
+	case !state.Known:
+		return "unknown"
+	case s.scheduler.Paused():
+		return "paused"
+	case state.Throttled:
+		return "throttled"
+	default:
+		return "normal"
+	}
 }
 
 func mappingKey(mediaServerID, downloaderID int64) string {
@@ -146,14 +174,18 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 	msViews := make([]mediaServerView, 0, len(mediaServers))
 	for _, ms := range mediaServers {
 		msByID[ms.ID] = ms
-		msViews = append(msViews, toMediaServerView(ms))
+		view := toMediaServerView(ms)
+		view.Sessions = s.scheduler.ActiveSessionCount(ms.ID)
+		msViews = append(msViews, view)
 	}
 
 	dlByID := make(map[int64]db.Downloader, len(downloaders))
 	dlViews := make([]downloaderView, 0, len(downloaders))
 	for _, dl := range downloaders {
 		dlByID[dl.ID] = dl
-		dlViews = append(dlViews, s.toDownloaderView(dl))
+		view := s.toDownloaderView(dl)
+		view.State = s.downloaderState(dl)
+		dlViews = append(dlViews, view)
 	}
 
 	mapViews := make([]mappingView, 0, len(mappings))
@@ -348,52 +380,54 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		writeTestResult(w, false, "bad form data")
+		writeTestResult(w, false, "", "bad form data", 0)
 		return
 	}
 	msType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	token := r.FormValue("token")
 	if rawURL == "" || token == "" {
-		writeTestResult(w, false, "enter a URL and token first")
+		writeTestResult(w, false, "", "enter a URL and token first", 0)
 		return
 	}
 	if !clients.SupportedMediaServerType(msType) {
-		writeTestResult(w, false, "choose a supported media server type first")
+		writeTestResult(w, false, "", "choose a supported media server type first", 0)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
+	started := time.Now()
 	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
-		writeTestResult(w, false, err.Error())
+		writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, "connected successfully")
+	writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		writeTestResult(w, false, "bad id")
+		writeTestResult(w, false, "", "bad id", 0)
 		return
 	}
 	ms, err := s.db.GetMediaServer(id)
 	if err != nil {
-		writeTestResult(w, false, "media server not found")
+		writeTestResult(w, false, "", "media server not found", 0)
 		return
 	}
 	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
-		writeTestResult(w, false, "stored credential could not be decrypted")
+		writeTestResult(w, false, "", "stored credential could not be decrypted", 0)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
+	started := time.Now()
 	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
-		writeTestResult(w, false, err.Error())
+		writeTestResult(w, false, ms.URL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, "connected successfully")
+	writeTestResult(w, true, ms.URL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 // --- downloaders ---
@@ -505,17 +539,17 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		writeTestResult(w, false, "bad form data")
+		writeTestResult(w, false, "", "bad form data", 0)
 		return
 	}
 	dlType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
-		writeTestResult(w, false, "enter a URL first")
+		writeTestResult(w, false, "", "enter a URL first", 0)
 		return
 	}
 	if !clients.SupportedDownloaderType(dlType) {
-		writeTestResult(w, false, "choose a supported downloader type first")
+		writeTestResult(w, false, "", "choose a supported downloader type first", 0)
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
@@ -523,38 +557,40 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
+	started := time.Now()
 	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
-		writeTestResult(w, false, err.Error())
+		writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, "connected successfully")
+	writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		writeTestResult(w, false, "bad id")
+		writeTestResult(w, false, "", "bad id", 0)
 		return
 	}
 	dl, err := s.db.GetDownloader(id)
 	if err != nil {
-		writeTestResult(w, false, "downloader not found")
+		writeTestResult(w, false, "", "downloader not found", 0)
 		return
 	}
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
-		writeTestResult(w, false, "stored credential could not be read")
+		writeTestResult(w, false, "", "stored credential could not be read", 0)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
+	started := time.Now()
 	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
-		writeTestResult(w, false, err.Error())
+		writeTestResult(w, false, dl.URL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, "connected successfully")
+	writeTestResult(w, true, dl.URL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 // --- mappings ---
@@ -638,24 +674,41 @@ func (s *Server) applyConfigChange(mediaServersChanged bool) {
 	s.scheduler.ResolveAsync()
 }
 
-// writeTestResult renders a connection test in a fixed-height box, so
-// the result never shifts the form under the reader's cursor, and with
-// a manual dismiss rather than a timer racing them to it. The backend's
-// own error string is shown verbatim in mono, wrapped by a
-// plain-language headline rather than replaced by one.
-func writeTestResult(w http.ResponseWriter, ok bool, message string) {
+// writeTestResult renders a connection test into its bounded box.
+//
+// The backend's own error string is shown verbatim in mono, wrapped by
+// a plain-language headline rather than replaced by one — the machine's
+// words are usually the only thing that says what actually went wrong.
+func writeTestResult(w http.ResponseWriter, ok bool, target, message string, elapsed time.Duration) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	state, label := "fail", "Could not connect"
+	state, tone, icon, label := "failed", "critical", "unreachable", "Failed"
 	if ok {
-		state, label = "ok", "Connected"
+		state, tone, icon, label = "connected", "good", "normal", "Connected"
 	}
-	_, _ = w.Write([]byte(
-		`<div class="at-testresult" data-state="` + state + `" role="status">` +
-			`<strong style="font-weight:var(--weight-bold)">` + label + `</strong>` +
-			`<span class="at-testresult-msg">` + template.HTMLEscapeString(message) + `</span>` +
-			`<button type="button" class="at-testresult-close" aria-label="Dismiss" ` +
-			`onclick="this.parentNode.remove()">✕</button>` +
-			`</div>`))
+	esc := template.HTMLEscapeString
+	_, _ = fmt.Fprintf(w,
+		`<div class="at-testresult" data-state="%s" role="status">`+
+			`<div class="at-testresult-head">`+
+			`<span class="at-flag at-flag--sm" data-tone="%s"><span class="at-flag-icon">%s</span>%s</span>`+
+			`<span class="at-testresult-target">%s</span>`+
+			`<span class="at-testresult-elapsed">%.1fs</span>`+
+			`<button type="button" class="at-testresult-close" aria-label="Dismiss test result" title="Dismiss" `+
+			`onclick="this.closest('.at-testresult').outerHTML='&lt;div class=&quot;at-testresult--idle&quot;&gt;&lt;/div&gt;'">✕</button>`+
+			`</div>`+
+			`<span class="at-testresult-detail">%s</span></div>`,
+		state, tone, testFlagIcon(icon), label, esc(target), elapsed.Seconds(), esc(message))
+}
+
+// testFlagIcon inlines the two StatusFlag glyphs this box can show.
+// They are static — a finished test is not a live state, so neither
+// moves.
+func testFlagIcon(name string) string {
+	if name == "normal" {
+		return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/></svg>`
+	}
+	return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ` +
+		`stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+		`<path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/></svg>`
 }
 
 // saveSettings writes the runtime knobs. Each is validated by the

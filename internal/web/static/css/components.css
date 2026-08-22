@@ -62,8 +62,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-head { justify-content: center; p
   line-height: 1;
 }
 .at-rail-toggle:hover { color: var(--text-dim); }
-.at-shell[data-collapsed="0"] .at-rail-toggle-expand { display: none; }
-html[data-rail="collapsed"] .at-shell .at-rail-toggle-collapse { display: none; }
+/* Expanded is the default, so the expand control only appears once the
+   rail is collapsed. */
+.at-rail-toggle-expand { display: none; }
+html[data-rail="collapsed"] .at-rail-toggle-expand { display: inline-flex; }
+html[data-rail="collapsed"] .at-rail-toggle-collapse { display: none; }
 html[data-rail="collapsed"] .at-shell .at-rail-toggle-expand { align-self: center; margin-bottom: var(--space-6); }
 
 /* The active nav item is the only elevated thing on the page — a
@@ -582,25 +585,50 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-listempty { font-size: var(--text-caption); color: var(--text-faint); padding: var(--space-4) 0; margin: 0; }
 
-/* Fixed height so a result never shifts the form under the reader's
-   cursor, and dismissed by hand — no timer racing them. */
+/* The swap target for a connection test. Four states, one bounded box,
+   so the result never shifts the form around it. Dismissed by hand — it
+   holds still until closed, then goes at once. No exit animation, and
+   no timer racing the reader. */
 .at-testresult {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  min-height: 42px;
-  padding: 8px 12px;
+  display: grid;
+  gap: var(--space-3);
+  min-height: 34px;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-2);
-  font-size: var(--text-caption);
-  color: var(--text-dim);
+  padding: 9px 11px;
 }
-.at-testresult[data-state="ok"] { border-color: color-mix(in srgb, var(--good) 45%, var(--border)); color: var(--good); }
-.at-testresult[data-state="fail"] { border-color: color-mix(in srgb, var(--critical) 45%, var(--border)); color: var(--critical); }
-.at-testresult-msg { flex: 1; min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-.at-testresult-close { border: 0; background: transparent; color: var(--text-faint); cursor: pointer; padding: 2px 4px; border-radius: var(--radius-xs); }
-.at-testresult-close:hover { color: var(--text); }
+.at-testresult[data-state="failed"] { background: var(--fill-critical); border-color: var(--critical); }
+.at-testresult-head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.at-testresult-target { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-dim); }
+.at-testresult-elapsed { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); margin-left: auto; }
+.at-testresult-detail {
+  font-size: var(--text-caption);
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  word-break: break-all;
+}
+.at-testresult[data-state="failed"] .at-testresult-detail { color: var(--text); }
+.at-testresult-close {
+  margin-left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  font-family: var(--font-sans);
+}
+/* The idle state is an empty box of the same height, so running a test
+   never nudges the row below it. */
+.at-testresult--idle { min-height: 34px; background: none; border: 0; padding: 0; }
 
 .at-dialog { border: 0; padding: 0; background: transparent; }
 .at-dialog::backdrop { background: var(--scrim); }
@@ -663,36 +691,57 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   pointer-events: none;
 }
 
-/* ── Tabs ─────────────────────────────────────────────────────────── */
+/* ── Tabs ────────────────────────────────────────────────────────── */
 
-.at-tabs { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* Configuration's sections and the Analytics range selector. Wraps to a
+   second row when the container is too narrow — a tab that scrolls out
+   of sight is a tab nobody finds. */
+.at-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  width: fit-content;
+  max-width: 100%;
+}
 .at-tab {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  gap: var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--text-ui);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-dim);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  padding: 7px 12px;
-  cursor: pointer;
+  border: 0;
+  box-shadow: none;
+  padding: 6px 14px;
+  border-radius: 6px;
   text-decoration: none;
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
-.at-tab:hover { background: var(--fill-neutral); color: var(--text); }
 .at-tab[aria-selected="true"] {
+  color: var(--text);
   background: var(--surface);
   box-shadow: var(--shadow);
-  color: var(--text);
-  font-weight: var(--weight-semibold);
 }
-.at-tab-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-faint); margin-left: var(--space-3); }
-.at-tabs--sm .at-tab { font-size: var(--text-caption); padding: 5px 9px; }
+.at-tab-count { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); }
+.at-tabs--sm { gap: 2px; }
+.at-tabs--sm .at-tab { font-size: var(--text-caption); padding: 4px 10px; }
 
-/* ── Table ────────────────────────────────────────────────────────── */
+/* ── Table ───────────────────────────────────────────────────────── */
 
-.at-tablewrap { overflow-x: auto; }
-.at-table { width: 100%; border-collapse: collapse; font-size: var(--text-ui); }
+/* Dense admin table: an uppercase caption row over hairline-separated
+   rows, never zebra striping. Keeps its width and scrolls inside its
+   card rather than squeezing its columns. */
+.at-tablewrap { overflow-x: auto; min-width: 0; }
+.at-table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: var(--text-ui); }
 .at-table th {
   text-align: left;
   font-size: var(--text-label);
@@ -700,12 +749,25 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   letter-spacing: var(--tracking-label);
   color: var(--text-faint);
   font-weight: var(--weight-semibold);
-  padding: 0 var(--space-6) var(--space-4) 0;
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.at-table td { padding: 10px var(--space-6) 10px 0; border-top: 1px solid var(--border); vertical-align: middle; }
-.at-table tr:first-child td { border-top: 1px solid var(--border); }
-.at-table td:last-child, .at-table th:last-child { padding-right: 0; text-align: right; }
+.at-table td {
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text);
+}
+.at-table td.at-cell--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-caption);
+}
+.at-table td.at-cell--dim { color: var(--text-dim); }
+.at-table td.at-cell--right, .at-table th.at-cell--right { text-align: right; }
+.at-table-empty { padding: 22px 0; text-align: center; color: var(--text-faint); font-size: var(--text-caption); }
+.at-rowactions { display: inline-flex; gap: var(--space-4); justify-content: flex-end; align-items: center; }
 
 /* ── Grids ────────────────────────────────────────────────────────── */
 
