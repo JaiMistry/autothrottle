@@ -119,3 +119,50 @@
     });
   });
 })();
+
+/* ── Credential method sub-tabs ───────────────────────────────────
+   Plex accepts either a pasted token or an account sign-in; Emby and
+   Jellyfin only take a key, so the choice is hidden for them rather
+   than offered and then rejected. */
+(function () {
+  "use strict";
+
+  function syncCredentialUI(form) {
+    if (!form) return;
+    var type = form.querySelector('select[name="type"]');
+    var isPlex = !type || type.value === "plex";
+    form.querySelectorAll("[data-plex-only]").forEach(function (el) { el.hidden = !isPlex; });
+    if (!isPlex) {
+      // Force the token pane back: the sign-in flow is Plex-only, and
+      // leaving it selected would show a dead control.
+      form.querySelectorAll("[data-credtab]").forEach(function (t) {
+        t.setAttribute("aria-selected", t.dataset.credtab === "token" ? "true" : "false");
+      });
+      showPane(form, "token");
+    }
+  }
+
+  function showPane(form, name) {
+    form.querySelectorAll("[data-credpane]").forEach(function (pane) {
+      pane.hidden = pane.dataset.credpane !== name;
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest("[data-credtab]");
+    if (!tab) return;
+    var form = tab.closest("form");
+    form.querySelectorAll("[data-credtab]").forEach(function (t) {
+      t.setAttribute("aria-selected", String(t === tab));
+    });
+    showPane(form, tab.dataset.credtab);
+  });
+
+  document.addEventListener("change", function (e) {
+    if (e.target.name === "type") syncCredentialUI(e.target.closest("form"));
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("form").forEach(syncCredentialUI);
+  });
+})();

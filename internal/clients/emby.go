@@ -60,6 +60,16 @@ var flavorJellyfin = embyFlavor{
 // instead of littering the server's device list with one per restart.
 const embyDeviceID = "autothrottle"
 
+// embyNowPlaying is what a session has loaded. Absent (null) unless
+// something is actually playing, which is what distinguishes an idle
+// connected client from a watching one.
+type embyNowPlaying struct {
+	Name         string `json:"Name"`
+	SeriesName   string `json:"SeriesName"`
+	SeasonNumber *int   `json:"ParentIndexNumber"`
+	Episode      *int   `json:"IndexNumber"`
+}
+
 // embySession is the subset of /Sessions this app reads.
 type embySession struct {
 	ID string `json:"Id"`
@@ -69,12 +79,28 @@ type embySession struct {
 	// NowPlayingItem is absent (null) unless the session has media
 	// loaded, which is what distinguishes an idle connected client
 	// from one actually playing something.
-	NowPlayingItem *struct {
-		Name string `json:"Name"`
-	} `json:"NowPlayingItem"`
-	PlayState struct {
+	NowPlayingItem *embyNowPlaying `json:"NowPlayingItem"`
+	DeviceName     string          `json:"DeviceName"`
+	PlayState      struct {
 		IsPaused bool `json:"IsPaused"`
 	} `json:"PlayState"`
+}
+
+// label renders what is playing, matching the form Plex uses so a
+// mixed setup reads consistently: a series with its numbering, or the
+// item's own name for anything else.
+func (s embySession) label() string {
+	if s.NowPlayingItem == nil {
+		return ""
+	}
+	item := s.NowPlayingItem
+	if item.SeriesName != "" {
+		if item.SeasonNumber != nil && item.Episode != nil {
+			return fmt.Sprintf("%s S%dE%d", item.SeriesName, *item.SeasonNumber, *item.Episode)
+		}
+		return item.SeriesName
+	}
+	return item.Name
 }
 
 // embyStateCounts mirrors plexStateCounts: the single definition of

@@ -19,6 +19,16 @@ type pageData struct {
 	Version       string
 }
 
+// loginFailed re-renders the login page carrying the reason, so a
+// rejected attempt looks like the app rather than like a server error.
+func (s *Server) loginFailed(w http.ResponseWriter, r *http.Request, status int, message string) {
+	w.WriteHeader(status)
+	data := pageData{Title: "Log in", Version: version.Version, Error: message}
+	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
+		slog.Error("rendering login failure", "error", err)
+	}
+}
+
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Title: "Log in", Version: version.Version}
 	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {

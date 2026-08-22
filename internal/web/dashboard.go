@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
+	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
@@ -127,12 +128,26 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 			row.State = "unreachable"
 			row.Detail = "No live connection to this server."
 			unreachable = append(unreachable, ms.Name)
-		case sessions > 0:
-			row.State = "playing"
-			row.Detail = detailForSessions(sessions)
 		default:
-			row.State = "idle"
-			row.Detail = "No activity detected."
+			conn, known := s.watchers.Connection(ms.ID)
+			switch {
+			case sessions > 0:
+				// Playback wins over a dropped live feed. The
+				// reconciliation poll finds sessions over REST whether
+				// or not the socket is up, so reporting "connecting"
+				// here would hide the thing that actually matters
+				// behind a transport detail.
+				row.State = "playing"
+				row.Detail = s.playingDetail(ms.ID, sessions)
+			case known && !conn.Connected:
+				// Nothing to report but the feed is down: say how long
+				// it has been down and whether anything is still trying.
+				row.State = "connecting"
+				row.Detail = reconnectDetail(conn, time.Now())
+			default:
+				row.State = "idle"
+				row.Detail = "No activity detected."
+			}
 		}
 		data.Servers = append(data.Servers, row)
 	}
@@ -296,11 +311,74 @@ func sessionFootnote(paused bool, sessions int) string {
 	return "local playback exempt"
 }
 
-// detailForSessions describes what a server is doing. Session titles
-// and device names are not recorded yet, so this says only what is
-// actually known rather than inventing a "now playing" line.
-func detailForSessions(n int) string {
-	return count(n, "session counting toward throttling", "sessions counting toward throttling")
+// reconnectDetail says how long the feed has been down and when the
+// next attempt is due — "WebSocket closed 41s ago — retrying in 30s".
+func reconnectDetail(conn clients.ConnectionState, now time.Time) string {
+	down := "just now"
+	if !conn.Since.IsZero() {
+		down = shortDuration(now.Sub(conn.Since)) + " ago"
+	}
+	if conn.RetryAt.After(now) {
+		return fmt.Sprintf("Connection closed %s — retrying in %s", down, shortDuration(conn.RetryAt.Sub(now)))
+	}
+	return fmt.Sprintf("Connection closed %s — retrying now", down)
+}
+
+// shortDuration renders a span the way a status line does: seconds
+// under a minute, then minutes, then hours.
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+}
+
+// playingDetail names what is playing and where — "Andor S1E4 — Living
+// Room TV · Study iPad". Sessions sharing a title collapse onto one
+// line, which is the usual case for a household watching together.
+// Anything the server did not report is simply left out.
+func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
+	records, err := s.db.ListSessions(0, time.Now().Add(-24*time.Hour), time.Now())
+	if err != nil {
+		return count(sessions, "session counting toward throttling", "sessions counting toward throttling")
+	}
+
+	byTitle := map[string][]string{}
+	var order []string
+	for _, rec := range records {
+		if rec.MediaServerID != mediaServerID || rec.Ended() {
+			continue
+		}
+		if _, seen := byTitle[rec.Title]; !seen {
+			order = append(order, rec.Title)
+		}
+		if rec.Device != "" {
+			byTitle[rec.Title] = append(byTitle[rec.Title], rec.Device)
+		}
+	}
+
+	parts := make([]string, 0, len(order))
+	for _, title := range order {
+		devices := byTitle[title]
+		switch {
+		case title != "" && len(devices) > 0:
+			parts = append(parts, title+" — "+strings.Join(devices, " · "))
+		case title != "":
+			parts = append(parts, title)
+		case len(devices) > 0:
+			parts = append(parts, strings.Join(devices, " · "))
+		}
+	}
+	if len(parts) == 0 {
+		// Nothing was reported, so say what is known rather than
+		// inventing a now-playing line.
+		return count(sessions, "session counting toward throttling", "sessions counting toward throttling")
+	}
+	return strings.Join(parts, " · ")
 }
 
 func logRows(events []db.Event, servers []db.MediaServer, downloaders []db.Downloader) []logRowView {

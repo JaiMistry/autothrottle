@@ -190,7 +190,7 @@ func TestEmbyWatcherIgnoresMalformedSessionList(t *testing.T) {
 	assertNoEvent(t, w)
 
 	w.mu.Lock()
-	still := w.active["a"]
+	_, still := w.active["a"]
 	w.mu.Unlock()
 	if !still {
 		t.Error("a malformed push must leave the tracked session set alone")

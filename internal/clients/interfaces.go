@@ -67,19 +67,35 @@ type SessionWatcher interface {
 	// Events yields session state changes. Local-playback exemption is
 	// already applied — an exempted session never appears here.
 	Events() <-chan SessionEvent
-	// Snapshot returns every session key currently playing, with the
-	// same exemption filtering Events applies. The event stream alone
-	// can drift out of sync with reality — a WebSocket that drops
+	// Snapshot returns every session currently playing, with the same
+	// exemption filtering Events applies. The event stream alone can
+	// drift out of sync with reality — a WebSocket that drops
 	// mid-playback may never re-send a "playing" notification once
 	// reconnected, leaving a session tracked as active forever — so
 	// the manager polls this as the authoritative correction.
-	Snapshot(ctx context.Context) ([]string, error)
+	Snapshot(ctx context.Context) ([]Session, error)
+	// Connection reports whether the live feed is up, since when, and
+	// when the next attempt is due.
+	Connection() ConnectionState
 }
 
 // SessionEvent reports one session's throttle-relevant state.
 type SessionEvent struct {
-	SessionKey string
-	Active     bool
+	Session
+	Active bool
+}
+
+// Session identifies one playback session and what it is.
+//
+// Title and Device are for the UI only — nothing about throttling
+// depends on them. They are best-effort: a server may not report
+// either, and the interface says so rather than inventing a
+// placeholder, because "Unknown — Unknown device" reads as a bug where
+// an absent line reads as an absent fact.
+type Session struct {
+	Key    string
+	Title  string
+	Device string
 }
 
 // RateLimiter applies a download client's global speed limits. Limits

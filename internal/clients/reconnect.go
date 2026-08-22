@@ -24,7 +24,7 @@ const reconnectMaxBackoff = 30 * time.Second
 // playback promptly, so losing one silently is the failure mode that
 // matters most, and every implementation should recover from it
 // identically.
-func runWithBackoff(ctx context.Context, label, baseURL string, connect func(context.Context) error) {
+func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connectionTracker, connect func(context.Context) error) {
 	backoff := time.Second
 
 	for {
@@ -32,6 +32,7 @@ func runWithBackoff(ctx context.Context, label, baseURL string, connect func(con
 			return
 		}
 		connectedAt := time.Now()
+		tracker.markConnected(connectedAt)
 		err := connect(ctx)
 		if ctx.Err() != nil {
 			return
@@ -42,6 +43,8 @@ func runWithBackoff(ctx context.Context, label, baseURL string, connect func(con
 		if time.Since(connectedAt) > reconnectMaxBackoff {
 			backoff = time.Second // connection was healthy for a while; don't punish it for one drop
 		}
+		dropped := time.Now()
+		tracker.markDisconnected(dropped, dropped.Add(backoff), err)
 
 		select {
 		case <-ctx.Done():
@@ -75,9 +78,9 @@ func webSocketBase(baseURL string) string {
 // The abandon-on-cancel matters: the channel is buffered, and a
 // watcher whose consumer has already stopped would otherwise block
 // here forever once that buffer filled, leaking the goroutine.
-func emit(ctx context.Context, events chan<- SessionEvent, sessionKey string, active bool) {
+func emit(ctx context.Context, events chan<- SessionEvent, session Session, active bool) {
 	select {
-	case events <- SessionEvent{SessionKey: sessionKey, Active: active}:
+	case events <- SessionEvent{Session: session, Active: active}:
 	case <-ctx.Done():
 	}
 }

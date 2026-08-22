@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"github.com/JaiMistry/autothrottle/internal/clients"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -24,12 +25,12 @@ type replacement struct {
 	sessionKeys   []string
 }
 
-func (f *fakeSink) HandleSessionEvent(int64, string, bool) {}
+func (f *fakeSink) HandleSessionEvent(int64, clients.Session, bool) {}
 
-func (f *fakeSink) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
+func (f *fakeSink) ReplaceSessions(mediaServerID int64, sessions []clients.Session) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.replaced = append(f.replaced, replacement{mediaServerID: mediaServerID, sessionKeys: sessionKeys})
+	f.replaced = append(f.replaced, replacement{mediaServerID: mediaServerID, sessionKeys: keysOf(sessions)})
 }
 
 func (f *fakeSink) replacements() []replacement {
@@ -208,4 +209,14 @@ func TestSupportedTypes(t *testing.T) {
 	if _, err := (&Manager{}).newWatcher(db.MediaServer{Type: "nope"}, "t"); err == nil {
 		t.Error("newWatcher for an unknown type should return an error")
 	}
+}
+
+// keysOf reduces a snapshot to its keys, which is all these tests
+// assert on.
+func keysOf(sessions []clients.Session) []string {
+	out := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		out = append(out, session.Key)
+	}
+	return out
 }

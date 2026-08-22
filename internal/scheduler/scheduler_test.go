@@ -79,7 +79,7 @@ func TestMappingAddedWhileSessionActiveThrottles(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 	if got := limiter.snapshot(); len(got) != 1 || got[0].download != 0 {
 		t.Fatalf("expected one default-rate call before any mapping exists, got %+v", got)
@@ -108,7 +108,7 @@ func TestRateEditWhileThrottledIsPushed(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 
 	dl, err := database.GetDownloader(dlID)
@@ -138,7 +138,7 @@ func TestUnchangedResolveIsNotReapplied(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 	s.resolve(context.Background())
 	s.resolve(context.Background())
@@ -157,7 +157,7 @@ func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 
 	ms, err := database.GetMediaServer(msID)
@@ -190,7 +190,7 @@ func TestClearSessionsReleasesThrottle(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 	if throttled, known := s.DownloaderThrottled(dlID); !known || !throttled {
 		t.Fatal("expected downloader to be throttled while a session is active")
@@ -217,7 +217,7 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 
 	s.SetPaused(context.Background(), true)
@@ -242,7 +242,7 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	msID, _ := addServerAndDownloader(t, database)
 	window := time.Now().Add(-time.Hour)
 
-	s.HandleSessionEvent(msID, "42", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
 	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
@@ -251,7 +251,7 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 		t.Fatalf("expected one open session, got %+v", sessions)
 	}
 
-	s.HandleSessionEvent(msID, "42", false)
+	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, false)
 	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
@@ -268,7 +268,7 @@ func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	msID, _ := addServerAndDownloader(t, database)
 	window := time.Now().Add(-time.Hour)
 
-	s.ReplaceSessions(msID, []string{"a", "b"})
+	s.ReplaceSessions(msID, sessionsFrom("a", "b"))
 	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +278,7 @@ func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	}
 
 	// "a" ended, "b" continues.
-	s.ReplaceSessions(msID, []string{"b"})
+	s.ReplaceSessions(msID, sessionsFrom("b"))
 	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -303,7 +303,7 @@ func TestClearSessionsClosesHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
 
-	s.HandleSessionEvent(msID, "42", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
 	s.ClearSessions(msID)
 
 	sessions, err := database.ListSessions(0, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
@@ -325,7 +325,7 @@ func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.HandleSessionEvent(msID, "42", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
 	s.resolve(context.Background())
 
 	events, err := database.ListEvents(10)
@@ -341,4 +341,14 @@ func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 	if !found {
 		t.Errorf("no event attributed to media server %d: %+v", msID, events)
 	}
+}
+
+// sessionsFrom builds the snapshot shape from bare keys, for the many
+// tests that only care about which sessions exist.
+func sessionsFrom(keys ...string) []clients.Session {
+	out := make([]clients.Session, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, clients.Session{Key: key})
+	}
+	return out
 }

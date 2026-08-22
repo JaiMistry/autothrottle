@@ -15,6 +15,10 @@ type SessionRecord struct {
 	StartedAt     string
 	// EndedAt is invalid while the session is still playing.
 	EndedAt sql.NullString
+	// Title and Device are best-effort display detail — what was
+	// playing and where. A server may report neither.
+	Title  string
+	Device string
 }
 
 // Ended reports whether the session has finished.
@@ -28,7 +32,7 @@ func (s SessionRecord) Ended() bool { return s.EndedAt.Valid && s.EndedAt.String
 // snapshot reconciliation — and they routinely report the same session.
 // Without this guard every reconciliation poll would open a duplicate
 // row for anything still playing.
-func (d *DB) OpenSession(mediaServerID int64, sessionKey string) error {
+func (d *DB) OpenSession(mediaServerID int64, sessionKey, title, device string) error {
 	var existing int64
 	err := d.conn.QueryRow(
 		`SELECT id FROM session_history
@@ -36,15 +40,28 @@ func (d *DB) OpenSession(mediaServerID int64, sessionKey string) error {
 		mediaServerID, sessionKey,
 	).Scan(&existing)
 	if err == nil {
-		return nil // already open
+		// Already open. The live event stream carries no title or
+		// device, so the reconciliation snapshot is the first thing
+		// that knows them — fill them in rather than leaving the row
+		// permanently blank.
+		if title != "" || device != "" {
+			_, err = d.conn.Exec(
+				`UPDATE session_history SET title = COALESCE(NULLIF(?, ''), title),
+				 device = COALESCE(NULLIF(?, ''), device) WHERE id = ?`,
+				title, device, existing)
+			if err != nil {
+				return fmt.Errorf("updating session detail: %w", err)
+			}
+		}
+		return nil
 	}
 	if err != sql.ErrNoRows {
 		return fmt.Errorf("checking for an open session: %w", err)
 	}
 
 	_, err = d.conn.Exec(
-		`INSERT INTO session_history (media_server_id, session_key) VALUES (?, ?)`,
-		mediaServerID, sessionKey,
+		`INSERT INTO session_history (media_server_id, session_key, title, device) VALUES (?, ?, ?, ?)`,
+		mediaServerID, sessionKey, title, device,
 	)
 	if err != nil {
 		return fmt.Errorf("opening session: %w", err)
@@ -141,7 +158,7 @@ func (d *DB) ListSessions(downloaderID int64, since, until time.Time) ([]Session
 	params := append([]any{FormatTime(until), FormatTime(since)}, args...)
 
 	rows, err := d.conn.Query(
-		`SELECT id, media_server_id, session_key, started_at, ended_at
+		`SELECT id, media_server_id, session_key, started_at, ended_at, title, device
 		 FROM session_history
 		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`+clause+`
 		 ORDER BY started_at DESC`,
@@ -155,7 +172,7 @@ func (d *DB) ListSessions(downloaderID int64, since, until time.Time) ([]Session
 	var out []SessionRecord
 	for rows.Next() {
 		var s SessionRecord
-		if err := rows.Scan(&s.ID, &s.MediaServerID, &s.SessionKey, &s.StartedAt, &s.EndedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.MediaServerID, &s.SessionKey, &s.StartedAt, &s.EndedAt, &s.Title, &s.Device); err != nil {
 			return nil, fmt.Errorf("scanning session: %w", err)
 		}
 		out = append(out, s)

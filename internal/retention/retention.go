@@ -68,6 +68,12 @@ func (r *Runner) RunOnce() {
 		slog.Info("retention: pruned history events", "rows", deleted)
 	}
 
+	if deleted, err := r.db.PruneAuthSessions(now); err != nil {
+		slog.Error("retention: pruning expired login sessions", "error", err)
+	} else if deleted > 0 {
+		slog.Info("retention: pruned expired login sessions", "rows", deleted)
+	}
+
 	// Session history shares the event retention window: both answer
 	// "what happened, and when", and splitting them would mean a
 	// timeline whose sessions and events disagree about how far back

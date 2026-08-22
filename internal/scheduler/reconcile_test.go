@@ -21,7 +21,7 @@ func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 	if got := limiter.snapshot(); len(got) == 0 || got[len(got)-1].download != 500 {
 		t.Fatalf("expected the session to throttle first, got %+v", got)
@@ -49,7 +49,7 @@ func TestReplaceSessionsAddsSessionsTheEventStreamMissed(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.ReplaceSessions(msID, []string{"session-1"})
+	s.ReplaceSessions(msID, sessionsFrom("session-1"))
 	if n := s.ActiveSessionCount(msID); n != 1 {
 		t.Fatalf("ActiveSessionCount = %d, want 1", n)
 	}
@@ -74,11 +74,11 @@ func TestReplaceSessionsWithNoChangeDoesNotReapply(t *testing.T) {
 		t.Fatalf("creating mapping: %v", err)
 	}
 
-	s.HandleSessionEvent(msID, "session-1", true)
+	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
 	before := len(limiter.snapshot())
 
-	s.ReplaceSessions(msID, []string{"session-1"})
+	s.ReplaceSessions(msID, sessionsFrom("session-1"))
 	s.resolve(context.Background())
 
 	if after := len(limiter.snapshot()); after != before {

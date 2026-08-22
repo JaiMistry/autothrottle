@@ -107,16 +107,34 @@ func RequireCSRF(cfg Config, csrf *CSRF) func(http.Handler) http.Handler {
 
 // LoginHandler handles POST /login: rate-limited credential check,
 // session creation, redirect to the dashboard.
-func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter) http.HandlerFunc {
+// LoginFailure renders a rejected attempt. It is a callback so this
+// package keeps owning the credential logic without knowing anything
+// about templates, and a failed login can still come back as the real
+// login page rather than a plain-text error.
+type LoginFailure func(w http.ResponseWriter, r *http.Request, status int, message string)
+
+func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter, onFailure LoginFailure) http.HandlerFunc {
+	fail := onFailure
+	if fail == nil {
+		fail = func(w http.ResponseWriter, _ *http.Request, status int, message string) {
+			http.Error(w, message, status)
+		}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
-			http.Error(w, "too many login attempts, try again shortly", http.StatusTooManyRequests)
+			fail(w, r, http.StatusTooManyRequests, "Too many attempts. Wait a moment and try again.")
 			return
 		}
 		username := r.FormValue("username")
 		password := r.FormValue("password")
+		if username == "" || password == "" {
+			fail(w, r, http.StatusUnauthorized, "Enter a username and password.")
+			return
+		}
 		if !cfg.Verify(username, password) {
-			http.Error(w, "invalid username or password", http.StatusUnauthorized)
+			// Deliberately generic: saying which half was wrong would
+			// confirm whether a username exists.
+			fail(w, r, http.StatusUnauthorized, "Invalid username or password.")
 			return
 		}
 		token, err := sessions.Create()

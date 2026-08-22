@@ -48,6 +48,7 @@ type EmbyWatcher struct {
 
 	flavor embyFlavor
 	events chan SessionEvent
+	conn   connectionTracker
 	paused *pausedTracker
 
 	mu sync.Mutex
@@ -56,7 +57,7 @@ type EmbyWatcher struct {
 	// deliberately survives a reconnect: sessions that ended while the
 	// connection was down are then reported as stopped by the first
 	// list that arrives after it comes back.
-	active map[string]bool
+	active map[string]Session
 }
 
 // NewEmbyWatcher builds a watcher for an Emby server. apiKey is a key
@@ -78,7 +79,7 @@ func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool
 		SkipLocalPlayback: skipLocalPlayback,
 		flavor:            f,
 		events:            make(chan SessionEvent, 16),
-		active:            make(map[string]bool),
+		active:            make(map[string]Session),
 	}
 	w.paused = newPausedTracker(func() time.Duration {
 		if w.PausedSessionTimeout == nil {
@@ -92,7 +93,7 @@ func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool
 func (w *EmbyWatcher) Events() <-chan SessionEvent { return w.events }
 
 func (w *EmbyWatcher) Run(ctx context.Context) {
-	runWithBackoff(ctx, strings.ToLower(w.flavor.name), w.BaseURL, w.connectAndListen)
+	runWithBackoff(ctx, strings.ToLower(w.flavor.name), w.BaseURL, &w.conn, w.connectAndListen)
 }
 
 // embySessionPushInterval is the cadence requested from the server for
@@ -268,14 +269,14 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 	w.active = next
 	w.mu.Unlock()
 
-	for key := range next {
-		if !previous[key] {
-			emit(ctx, w.events, key, true)
+	for key, session := range next {
+		if _, had := previous[key]; !had {
+			emit(ctx, w.events, session, true)
 		}
 	}
-	for key := range previous {
-		if !next[key] {
-			emit(ctx, w.events, key, false)
+	for key, session := range previous {
+		if _, still := next[key]; !still {
+			emit(ctx, w.events, session, false)
 		}
 	}
 }
@@ -284,8 +285,8 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 // local-playback exemption — to a raw session list. The single
 // definition used by the WebSocket path and the snapshot path, so the
 // two cannot disagree about what counts.
-func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
-	active := make(map[string]bool, len(sessions))
+func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
+	active := make(map[string]Session, len(sessions))
 	present := make(map[string]bool, len(sessions))
 	now := time.Now()
 	for _, s := range sessions {
@@ -302,7 +303,7 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
 		if !w.paused.counts(s.ID, s.PlayState.IsPaused, now) {
 			continue
 		}
-		active[s.ID] = true
+		active[s.ID] = Session{Key: s.ID, Title: s.label(), Device: s.DeviceName}
 	}
 	// Every push is a full session list, so this is always the complete
 	// picture of what still exists.
@@ -318,7 +319,7 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]bool {
 // notable — but if the socket is down, the REST read is the only
 // current truth, and leaving a stale baseline behind would make the
 // first push after reconnect emit changes that already happened.
-func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]string, error) {
+func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	sessions, err := fetchEmbySessions(ctx, w.flavor, w.BaseURL, w.APIKey)
 	if err != nil {
 		return nil, err
@@ -330,11 +331,11 @@ func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]string, error) {
 	w.active = set
 	w.mu.Unlock()
 
-	keys := make([]string, 0, len(set))
-	for key := range set {
-		keys = append(keys, key)
+	out := make([]Session, 0, len(set))
+	for _, session := range set {
+		out = append(out, session)
 	}
-	return keys, nil
+	return out, nil
 }
 
 func (w *EmbyWatcher) webSocketURL() string {
@@ -342,3 +343,6 @@ func (w *EmbyWatcher) webSocketURL() string {
 		"?api_key=" + url.QueryEscape(w.APIKey) +
 		"&deviceId=" + url.QueryEscape(embyDeviceID)
 }
+
+// Connection reports this watcher's live connection health.
+func (w *EmbyWatcher) Connection() ConnectionState { return w.conn.Connection() }

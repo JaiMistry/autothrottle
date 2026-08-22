@@ -182,18 +182,37 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 // runs on a timer for every server, and the overwhelming majority of
 // polls find exactly what's already tracked — re-resolving each time
 // would mean a pointless downloader API call per poll per server.
-func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
-	next := make(map[string]bool, len(sessionKeys))
-	for _, key := range sessionKeys {
-		next[key] = true
+func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Session) {
+	next := make(map[string]bool, len(sessions))
+	detail := make(map[string]clients.Session, len(sessions))
+	for _, session := range sessions {
+		next[session.Key] = true
+		detail[session.Key] = session
 	}
 
 	s.mu.Lock()
 	current := s.active[mediaServerID]
-	if sameSessionSet(current, next) {
-		s.mu.Unlock()
+	unchanged := sameSessionSet(current, next)
+	s.mu.Unlock()
+
+	// The snapshot is the only input that knows *what* is playing — the
+	// live event stream carries a key and nothing else — so detail is
+	// written on every poll, including the overwhelmingly common one
+	// where the session set has not changed at all. Doing this only on
+	// a change would leave every session that started via the event
+	// stream permanently untitled.
+	for _, session := range sessions {
+		if session.Title != "" || session.Device != "" {
+			s.recordSession(mediaServerID, session, true)
+		}
+	}
+
+	if unchanged {
 		return
 	}
+
+	s.mu.Lock()
+	current = s.active[mediaServerID]
 	started, ended := changedSessionKeys(current, next)
 	if len(next) == 0 {
 		delete(s.active, mediaServerID)
@@ -205,12 +224,11 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessionKeys []string) {
 	// The snapshot is authoritative, so anything it reveals as started
 	// or ended is history the event stream missed.
 	for _, key := range started {
-		s.recordSession(mediaServerID, key, true)
+		s.recordSession(mediaServerID, detail[key], true)
 	}
 	for _, key := range ended {
-		s.recordSession(mediaServerID, key, false)
+		s.recordSession(mediaServerID, clients.Session{Key: key}, false)
 	}
-
 	slog.Info("scheduler: corrected session state from snapshot",
 		"media_server_id", mediaServerID, "added", len(started), "removed", len(ended), "now_active", len(next))
 	s.ResolveAsync()
@@ -266,7 +284,7 @@ func (s *Scheduler) ResolveAsync() {
 // its own goroutine (with its own timeout-bound context) so a slow
 // downloader API call never blocks the WebSocket read loop that fed
 // this event.
-func (s *Scheduler) HandleSessionEvent(mediaServerID int64, sessionKey string, active bool) {
+func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Session, active bool) {
 	s.mu.Lock()
 	set, ok := s.active[mediaServerID]
 	if !ok {
@@ -274,13 +292,13 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, sessionKey string, a
 		s.active[mediaServerID] = set
 	}
 	if active {
-		set[sessionKey] = true
+		set[session.Key] = true
 	} else {
-		delete(set, sessionKey)
+		delete(set, session.Key)
 	}
 	s.mu.Unlock()
 
-	s.recordSession(mediaServerID, sessionKey, active)
+	s.recordSession(mediaServerID, session, active)
 	s.ResolveAsync()
 }
 
@@ -288,16 +306,16 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, sessionKey string, a
 // page. Failures are logged and swallowed: history is a reporting
 // concern, and losing a row must never stop throttling from being
 // applied, which is the job that actually matters.
-func (s *Scheduler) recordSession(mediaServerID int64, sessionKey string, active bool) {
+func (s *Scheduler) recordSession(mediaServerID int64, session clients.Session, active bool) {
 	var err error
 	if active {
-		err = s.db.OpenSession(mediaServerID, sessionKey)
+		err = s.db.OpenSession(mediaServerID, session.Key, session.Title, session.Device)
 	} else {
-		err = s.db.CloseSession(mediaServerID, sessionKey)
+		err = s.db.CloseSession(mediaServerID, session.Key)
 	}
 	if err != nil {
 		slog.Error("scheduler: recording session history",
-			"media_server_id", mediaServerID, "session", sessionKey, "active", active, "error", err)
+			"media_server_id", mediaServerID, "session", session.Key, "active", active, "error", err)
 	}
 }
 

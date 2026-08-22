@@ -105,7 +105,11 @@ CREATE TABLE IF NOT EXISTS session_history (
     media_server_id INTEGER NOT NULL REFERENCES media_servers(id) ON DELETE CASCADE,
     session_key TEXT NOT NULL,
     started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    ended_at TEXT
+    ended_at TEXT,
+    -- Best-effort, for display only: nothing about throttling depends
+    -- on either, and a server may report neither.
+    title TEXT NOT NULL DEFAULT '',
+    device TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_session_history_started ON session_history(started_at);
@@ -113,3 +117,14 @@ CREATE INDEX IF NOT EXISTS idx_session_history_server ON session_history(media_s
 -- Session keys are reused by media servers over time, so "the open row
 -- for this server and key" is the only safe way to find what to close.
 CREATE INDEX IF NOT EXISTS idx_session_history_open ON session_history(media_server_id, session_key) WHERE ended_at IS NULL;
+
+-- Login sessions. Held in the database rather than in memory so a
+-- restart — an update, a host reboot, a crash — does not sign everyone
+-- out. Tokens are opaque random strings; nothing about the user is
+-- stored, because there is only ever one user.
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);

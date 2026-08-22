@@ -12,9 +12,7 @@ import (
 
 func TestEmbyStateCounts(t *testing.T) {
 	playing := embySession{ID: "1"}
-	playing.NowPlayingItem = &struct {
-		Name string `json:"Name"`
-	}{Name: "Arrival"}
+	playing.NowPlayingItem = &embyNowPlaying{Name: "Arrival"}
 
 	paused := playing
 	paused.PlayState.IsPaused = true
@@ -63,9 +61,7 @@ func TestEmbySessionIsLocal(t *testing.T) {
 // playingSession builds a session that counts toward throttling.
 func playingSession(id, endpoint string) embySession {
 	s := embySession{ID: id, RemoteEndPoint: endpoint}
-	s.NowPlayingItem = &struct {
-		Name string `json:"Name"`
-	}{Name: "Something"}
+	s.NowPlayingItem = &embyNowPlaying{Name: "Something"}
 	return s
 }
 
@@ -78,13 +74,16 @@ func TestEmbyActiveSetAppliesExemption(t *testing.T) {
 
 	off := newEmbyWatcher(flavorJellyfin, "http://x", "k", false)
 	got := off.activeSet(sessions)
-	if len(got) != 2 || !got["lan"] || !got["remote"] {
+	_, hasLAN := got["lan"]
+	_, hasRemote := got["remote"]
+	if len(got) != 2 || !hasLAN || !hasRemote {
 		t.Errorf("exemption off: got %v, want both playing sessions", got)
 	}
 
 	on := newEmbyWatcher(flavorJellyfin, "http://x", "k", true)
 	got = on.activeSet(sessions)
-	if len(got) != 1 || !got["remote"] {
+	_, hasRemote = got["remote"]
+	if len(got) != 1 || !hasRemote {
 		t.Errorf("exemption on: got %v, want only the remote session", got)
 	}
 }
@@ -167,7 +166,7 @@ func assertEvent(t *testing.T, w *EmbyWatcher, key string, active bool) {
 	t.Helper()
 	select {
 	case ev := <-w.Events():
-		if ev.SessionKey != key || ev.Active != active {
+		if ev.Key != key || ev.Active != active {
 			t.Fatalf("got event %+v, want {%s %v}", ev, key, active)
 		}
 	case <-time.After(time.Second):
@@ -208,7 +207,7 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	// because a pause does not end a stream.
 	got := map[string]bool{}
 	for _, k := range keys {
-		got[k] = true
+		got[k.Key] = true
 	}
 	if len(keys) != 2 || !got["remote"] || !got["paused"] {
 		t.Fatalf("got %v, want [remote paused]", keys)
@@ -254,7 +253,7 @@ func TestEmbySnapshotDoesNotClearBaselineOnError(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	w.mu.Lock()
-	still := w.active["a"]
+	_, still := w.active["a"]
 	w.mu.Unlock()
 	if !still {
 		t.Error("a failed snapshot must not clear the tracked session set")

@@ -31,7 +31,7 @@ func TestOpenAndCloseSession(t *testing.T) {
 	server := addTestMediaServer(t, d, "Plex")
 	window := time.Now().Add(-time.Hour)
 
-	if err := d.OpenSession(server, "42"); err != nil {
+	if err := d.OpenSession(server, "42", "", ""); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	sessions := openSessions(t, d, window, time.Now().Add(time.Hour))
@@ -59,7 +59,7 @@ func TestOpenSessionIsIdempotent(t *testing.T) {
 	server := addTestMediaServer(t, d, "Plex")
 
 	for i := 0; i < 3; i++ {
-		if err := d.OpenSession(server, "42"); err != nil {
+		if err := d.OpenSession(server, "42", "", ""); err != nil {
 			t.Fatalf("OpenSession: %v", err)
 		}
 	}
@@ -76,7 +76,7 @@ func TestCloseSessionIsIdempotent(t *testing.T) {
 	if err := d.CloseSession(server, "never"); err != nil {
 		t.Fatalf("closing an unknown session: %v", err)
 	}
-	if err := d.OpenSession(server, "42"); err != nil {
+	if err := d.OpenSession(server, "42", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.CloseSession(server, "42"); err != nil {
@@ -93,13 +93,13 @@ func TestReusedSessionKeyOpensNewRow(t *testing.T) {
 	d := newTestDB(t)
 	server := addTestMediaServer(t, d, "Plex")
 
-	if err := d.OpenSession(server, "1"); err != nil {
+	if err := d.OpenSession(server, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.CloseSession(server, "1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.OpenSession(server, "1"); err != nil {
+	if err := d.OpenSession(server, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,10 +123,10 @@ func TestCloseSessionsForServerOnlyAffectsThatServer(t *testing.T) {
 	plex := addTestMediaServer(t, d, "Plex")
 	jellyfin := addTestMediaServer(t, d, "Jellyfin")
 
-	if err := d.OpenSession(plex, "1"); err != nil {
+	if err := d.OpenSession(plex, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.OpenSession(jellyfin, "1"); err != nil {
+	if err := d.OpenSession(jellyfin, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.CloseSessionsForServer(plex); err != nil {
@@ -260,11 +260,11 @@ func TestSessionSummaryCountsSessionsAndServers(t *testing.T) {
 	jellyfin := addTestMediaServer(t, d, "Jellyfin")
 
 	for _, key := range []string{"1", "2", "3"} {
-		if err := d.OpenSession(plex, key); err != nil {
+		if err := d.OpenSession(plex, key, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := d.OpenSession(jellyfin, "1"); err != nil {
+	if err := d.OpenSession(jellyfin, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -328,10 +328,10 @@ func TestSessionQueriesScopeToMappedServers(t *testing.T) {
 	if _, err := d.CreateMapping(unmapped, other); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.OpenSession(mapped, "1"); err != nil {
+	if err := d.OpenSession(mapped, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.OpenSession(unmapped, "1"); err != nil {
+	if err := d.OpenSession(unmapped, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -378,7 +378,7 @@ func TestSessionScopeIgnoresDisabledMappings(t *testing.T) {
 	if err := d.SetMappingEnabled(mappingID, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.OpenSession(server, "1"); err != nil {
+	if err := d.OpenSession(server, "1", "", ""); err != nil {
 		t.Fatal(err)
 	}
 

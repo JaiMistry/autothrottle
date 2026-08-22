@@ -11,7 +11,7 @@ import (
 // fakeWatcher is a SessionWatcher that never connects to anything.
 type fakeWatcher struct {
 	events   chan clients.SessionEvent
-	snapshot []string
+	snapshot []clients.Session
 	err      error
 	calls    int
 }
@@ -25,7 +25,7 @@ func (f *fakeWatcher) Events() <-chan clients.SessionEvent {
 	return f.events
 }
 
-func (f *fakeWatcher) Snapshot(context.Context) ([]string, error) {
+func (f *fakeWatcher) Snapshot(context.Context) ([]clients.Session, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err
@@ -35,7 +35,7 @@ func (f *fakeWatcher) Snapshot(context.Context) ([]string, error) {
 
 func TestReconcileOnceForwardsSnapshotToScheduler(t *testing.T) {
 	m, _, sink, _ := newTestManager(t)
-	w := &fakeWatcher{snapshot: []string{"session-1", "session-2"}}
+	w := &fakeWatcher{snapshot: sessionsFrom("session-1", "session-2")}
 
 	if err := m.reconcileOnce(context.Background(), 7, w); err != nil {
 		t.Fatalf("reconcileOnce: %v", err)
@@ -82,4 +82,19 @@ func TestReconcileOnceForwardsEmptySnapshot(t *testing.T) {
 	if len(got) != 1 || len(got[0].sessionKeys) != 0 {
 		t.Errorf("got %+v, want one empty replacement", got)
 	}
+}
+
+// Connection satisfies the interface; these tests do not exercise the
+// live-feed health surface.
+func (f *fakeWatcher) Connection() clients.ConnectionState {
+	return clients.ConnectionState{Connected: true}
+}
+
+// sessionsFrom builds the snapshot shape from bare keys.
+func sessionsFrom(keys ...string) []clients.Session {
+	out := make([]clients.Session, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, clients.Session{Key: key})
+	}
+	return out
 }

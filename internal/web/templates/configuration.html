@@ -87,11 +87,24 @@
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.12:32400" required>
         <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      <label class="at-field">
+      {{/* Plex offers two ways in; Emby and Jellyfin only take a key,
+           so the sub-tabs are hidden for them by the type select. */}}
+      <div data-plex-only>
+        <div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-5)">
+          <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>
+          <button type="button" class="at-tab" role="tab" aria-selected="false" data-credtab="signin">Sign in with Plex</button>
+        </div>
+      </div>
+
+      <label class="at-field" data-credpane="token">
         <span class="at-field-label">Token{{if .EditMediaServer.HasCredential}} — leave blank to keep{{end}}</span>
         <input class="at-input at-input--mono" type="password" name="token" placeholder="••••••••••••" autocomplete="off">
         <span class="at-field-hint">A Plex token, or an Emby/Jellyfin API key. Never displayed once saved.</span>
       </label>
+
+      <div data-credpane="signin" hidden>
+        <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
+      </div>
       <div>
         <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
           Exempt sessions playing from the local network</label>
@@ -322,3 +335,42 @@
     <span class="at-ratefield-suffix">{{if eq .Value 0}}unlimited{{else}}KB/s{{end}}</span>
   </span>
 </label>{{end}}
+
+{{/* The Plex sign-in panel. Four states in one bounded block, swapped
+     in place, so starting or finishing a sign-in never moves the form
+     under the reader. */}}
+{{define "plexsignin"}}<div class="at-plexsignin" data-state="{{.State}}">
+{{- if eq .State "waiting"}}
+  <p class="at-field-hint" style="margin:0 0 var(--space-5)">Approve AutoThrottle in the window that opens, then come back here. The code is <strong class="at-mono">{{.Code}}</strong>.</p>
+  <div style="display:flex;gap:var(--space-4);align-items:center;flex-wrap:wrap">
+    <a class="at-btn at-btn--primary" href="{{.AuthURL}}" target="_blank" rel="noreferrer">Open Plex sign-in</a>
+    {{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Waiting for approval" "Size" "sm"}}
+  </div>
+  {{/* Poll until Plex attaches a token. Two seconds is what the flow
+       can bear without hammering plex.tv. */}}
+  <div hx-get="/configuration/plex-signin/poll" hx-trigger="load delay:2s" hx-target="#plex-signin" hx-swap="innerHTML"></div>
+{{- else if eq .State "done"}}
+  <input type="hidden" name="token" value="{{.Token}}">
+  <div class="at-testresult" data-state="connected">
+    <div class="at-testresult-head">
+      {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Signed in" "Size" "sm"}}
+      <span class="at-testresult-target">token received — save the server to store it</span>
+    </div>
+  </div>
+{{- else if eq .State "error"}}
+  <div class="at-testresult" data-state="failed">
+    <div class="at-testresult-head">
+      {{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Failed" "Size" "sm"}}
+      <span class="at-testresult-target">{{.Title}}</span>
+    </div>
+    <span class="at-testresult-detail">{{.Detail}}</span>
+  </div>
+  <div style="margin-top:var(--space-5)">
+    <button type="button" class="at-btn" hx-post="/configuration/plex-signin" hx-target="#plex-signin" hx-swap="innerHTML"
+            hx-headers='{"X-CSRF-Token": "{{.CSRF}}"}'>Try again</button>
+  </div>
+{{- else}}
+  <p class="at-field-hint" style="margin:0 0 var(--space-5)">Authorise AutoThrottle from your Plex account instead of pasting a token. Nothing is stored until you save the server.</p>
+  <button type="button" class="at-btn at-btn--primary" hx-post="/configuration/plex-signin" hx-target="#plex-signin" hx-swap="innerHTML">Sign in with Plex</button>
+{{- end}}
+</div>{{end}}

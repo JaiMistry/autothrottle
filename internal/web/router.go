@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
+	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 	"github.com/JaiMistry/autothrottle/internal/settings"
@@ -33,6 +34,7 @@ var pages = []string{"login", "dashboard", "configuration", "logs", "analytics"}
 type watcherManager interface {
 	Reconcile()
 	Running(mediaServerID int64) bool
+	Connection(mediaServerID int64) (clients.ConnectionState, bool)
 }
 
 type Server struct {
@@ -46,6 +48,7 @@ type Server struct {
 	scheduler     *scheduler.Scheduler
 	watchers      watcherManager
 	settings      *settings.Store
+	plex          plexSignIn
 }
 
 // parsePage builds one page's template set: the shared layout, the
@@ -75,7 +78,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 	return &Server{
 		db:            database,
 		authCfg:       authCfg,
-		sessions:      auth.NewDefaultSessionManager(),
+		sessions:      auth.NewDefaultSessionManager().WithStore(database),
 		limiter:       auth.NewDefaultLoginLimiter(),
 		csrf:          csrf,
 		templates:     templates,
@@ -90,7 +93,7 @@ func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("POST /login", auth.LoginHandler(s.authCfg, s.sessions, s.limiter))
+	mux.HandleFunc("POST /login", auth.LoginHandler(s.authCfg, s.sessions, s.limiter, s.loginFailed))
 	mux.HandleFunc("POST /logout", auth.LogoutHandler(s.sessions))
 	mux.HandleFunc("GET /health", s.healthHandler)
 	mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +124,8 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("POST /configuration/mappings/set", s.setMapping)
 	protected.HandleFunc("POST /configuration/settings", s.saveSettings)
 	protected.HandleFunc("GET /configuration/update-check", s.updateCheck)
+	protected.HandleFunc("POST /configuration/plex-signin", s.startPlexSignIn)
+	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
 
 	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),

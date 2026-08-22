@@ -26,6 +26,7 @@ type PlexWatcher struct {
 	PausedSessionTimeout func() time.Duration
 
 	events chan SessionEvent
+	conn   connectionTracker
 	paused *pausedTracker
 
 	mu         sync.Mutex
@@ -57,7 +58,7 @@ func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 // failure mode an event-driven design has, since a dead socket looks
 // exactly like a quiet one.
 func (w *PlexWatcher) Run(ctx context.Context) {
-	runWithBackoff(ctx, "plex", w.BaseURL, w.connectAndListen)
+	runWithBackoff(ctx, "plex", w.BaseURL, &w.conn, w.connectAndListen)
 }
 
 func (w *PlexWatcher) connectAndListen(ctx context.Context) error {
@@ -106,12 +107,12 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			delete(w.localCache, n.SessionKey)
 			w.mu.Unlock()
 			w.paused.forget(n.SessionKey)
-			emit(ctx, w.events, n.SessionKey, false)
+			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
 		// A pause keeps counting, but not forever — see pausedTracker.
 		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Now()) {
-			emit(ctx, w.events, n.SessionKey, false)
+			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
 
@@ -137,7 +138,10 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			}
 		}
 
-		emit(ctx, w.events, n.SessionKey, true)
+		// The notification carries no title or device, so this is the
+		// key alone; the reconciliation snapshot fills the detail in on
+		// its next pass.
+		emit(ctx, w.events, Session{Key: n.SessionKey}, true)
 	}
 }
 
@@ -152,14 +156,14 @@ func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
 // local-playback exemption applied — the same filtering the event
 // stream does, so the two are directly comparable. Used by the watcher
 // manager to correct drift after a dropped connection.
-func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
+func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	sessions, err := w.fetchSessions(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	present := make(map[string]bool, len(sessions))
-	active := make([]string, 0, len(sessions))
+	active := make([]Session, 0, len(sessions))
 	now := time.Now()
 	for _, s := range sessions {
 		if s.SessionKey == "" {
@@ -178,7 +182,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
 		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", now) {
 			continue
 		}
-		active = append(active, s.SessionKey)
+		active = append(active, Session{Key: s.SessionKey, Title: s.label(), Device: s.device()})
 	}
 	w.paused.retain(present)
 
@@ -205,10 +209,41 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]string, error) {
 // plexSession is the subset of /status/sessions this app reads.
 type plexSession struct {
 	SessionKey string `json:"sessionKey"`
-	Player     struct {
-		Local bool   `json:"local"`
-		State string `json:"state"`
+	// Title is the episode or film; GrandparentTitle is the show and
+	// Index/ParentIndex the numbering, which together make the
+	// "Andor S1E4" form the UI wants.
+	Title            string `json:"title"`
+	GrandparentTitle string `json:"grandparentTitle"`
+	Index            int    `json:"index"`
+	ParentIndex      int    `json:"parentIndex"`
+	Type             string `json:"type"`
+	Player           struct {
+		Local  bool   `json:"local"`
+		State  string `json:"state"`
+		Title  string `json:"title"`
+		Device string `json:"device"`
 	} `json:"Player"`
+}
+
+// label renders what is playing the way Plex's own clients do: a show
+// with its episode numbering, or just the title for anything else.
+func (s plexSession) label() string {
+	if s.Type == "episode" && s.GrandparentTitle != "" {
+		if s.ParentIndex > 0 && s.Index > 0 {
+			return fmt.Sprintf("%s S%dE%d", s.GrandparentTitle, s.ParentIndex, s.Index)
+		}
+		return s.GrandparentTitle
+	}
+	return s.Title
+}
+
+// device prefers the player's own name ("Living Room TV") over the
+// hardware type ("Chromecast"), since that is what the owner named it.
+func (s plexSession) device() string {
+	if s.Player.Title != "" {
+		return s.Player.Title
+	}
+	return s.Player.Device
 }
 
 // plexStateCounts reports which playback states mean a session still
@@ -260,3 +295,6 @@ func (w *PlexWatcher) isSessionLocal(ctx context.Context, sessionKey string) (bo
 func plexWebSocketURL(baseURL, token string) string {
 	return webSocketBase(baseURL) + "/:/websockets/notifications?X-Plex-Token=" + url.QueryEscape(token)
 }
+
+// Connection reports this watcher's live connection health.
+func (w *PlexWatcher) Connection() ConnectionState { return w.conn.Connection() }

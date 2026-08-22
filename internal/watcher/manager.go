@@ -35,11 +35,11 @@ const snapshotTimeout = 10 * time.Second
 // sink receives session events from watchers. The scheduler satisfies
 // this; the indirection keeps the manager testable without one.
 type sink interface {
-	HandleSessionEvent(mediaServerID int64, sessionKey string, active bool)
+	HandleSessionEvent(mediaServerID int64, session clients.Session, active bool)
 	ClearSessions(mediaServerID int64)
 	// ReplaceSessions overwrites a server's whole active set from a
 	// snapshot, correcting any drift the event stream accumulated.
-	ReplaceSessions(mediaServerID int64, sessionKeys []string)
+	ReplaceSessions(mediaServerID int64, sessions []clients.Session)
 }
 
 // handle tracks one running watcher. fingerprint captures the config
@@ -49,6 +49,7 @@ type sink interface {
 type handle struct {
 	cancel      context.CancelFunc
 	fingerprint string
+	watcher     clients.SessionWatcher
 }
 
 type Manager struct {
@@ -147,7 +148,7 @@ func (m *Manager) Reconcile() {
 		go m.forward(ctx, id, w.Events())
 		go m.reconcileSessions(ctx, id, ms.Name, w)
 
-		m.running[id] = handle{cancel: cancel, fingerprint: fingerprint}
+		m.running[id] = handle{cancel: cancel, fingerprint: fingerprint, watcher: w}
 		slog.Info("watcher: started", "media_server", ms.Name, "url", ms.URL)
 	}
 }
@@ -208,7 +209,7 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 			if !ok {
 				return
 			}
-			m.sched.HandleSessionEvent(mediaServerID, event.SessionKey, event.Active)
+			m.sched.HandleSessionEvent(mediaServerID, event.Session, event.Active)
 		}
 	}
 }
@@ -261,11 +262,11 @@ func (m *Manager) reconcileOnce(ctx context.Context, mediaServerID int64, w clie
 	snapshotCtx, cancel := context.WithTimeout(ctx, snapshotTimeout)
 	defer cancel()
 
-	keys, err := w.Snapshot(snapshotCtx)
+	sessions, err := w.Snapshot(snapshotCtx)
 	if err != nil {
 		return err
 	}
-	m.sched.ReplaceSessions(mediaServerID, keys)
+	m.sched.ReplaceSessions(mediaServerID, sessions)
 	return nil
 }
 
@@ -277,6 +278,18 @@ func (m *Manager) Running(mediaServerID int64) bool {
 	defer m.mu.Unlock()
 	_, ok := m.running[mediaServerID]
 	return ok
+}
+
+// Connection reports a media server's live feed health, for the
+// Dashboard's detail line. ok is false when nothing is watching it.
+func (m *Manager) Connection(mediaServerID int64) (clients.ConnectionState, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	h, running := m.running[mediaServerID]
+	if !running || h.watcher == nil {
+		return clients.ConnectionState{}, false
+	}
+	return h.watcher.Connection(), true
 }
 
 // fingerprint returns a value that changes whenever anything a running
