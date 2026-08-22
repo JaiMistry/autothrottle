@@ -101,7 +101,7 @@
 </div>
 
 <script id="at-chart-data" type="application/json">{{.ChartJSON}}</script>
-<script src="/static/js/apexcharts.min.js"></script>
-<script src="/static/js/charts.js"></script>
+<script src="{{call .Asset "/static/js/apexcharts.min.js"}}"></script>
+<script src="{{call .Asset "/static/js/charts.js"}}"></script>
 {{end}}
 {{end}}

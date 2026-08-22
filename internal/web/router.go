@@ -49,6 +49,7 @@ type Server struct {
 	watchers      watcherManager
 	settings      *settings.Store
 	plex          plexSignIn
+	assets        *staticAssets
 }
 
 // parsePage builds one page's template set: the shared layout, the
@@ -70,6 +71,11 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 		templates[page] = t
 	}
 
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return nil, err
+	}
+
 	csrf, err := auth.NewCSRF()
 	if err != nil {
 		return nil, err
@@ -86,6 +92,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 		scheduler:     sched,
 		watchers:      watchers,
 		settings:      store,
+		assets:        newStaticAssets(staticSub),
 	}, nil
 }
 
@@ -131,9 +138,8 @@ func (s *Server) Router() http.Handler {
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
 	))
 
-	staticSub, err := fs.Sub(staticFS, "static")
-	if err == nil {
-		mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	if s.assets != nil {
+		mux.Handle("/static/", http.StripPrefix("/static/", s.assets))
 	}
 
 	return mux

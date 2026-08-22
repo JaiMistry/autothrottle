@@ -437,6 +437,7 @@ func (s *Server) togglePause(w http.ResponseWriter, r *http.Request) {
 // page fills the fields every template needs.
 func (s *Server) page(r *http.Request, title, active string) pageData {
 	return pageData{
+		Asset:         s.assets.URL,
 		Title:         title,
 		Active:        active,
 		Authenticated: true,

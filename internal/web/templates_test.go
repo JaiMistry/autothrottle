@@ -64,9 +64,9 @@ func TestCommasGroupsThousands(t *testing.T) {
 func TestPagesRender(t *testing.T) {
 	funcs := templateFuncs()
 	cases := map[string]any{
-		"login": pageData{Title: "Log in", Version: "test"},
+		"login": pageData{Title: "Log in", Version: "test", Asset: func(p string) string { return p }},
 		"dashboard": dashboardData{
-			pageData: pageData{Title: "Dashboard", Authenticated: true, Version: "test"},
+			pageData: pageData{Title: "Dashboard", Authenticated: true, Version: "test", Asset: func(p string) string { return p }},
 			Hero:     heroState{Statement: "Nothing is throttled", Reason: "…", Tone: "good"},
 			Overall:  overallFlag{Tone: "good", Label: "Idle", Icon: "normal"},
 			Servers:  []serverRowView{{Name: "Plex", Type: "plex", State: "playing", Sessions: 2, Detail: "…"}},
@@ -78,7 +78,7 @@ func TestPagesRender(t *testing.T) {
 				1, 10, 1, nil),
 		},
 		"logs": logsData{
-			pageData: pageData{Title: "Logs", Authenticated: true, Version: "test"},
+			pageData: pageData{Title: "Logs", Authenticated: true, Version: "test", Asset: func(p string) string { return p }},
 			Counts:   map[string]int{"info": 1, "warn": 0, "error": 1},
 			CountAll: 2,
 			Matching: 2,
@@ -86,7 +86,7 @@ func TestPagesRender(t *testing.T) {
 				[]logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}}, 2, 20, 1, nil),
 		},
 		"configuration": configPageData{
-			pageData:     pageData{Title: "Configuration", Authenticated: true, Version: "test"},
+			pageData:     pageData{Title: "Configuration", Authenticated: true, Version: "test", Asset: func(p string) string { return p }},
 			Tab:          "media-servers",
 			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true, Sessions: 2}},
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
@@ -96,7 +96,7 @@ func TestPagesRender(t *testing.T) {
 			Update:       unknownUpdate(),
 		},
 		"analytics": analyticsData{
-			pageData:   pageData{Title: "Analytics", Authenticated: true, Version: "test"},
+			pageData:   pageData{Title: "Analytics", Authenticated: true, Version: "test", Asset: func(p string) string { return p }},
 			RangeKey:   "24h",
 			HasClients: true,
 			HasSamples: false,
@@ -123,7 +123,7 @@ func TestConfigurationTabsRender(t *testing.T) {
 	}
 	for _, tab := range []string{"media-servers", "downloaders", "mappings", "about"} {
 		data := configPageData{
-			pageData:     pageData{Title: "Configuration", Authenticated: true},
+			pageData:     pageData{Title: "Configuration", Authenticated: true, Asset: func(p string) string { return p }},
 			Tab:          tab,
 			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true}},
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
@@ -151,7 +151,7 @@ func TestLogsEmptyStatesRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := logsData{
-		pageData: pageData{Title: "Logs", Authenticated: true},
+		pageData: pageData{Title: "Logs", Authenticated: true, Asset: func(p string) string { return p }},
 		Counts:   map[string]int{"info": 0, "warn": 0, "error": 0},
 		Log:      newPagedLog("Events", "log-card", "/logs/rows", nil, 0, 20, 1, nil),
 	}
