@@ -65,7 +65,7 @@
 {{define "alert"}}<div class="at-alert{{if .Tone}} at-alert--{{.Tone}}{{end}}" role="{{if eq .Tone "error"}}alert{{else}}status{{end}}">
   <div>
     {{if .Title}}<div class="at-alert-title">{{.Title}}</div>{{end}}
-    <div>{{.Body}}</div>
+    {{if .Body}}<div>{{.Body}}</div>{{end}}
   </div>
 </div>{{end}}
 
@@ -175,3 +175,45 @@
   <span class="at-swatch at-swatch--{{.Shape}}"{{if .Color}} style="{{if eq .Shape "line"}}border-top-color:{{.Color}}{{else if eq .Shape "dashed"}}border-top-color:{{.Color}}{{else if eq .Shape "area"}}background:color-mix(in srgb,{{.Color}} 35%,transparent){{else}}outline-color:{{.Color}};background:repeating-linear-gradient(45deg,{{.Color}} 0 1.4px,transparent 1.4px 5px){{end}}"{{end}}></span>
   {{.Label}}
 </span>{{end}}
+
+{{/* PagedLog. A fixed page size so the card never grows downward:
+     choose how many rows, step through with arrows. Refresh re-reads
+     from the server and returns to page 1; Clear empties the view only
+     — the events are still there, which is why it says so. */}}
+{{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}">
+  <header class="at-card-head">
+    <h2 class="at-card-title">{{.Title}}</h2>
+    <span class="at-card-action">
+      <button class="at-btn at-btn--ghost at-btn--xs"
+              hx-get="{{.Endpoint}}?per={{.PerPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">Refresh</button>
+      <button class="at-btn at-btn--ghost at-btn--xs" {{if or .Cleared (eq .Total 0)}}disabled{{end}}
+              hx-get="{{.Endpoint}}?per={{.PerPage}}&cleared=1{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">Clear</button>
+      {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs">{{.ExtraLabel}}</a>{{end}}
+    </span>
+  </header>
+  <div style="display:grid">
+    {{if .Cleared}}
+      <span class="at-listempty">Log cleared. Refresh to reload.</span>
+    {{else if not .Events}}
+      <span class="at-listempty">{{or .EmptyNote "No events."}}</span>
+    {{else}}
+      {{range .Events}}{{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}{{end}}
+    {{end}}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding-top:var(--space-6);flex-wrap:wrap">
+      <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">
+        {{if and .Total (not .Cleared)}}{{.RangeFrom}}–{{.RangeTo}} of {{.Total}}{{else}}0 of 0{{end}}
+      </span>
+      <div style="display:flex;align-items:center;gap:var(--space-4)">
+        <select class="at-select" style="width:auto;padding:4px 8px;font-size:var(--text-caption)" name="per"
+                hx-get="{{.Endpoint}}?{{.QueryNoAmp}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML" aria-label="Rows per page">
+          {{$per := .PerPage}}{{range .PerOptions}}<option value="{{.}}" {{if eq . $per}}selected{{end}}>{{.}} rows</option>{{end}}
+        </select>
+        <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasPrev}}disabled{{end}} aria-label="Previous page"
+                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.PrevPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">←</button>
+        <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">{{.Page}} / {{.Pages}}</span>
+        <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasNext}}disabled{{end}} aria-label="Next page"
+                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.NextPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">→</button>
+      </div>
+    </div>
+  </div>
+</section>{{end}}

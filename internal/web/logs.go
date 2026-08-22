@@ -3,6 +3,7 @@ package web
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -14,60 +15,48 @@ import (
 // list is everything that ever happened.
 const logsWindow = 200
 
-const logsPerPageDefault = 20
+const (
+	logsPerPageDefault     = 20
+	activityPerPageDefault = 10
+)
 
 type logsData struct {
 	pageData
-	Rows logRowsData
-}
-
-// logRowsData is the bounded live region: one card body, one template
-// fragment, one HTMX swap. Paging and filtering replace only this.
-type logRowsData struct {
-	Events    []logRowView
-	Level     string
-	Search    string
-	PerPage   int
-	Page      int
-	Pages     int
-	Total     int
-	Window    int
-	RangeFrom int
-	RangeTo   int
-	Counts    map[string]int
-	CountAll  int
-	HasPrev   bool
-	HasNext   bool
-	PrevPage  int
-	NextPage  int
+	Level    string
+	Search   string
+	Counts   map[string]int
+	CountAll int
+	Matching int
+	NoEvents bool
+	Log      pagedLog
 }
 
 func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.logRows(r)
+	data, err := s.buildLogsPage(r)
 	if err != nil {
-		slog.Error("listing events", "error", err)
+		slog.Error("building logs page", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, "logs", logsData{pageData: s.page(r, "Logs", "logs"), Rows: rows})
+	s.render(w, "logs", data)
 }
 
-// logRowsFragment serves the same block on its own, for paging and
-// filtering without a full page load.
+// logRowsFragment serves the card on its own, for paging and filtering
+// without a full page load.
 func (s *Server) logRowsFragment(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.logRows(r)
+	data, err := s.buildLogsPage(r)
 	if err != nil {
-		slog.Error("listing events", "error", err)
+		slog.Error("building log rows", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := s.templates["logs"].ExecuteTemplate(w, "logrows", rows); err != nil {
+	if err := s.templates["logs"].ExecuteTemplate(w, "pagedlog", data.Log); err != nil {
 		slog.Error("rendering log rows", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
 
-func (s *Server) logRows(r *http.Request) (logRowsData, error) {
+func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	level := r.URL.Query().Get("level")
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	perPage := intParam(r, "per", logsPerPageDefault, 10, 50)
@@ -80,16 +69,53 @@ func (s *Server) logRows(r *http.Request) (logRowsData, error) {
 
 	counts, err := s.db.CountEventsByLevel(db.EventFilter{Search: search})
 	if err != nil {
-		return logRowsData{}, err
+		return logsData{}, err
 	}
 	total, err := s.db.CountEvents(filter)
 	if err != nil {
-		return logRowsData{}, err
+		return logsData{}, err
 	}
 	if total > logsWindow {
 		total = logsWindow
 	}
+	// Whether there are any events at all is a different question from
+	// whether any match the filter, and the two get different empty
+	// states — one points at Configuration, the other at the filter.
+	unfiltered, err := s.db.CountEvents(db.EventFilter{})
+	if err != nil {
+		return logsData{}, err
+	}
 
+	rows, page, err := s.pageOfEvents(filter, perPage, page, total)
+	if err != nil {
+		return logsData{}, err
+	}
+
+	extra := url.Values{}
+	if level != "" {
+		extra.Set("level", level)
+	}
+	if search != "" {
+		extra.Set("q", search)
+	}
+
+	data := logsData{
+		pageData: s.page(r, "Logs", "logs"),
+		Level:    level,
+		Search:   search,
+		Counts:   counts,
+		CountAll: counts["info"] + counts["warn"] + counts["error"],
+		Matching: total,
+		NoEvents: unfiltered == 0,
+		Log:      newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra),
+	}
+	data.Log.Cleared = r.URL.Query().Get("cleared") == "1"
+	return data, nil
+}
+
+// pageOfEvents reads one page of the filtered log, clamped to the
+// window the page advertises.
+func (s *Server) pageOfEvents(filter db.EventFilter, perPage, page, total int) ([]logRowView, int, error) {
 	pages := (total + perPage - 1) / perPage
 	if pages < 1 {
 		pages = 1
@@ -97,44 +123,60 @@ func (s *Server) logRows(r *http.Request) (logRowsData, error) {
 	if page > pages {
 		page = pages
 	}
-
 	filter.Limit = perPage
 	filter.Offset = (page - 1) * perPage
+
 	events, err := s.db.ListEventsFiltered(filter)
 	if err != nil {
-		return logRowsData{}, err
+		return nil, page, err
 	}
-
 	servers, err := s.db.ListMediaServers()
 	if err != nil {
-		return logRowsData{}, err
+		return nil, page, err
 	}
 	downloaders, err := s.db.ListDownloaders()
 	if err != nil {
-		return logRowsData{}, err
+		return nil, page, err
+	}
+	return logRows(events, servers, downloaders), page, nil
+}
+
+// activityFragment serves the Dashboard's recent-activity card.
+func (s *Server) activityFragment(w http.ResponseWriter, r *http.Request) {
+	log, err := s.buildActivity(r)
+	if err != nil {
+		slog.Error("building recent activity", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := s.templates["dashboard"].ExecuteTemplate(w, "pagedlog", log); err != nil {
+		slog.Error("rendering recent activity", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {
+	perPage := intParam(r, "per", activityPerPageDefault, 10, 50)
+	page := intParam(r, "page", 1, 1, 1_000_000)
+
+	total, err := s.db.CountEvents(db.EventFilter{})
+	if err != nil {
+		return pagedLog{}, err
+	}
+	if total > logsWindow {
+		total = logsWindow
+	}
+	rows, page, err := s.pageOfEvents(db.EventFilter{}, perPage, page, total)
+	if err != nil {
+		return pagedLog{}, err
 	}
 
-	data := logRowsData{
-		Events:   logRows(events, servers, downloaders),
-		Level:    level,
-		Search:   search,
-		PerPage:  perPage,
-		Page:     page,
-		Pages:    pages,
-		Total:    total,
-		Window:   logsWindow,
-		Counts:   counts,
-		CountAll: counts["info"] + counts["warn"] + counts["error"],
-		HasPrev:  page > 1,
-		HasNext:  page < pages,
-		PrevPage: page - 1,
-		NextPage: page + 1,
-	}
-	if total > 0 {
-		data.RangeFrom = filter.Offset + 1
-		data.RangeTo = filter.Offset + len(data.Events)
-	}
-	return data, nil
+	log := newPagedLog("Recent activity", "activity-card", "/activity", rows, total, perPage, page, url.Values{})
+	log.EmptyNote = "Nothing logged yet."
+	log.ExtraHref = "/logs"
+	log.ExtraLabel = "All logs"
+	log.Cleared = r.URL.Query().Get("cleared") == "1"
+	return log, nil
 }
 
 func intParam(r *http.Request, name string, fallback, min, max int) int {

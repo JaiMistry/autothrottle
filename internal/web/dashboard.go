@@ -67,7 +67,7 @@ type dashboardData struct {
 	UnreachableN    int
 	Servers         []serverRowView
 	Downloaders     []downloaderRowView
-	Events          []logRowView
+	Activity        pagedLog
 }
 
 // overallFlag is the StatusFlag beside the page title.
@@ -90,9 +90,9 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	events, err := s.db.ListEvents(10)
+	activity, err := s.buildActivity(r)
 	if err != nil {
-		slog.Error("listing events", "error", err)
+		slog.Error("building recent activity", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -107,8 +107,8 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		// Nothing to manage means the page has exactly one job: point at
 		// Configuration. A downloader is the minimum for anything else
 		// on this page to have a subject.
-		Empty:  len(downloaders) == 0,
-		Events: logRows(events, mediaServers, downloaders),
+		Empty:    len(downloaders) == 0,
+		Activity: activity,
 	}
 
 	var unreachable []string

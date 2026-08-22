@@ -90,21 +90,7 @@
     </section>
   </div>
 
-  <section class="at-card">
-    <header class="at-card-head">
-      <h2 class="at-card-title">Recent activity</h2>
-      <span class="at-card-action">
-        <a href="/logs" class="at-btn at-btn--ghost at-btn--xs">All logs</a>
-      </span>
-    </header>
-    <div style="display:grid">
-      {{range .Events}}
-        {{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}
-      {{else}}
-        <p class="at-listempty">Nothing logged yet.</p>
-      {{end}}
-    </div>
-  </section>
+  {{template "pagedlog" .Activity}}
 </div>
 {{end}}
 {{end}}

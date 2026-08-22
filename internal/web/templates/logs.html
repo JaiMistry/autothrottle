@@ -4,71 +4,40 @@
     <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
       <h1 class="at-page-title">Logs</h1>
     </div>
-    <p class="at-page-sub">Written by AutoThrottle itself. Messages are shown exactly as the app recorded them.</p>
+    <p class="at-page-sub">{{.Matching}} of the last {{.Log.Total}} events.</p>
+  </div>
+  <div class="at-page-actions">
+    <input class="at-input at-input--mono" type="search" name="q" placeholder="filter…" value="{{.Search}}"
+           style="width:190px"
+           hx-get="/logs/rows?level={{.Level}}&per={{.Log.PerPage}}"
+           hx-trigger="input changed delay:300ms, search"
+           hx-target="#log-card" hx-swap="outerHTML">
   </div>
 </header>
 
-<section class="at-card">
-  <header class="at-card-head" style="align-items:flex-start;flex-wrap:wrap;gap:var(--space-6)">
-    <div class="at-tabs at-tabs--sm" role="tablist" id="log-tabs">
-      {{$q := .Rows.Search}}{{$per := .Rows.PerPage}}
-      <a class="at-tab" role="tab" {{if eq .Rows.Level ""}}aria-selected="true"{{end}}
-         href="/logs?per={{$per}}&q={{$q}}"
-         hx-get="/logs/rows?per={{$per}}&q={{$q}}" hx-target="#log-rows" hx-swap="outerHTML">
-        All <span class="at-tab-count">{{.Rows.CountAll}}</span></a>
-      <a class="at-tab" role="tab" {{if eq .Rows.Level "info"}}aria-selected="true"{{end}}
-         href="/logs?level=info&per={{$per}}&q={{$q}}"
-         hx-get="/logs/rows?level=info&per={{$per}}&q={{$q}}" hx-target="#log-rows" hx-swap="outerHTML">
-        Info <span class="at-tab-count">{{index .Rows.Counts "info"}}</span></a>
-      <a class="at-tab" role="tab" {{if eq .Rows.Level "warn"}}aria-selected="true"{{end}}
-         href="/logs?level=warn&per={{$per}}&q={{$q}}"
-         hx-get="/logs/rows?level=warn&per={{$per}}&q={{$q}}" hx-target="#log-rows" hx-swap="outerHTML">
-        Warn <span class="at-tab-count">{{index .Rows.Counts "warn"}}</span></a>
-      <a class="at-tab" role="tab" {{if eq .Rows.Level "error"}}aria-selected="true"{{end}}
-         href="/logs?level=error&per={{$per}}&q={{$q}}"
-         hx-get="/logs/rows?level=error&per={{$per}}&q={{$q}}" hx-target="#log-rows" hx-swap="outerHTML">
-        Error <span class="at-tab-count">{{index .Rows.Counts "error"}}</span></a>
-    </div>
-    <span class="at-card-action">
-      <input class="at-input at-input--mono" type="search" name="q" placeholder="Filter messages" value="{{.Rows.Search}}"
-             style="width:220px"
-             hx-get="/logs/rows?level={{.Rows.Level}}&per={{.Rows.PerPage}}"
-             hx-trigger="input changed delay:300ms, search"
-             hx-target="#log-rows" hx-swap="outerHTML">
-    </span>
-  </header>
-  {{template "logrows" .Rows}}
-</section>
-{{end}}
+{{$q := .Search}}{{$per := .Log.PerPage}}
+<div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-8)">
+  <a class="at-tab" role="tab" {{if eq .Level ""}}aria-selected="true"{{end}} href="/logs?per={{$per}}&q={{$q}}"
+     hx-get="/logs/rows?per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">All <span class="at-tab-count">{{.CountAll}}</span></a>
+  <a class="at-tab" role="tab" {{if eq .Level "info"}}aria-selected="true"{{end}} href="/logs?level=info&per={{$per}}&q={{$q}}"
+     hx-get="/logs/rows?level=info&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Info <span class="at-tab-count">{{index .Counts "info"}}</span></a>
+  <a class="at-tab" role="tab" {{if eq .Level "warn"}}aria-selected="true"{{end}} href="/logs?level=warn&per={{$per}}&q={{$q}}"
+     hx-get="/logs/rows?level=warn&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Warn <span class="at-tab-count">{{index .Counts "warn"}}</span></a>
+  <a class="at-tab" role="tab" {{if eq .Level "error"}}aria-selected="true"{{end}} href="/logs?level=error&per={{$per}}&q={{$q}}"
+     hx-get="/logs/rows?level=error&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Error <span class="at-tab-count">{{index .Counts "error"}}</span></a>
+</div>
 
-{{/* The bounded live region: paging and filtering swap only this. */}}
-{{define "logrows"}}<div id="log-rows">
-  <div class="at-rowlist">
-    {{range .Events}}
-      {{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}
-    {{else}}
-      <p style="font-size:var(--text-caption);color:var(--text-faint);padding:var(--space-6) 0">No events match this filter.</p>
-    {{end}}
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding-top:var(--space-6);flex-wrap:wrap">
-    <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">
-      {{.Total}} of the last {{.Window}} events
-    </span>
-    <div style="display:flex;align-items:center;gap:var(--space-4)">
-      <select class="at-select" style="width:auto;padding:4px 8px;font-size:var(--text-caption)"
-              hx-get="/logs/rows?level={{.Level}}&q={{.Search}}" hx-target="#log-rows" hx-swap="outerHTML"
-              name="per" aria-label="Rows per page">
-        <option value="10" {{if eq .PerPage 10}}selected{{end}}>10 rows</option>
-        <option value="20" {{if eq .PerPage 20}}selected{{end}}>20 rows</option>
-        <option value="50" {{if eq .PerPage 50}}selected{{end}}>50 rows</option>
-      </select>
-      <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasPrev}}disabled{{end}}
-              hx-get="/logs/rows?level={{.Level}}&q={{.Search}}&per={{.PerPage}}&page={{.PrevPage}}"
-              hx-target="#log-rows" hx-swap="outerHTML" aria-label="Previous page">←</button>
-      <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">{{.Page}} / {{.Pages}}</span>
-      <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasNext}}disabled{{end}}
-              hx-get="/logs/rows?level={{.Level}}&q={{.Search}}&per={{.PerPage}}&page={{.NextPage}}"
-              hx-target="#log-rows" hx-swap="outerHTML" aria-label="Next page">→</button>
-    </div>
-  </div>
-</div>{{end}}
+{{if .NoEvents}}
+  {{template "emptystate" dict
+    "Title" "No events yet"
+    "Body" "Throttle state changes and connection failures land here, each with the media server that caused it."
+    "ActionHref" "/configuration"
+    "ActionLabel" "Go to Configuration"}}
+{{else if eq .Matching 0}}
+  {{template "emptystate" dict
+    "Title" "Nothing matches that filter"
+    "Body" (filterEmptyNote .Level .Search)}}
+{{else}}
+  {{template "pagedlog" .Log}}
+{{end}}
+{{end}}

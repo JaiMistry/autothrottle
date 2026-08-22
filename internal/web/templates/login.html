@@ -1,15 +1,17 @@
 {{define "content"}}
-<div style="width:100%;max-width:360px">
-  <div style="display:grid;justify-items:center;margin-bottom:var(--space-12)">
-    <img src="/static/img/logo-lockup.svg" alt="AutoThrottle" style="height:34px">
+{{/* Credentials come from environment variables at deploy time — there
+     is no signup, no password reset, no first-run wizard, so this page
+     must not imply any of them exist. */}}
+<div class="at-login-inner">
+  <div class="at-login-brand">
+    <img src="/static/img/logo-mark.svg" width="72" height="72" alt="">
+    <span class="at-login-name">AutoThrottle</span>
   </div>
-  <section class="at-card">
-    {{if .Error}}
-      <div style="margin-bottom:var(--space-6)">
-        {{template "alert" dict "Tone" "error" "Title" "Could not sign in" "Body" .Error}}
-      </div>
-    {{end}}
-    <form method="post" action="/login" class="at-stack">
+  <section class="at-card" style="padding:20px 22px;width:100%">
+    <form method="post" action="/login" style="display:grid;gap:var(--space-6)">
+      {{/* Deliberately generic: naming which half was wrong would leak
+           which accounts exist. */}}
+      {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
       <label class="at-field">
         <span class="at-field-label">Username</span>
         <input class="at-input" type="text" name="username" autocomplete="username" autofocus required>
@@ -18,11 +20,8 @@
         <span class="at-field-label">Password</span>
         <input class="at-input" type="password" name="password" autocomplete="current-password" required>
       </label>
-      <button type="submit" class="at-btn at-btn--primary at-btn--md at-btn--block">Log in</button>
+      <button type="submit" class="at-btn at-btn--primary at-btn--md at-btn--block" style="margin-top:var(--space-2)">Log in</button>
     </form>
   </section>
-  <p style="text-align:center;margin:var(--space-8) 0 0;font-size:var(--text-label);color:var(--text-faint)">
-    Credentials come from the environment this app was deployed with.
-  </p>
 </div>
 {{end}}

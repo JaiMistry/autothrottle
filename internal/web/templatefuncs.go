@@ -18,17 +18,18 @@ func templateFuncs() template.FuncMap {
 		"commas": commas,
 		"count":  count,
 		// The analytics stats carry int64 counts.
-		"count64":   func(n int64, one, many string) string { return count(int(n), one, many) },
-		"levelTone": levelTone,
-		"gapBody":   gapBody,
-		"mapkey":    func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
-		"rate":      rateLabel,
-		"bytes":     byteLabel,
-		"duration":  durationLabel,
-		"pct":       pctLabel,
-		"clock":     clockLabel,
-		"stamp":     stampLabel,
-		"lower":     strings.ToLower,
+		"count64":         func(n int64, one, many string) string { return count(int(n), one, many) },
+		"levelTone":       levelTone,
+		"gapBody":         gapBody,
+		"filterEmptyNote": filterEmptyNote,
+		"mapkey":          func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
+		"rate":            rateLabel,
+		"bytes":           byteLabel,
+		"duration":        durationLabel,
+		"pct":             pctLabel,
+		"clock":           clockLabel,
+		"stamp":           stampLabel,
+		"lower":           strings.ToLower,
 	}
 }
 
@@ -88,6 +89,19 @@ func levelTone(level string) string {
 	default:
 		return "info"
 	}
+}
+
+// filterEmptyNote says which filter came up empty, so the reader knows
+// whether to clear the text or change the level.
+func filterEmptyNote(level, search string) string {
+	kind := ""
+	if level != "" {
+		kind = level + " "
+	}
+	if search != "" {
+		return fmt.Sprintf("No %sevents match \u201c%s\u201d.", kind, search)
+	}
+	return fmt.Sprintf("No %sevents.", kind)
 }
 
 // gapBody writes the sentence under the chart naming every hole in the

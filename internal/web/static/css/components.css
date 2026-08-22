@@ -155,10 +155,21 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
     height: 100%;
     box-shadow: var(--shadow);
     transform: translateX(-100%);
-    transition: transform var(--dur-base) var(--ease-out);
+    /* visibility, not just transform: an off-canvas drawer that is
+       merely moved is still in the accessibility tree and still
+       focusable, so a keyboard user tabs into an invisible menu.
+       Delaying it by the slide duration keeps the close animation
+       visible instead of cutting it off. */
+    visibility: hidden;
+    transition: transform var(--dur-base) var(--ease-out),
+                visibility 0s linear var(--dur-base);
   }
   body[data-drawer="1"] .at-drawer-scrim { opacity: 1; pointer-events: auto; }
-  body[data-drawer="1"] .at-rail { transform: translateX(0); }
+  body[data-drawer="1"] .at-rail {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--dur-base) var(--ease-out), visibility 0s;
+  }
   /* Collapsing is a desktop affordance; the drawer is already the
      narrow answer. */
   .at-rail-toggle { display: none; }
@@ -856,3 +867,109 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
   outline-offset: -1px;
   background: repeating-linear-gradient(45deg, var(--text-faint) 0 1.4px, transparent 1.4px 5px);
 }
+
+/* ── Login ───────────────────────────────────────────────────────── */
+
+.at-login { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: var(--space-10); }
+.at-login-inner { width: min(360px, 100%); display: grid; gap: var(--space-10); justify-items: center; }
+.at-login-brand { display: grid; gap: var(--space-6); justify-items: center; }
+.at-login-brand img { display: block; border-radius: 22px; }
+.at-login-name {
+  font-size: 30px;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-title);
+  color: var(--text);
+  line-height: 1;
+}
+
+/* ── Read-only rows (About) ──────────────────────────────────────── */
+
+/* Configuration facts the UI must not imply are editable. */
+.at-readonly {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-8);
+  row-gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.at-readonly-label {
+  flex: 0 0 180px;
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-faint);
+  font-weight: var(--weight-semibold);
+}
+.at-readonly-value { display: grid; gap: 2px; flex: 1 1 200px; min-width: 0; }
+.at-readonly-value > span:first-child { font-size: var(--text-ui); font-family: var(--font-mono); color: var(--text); }
+.at-readonly-note { font-size: var(--text-caption); color: var(--text-faint); }
+
+/* ── Update check ────────────────────────────────────────────────── */
+
+.at-update {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-8);
+  flex-wrap: wrap;
+}
+.at-update-main { display: flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.at-update-icon { display: inline-flex; color: var(--text-faint); }
+.at-update-text { display: grid; gap: 2px; }
+.at-update-label { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text-faint); }
+.at-update-note { font-size: var(--text-caption); color: var(--text-faint); }
+.at-update[data-state="checking"] .at-update-icon,
+.at-update[data-state="checking"] .at-update-label,
+.at-update[data-state="available"] .at-update-icon,
+.at-update[data-state="available"] .at-update-label { color: var(--accent); }
+.at-update[data-state="current"] .at-update-icon,
+.at-update[data-state="current"] .at-update-label { color: var(--good); }
+.at-update-actions { display: flex; gap: var(--space-4); align-items: center; }
+
+/* ── Mapping matrix ──────────────────────────────────────────────── */
+
+/* A cell is a control, not a checkbox: it states which of the two
+   things it is doing rather than making the reader decode a tick. */
+.at-matrix { border-collapse: collapse; font-size: var(--text-ui); min-width: 460px; }
+.at-matrix th:first-child {
+  text-align: left;
+  padding: 0 16px 10px 0;
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-faint);
+  font-weight: var(--weight-semibold);
+}
+.at-matrix th + th {
+  text-align: left;
+  padding: 0 14px 10px 0;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+  white-space: nowrap;
+}
+.at-matrix td:first-child { padding: 10px 16px 10px 0; border-top: 1px solid var(--border); white-space: nowrap; }
+.at-matrix td + td { padding: 8px 14px 8px 0; border-top: 1px solid var(--border); }
+.at-matrix-cell {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: var(--radius-md);
+  padding: 5px 12px;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  font-family: var(--font-sans);
+  min-width: 84px;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+}
+.at-matrix-cell[aria-pressed="true"] { border-color: var(--accent); background: var(--fill-accent); color: var(--accent); }
+.at-matrix-note { margin: var(--space-8) 0 0; font-size: var(--text-caption); color: var(--text-dim); text-wrap: pretty; }
+.at-matrix-note strong { color: var(--text); }

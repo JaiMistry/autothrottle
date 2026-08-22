@@ -73,14 +73,17 @@ func TestPagesRender(t *testing.T) {
 			Downloaders: []downloaderRowView{
 				{Name: "qBittorrent", Type: "qbittorrent", State: "throttled", Cause: "because Plex is playing", Down: 2200, Up: 512},
 			},
-			Events: []logRowView{{Time: "12:00:00", Level: "info", Message: "hello", Downloader: "qBittorrent"}},
+			Activity: newPagedLog("Recent activity", "activity-card", "/activity",
+				[]logRowView{{Time: "12:00:00", Level: "info", Message: "hello", Downloader: "qBittorrent"}},
+				1, 10, 1, nil),
 		},
 		"logs": logsData{
 			pageData: pageData{Title: "Logs", Authenticated: true, Version: "test"},
-			Rows: logRowsData{
-				Events: []logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}},
-				Counts: map[string]int{"info": 1, "warn": 0, "error": 1}, PerPage: 20, Page: 1, Pages: 1, Total: 2, Window: 200,
-			},
+			Counts:   map[string]int{"info": 1, "warn": 0, "error": 1},
+			CountAll: 2,
+			Matching: 2,
+			Log: newPagedLog("Events", "log-card", "/logs/rows",
+				[]logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}}, 2, 20, 1, nil),
 		},
 		"configuration": configPageData{
 			pageData:     pageData{Title: "Configuration", Authenticated: true, Version: "test"},
@@ -89,6 +92,8 @@ func TestPagesRender(t *testing.T) {
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
 			MappingOn:    map[string]bool{"1:1": true},
 			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+			AuthSummary:  "enabled · signed in as admin",
+			Update:       unknownUpdate(),
 		},
 		"analytics": analyticsData{
 			pageData:   pageData{Title: "Analytics", Authenticated: true, Version: "test"},
@@ -124,6 +129,8 @@ func TestConfigurationTabsRender(t *testing.T) {
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
 			MappingOn:    map[string]bool{"1:1": true},
 			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+			AuthSummary:  "enabled · signed in as admin",
+			Update:       unknownUpdate(),
 		}
 		if err := tmpl.ExecuteTemplate(discard{}, "layout", data); err != nil {
 			t.Errorf("rendering tab %s: %v", tab, err)
@@ -134,3 +141,56 @@ func TestConfigurationTabsRender(t *testing.T) {
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
+
+// The Logs page has three mutually exclusive bodies and each is a
+// separate branch: no events at all, none matching the filter, and the
+// paged card. A broken one only shows when someone reaches that state.
+func TestLogsEmptyStatesRender(t *testing.T) {
+	tmpl, err := parsePage("logs", templateFuncs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := logsData{
+		pageData: pageData{Title: "Logs", Authenticated: true},
+		Counts:   map[string]int{"info": 0, "warn": 0, "error": 0},
+		Log:      newPagedLog("Events", "log-card", "/logs/rows", nil, 0, 20, 1, nil),
+	}
+	noEvents := base
+	noEvents.NoEvents = true
+
+	noMatch := base
+	noMatch.Search = "nothing"
+	noMatch.Level = "warn"
+
+	for name, data := range map[string]logsData{"no events": noEvents, "no match": noMatch} {
+		if err := tmpl.ExecuteTemplate(discard{}, "layout", data); err != nil {
+			t.Errorf("rendering %q: %v", name, err)
+		}
+	}
+}
+
+// Paging arithmetic is shared by two pages that disagree about page
+// size, so it is worth pinning on its own.
+func TestPagedLogArithmetic(t *testing.T) {
+	rows := make([]logRowView, 10)
+	p := newPagedLog("Events", "t", "/e", rows, 34, 10, 2, nil)
+	if p.Pages != 4 {
+		t.Errorf("pages = %d, want 4", p.Pages)
+	}
+	if p.RangeFrom != 11 || p.RangeTo != 20 {
+		t.Errorf("range = %d–%d, want 11–20", p.RangeFrom, p.RangeTo)
+	}
+	if !p.HasPrev || !p.HasNext {
+		t.Error("page 2 of 4 has both neighbours")
+	}
+
+	// A page past the end clamps rather than showing an empty card.
+	if got := newPagedLog("Events", "t", "/e", rows, 34, 10, 99, nil); got.Page != 4 {
+		t.Errorf("page clamped to %d, want 4", got.Page)
+	}
+	// No events at all still renders a sane pager.
+	empty := newPagedLog("Events", "t", "/e", nil, 0, 10, 1, nil)
+	if empty.Pages != 1 || empty.HasNext || empty.RangeFrom != 0 {
+		t.Errorf("empty pager = %+v", empty)
+	}
+}

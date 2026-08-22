@@ -103,6 +103,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /configuration", s.configurationPage)
 	protected.HandleFunc("GET /logs", s.logsPage)
 	protected.HandleFunc("GET /logs/rows", s.logRowsFragment)
+	protected.HandleFunc("GET /activity", s.activityFragment)
 	protected.HandleFunc("GET /analytics", s.analyticsPage)
 	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)
 	protected.HandleFunc("POST /configuration/media-servers/test", s.testMediaServerForm)
@@ -119,6 +120,7 @@ func (s *Server) Router() http.Handler {
 	// cell has no id until it is first ticked.
 	protected.HandleFunc("POST /configuration/mappings/set", s.setMapping)
 	protected.HandleFunc("POST /configuration/settings", s.saveSettings)
+	protected.HandleFunc("GET /configuration/update-check", s.updateCheck)
 
 	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),

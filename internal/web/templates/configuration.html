@@ -201,33 +201,34 @@
 </div>
 
 {{else if eq $tab "mappings"}}
+{{if and .MediaServers .Downloaders}}
 <section class="at-card">
-  <header class="at-card-head">
-    <div>
-      <h2 class="at-card-title">Mappings</h2>
-      <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Which servers' playback throttles which clients. A mapping is only a server, a client, and whether it is on.</p>
-    </div>
-  </header>
-  {{if and .MediaServers .Downloaders}}
-  <div class="at-tablewrap">
-    <table class="at-table">
-      <thead><tr><th>Media server</th>{{range .Downloaders}}<th style="text-align:center">{{.Name}}</th>{{end}}</tr></thead>
+  <header class="at-card-head"><h2 class="at-card-title">Mappings</h2></header>
+  <div style="overflow-x:auto">
+    <table class="at-matrix">
+      <thead>
+        <tr>
+          <th>Media server / Downloader →</th>
+          {{range .Downloaders}}<th>{{.Name}}</th>{{end}}
+        </tr>
+      </thead>
       <tbody>
       {{$on := .MappingOn}}{{$dls := .Downloaders}}
       {{range $ms := .MediaServers}}
         <tr>
-          <td style="font-weight:var(--weight-semibold);white-space:nowrap">{{$ms.Name}}</td>
+          <td>{{$ms.Name}}</td>
           {{range $dl := $dls}}
-            <td style="text-align:center">
-              <form method="post" action="/configuration/mappings/set"
-                    hx-post="/configuration/mappings/set" hx-swap="none">
+            {{$enabled := index $on (mapkey $ms.ID $dl.ID)}}
+            <td>
+              <form method="post" action="/configuration/mappings/set" style="display:contents">
                 <input type="hidden" name="csrf_token" value="{{$csrf}}">
                 <input type="hidden" name="media_server_id" value="{{$ms.ID}}">
                 <input type="hidden" name="downloader_id" value="{{$dl.ID}}">
-                <input class="at-checkbox" type="checkbox" name="enabled"
-                       {{if index $on (mapkey $ms.ID $dl.ID)}}checked{{end}}
-                       aria-label="{{$ms.Name}} throttles {{$dl.Name}}"
-                       onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                <input type="hidden" name="enabled" value="{{if $enabled}}0{{else}}1{{end}}">
+                <button type="submit" class="at-matrix-cell" aria-pressed="{{if $enabled}}true{{else}}false{{end}}"
+                        title="{{if $enabled}}Leave {{$dl.Name}} at its default rate when {{$ms.Name}} plays{{else}}Throttle {{$dl.Name}} when {{$ms.Name}} plays{{end}}">
+                  {{if $enabled}}Throttle{{else}}Default{{end}}
+                </button>
               </form>
             </td>
           {{end}}
@@ -236,25 +237,23 @@
       </tbody>
     </table>
   </div>
-  {{else}}
-    {{template "emptystate" dict "Title" "Nothing to map yet" "Body" "Add at least one media server and one download client first — a mapping joins the two." "Action" ""}}
-  {{end}}
+  <p class="at-matrix-note">
+    A downloader is throttled while <strong>any</strong> enabled mapping points it at a server with at least one active session. Rate values live on the downloader, not on the mapping.
+  </p>
 </section>
+{{else}}
+  {{template "emptystate" dict
+    "Title" "Nothing to map yet"
+    "Body" "Add at least one media server and one downloader first — a mapping is just the link between them."}}
+{{end}}
 
 {{else}}
-<div class="at-stack" style="max-width:640px">
+<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8);max-width:min(620px,100%)">
   <section class="at-card">
     <header class="at-card-head"><h2 class="at-card-title">About</h2></header>
-    <div style="display:grid;gap:var(--space-5)">
-      <div style="display:flex;justify-content:space-between;gap:var(--space-8);padding:10px 0;border-bottom:1px solid var(--border)">
-        <span class="at-field-label">Version</span><span class="at-mono">v{{.Version}}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;gap:var(--space-8);padding:10px 0;border-bottom:1px solid var(--border)">
-        <span class="at-field-label">Source</span>
-        <a class="at-mono" style="color:var(--accent)" href="https://github.com/JaiMistry/autothrottle" target="_blank" rel="noreferrer">github.com/JaiMistry/autothrottle</a>
-      </div>
-      <p style="margin:0;font-size:var(--text-caption);color:var(--text-faint)">AutoThrottle never contacts an update service on its own.</p>
-    </div>
+    {{template "readonly" dict "Label" "Version" "Value" (printf "v%s" .Version) "Note" "early development"}}
+    {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set with environment variables at deploy time — not editable here"}}
+    <div id="update-check">{{template "updatecheck" .Update}}</div>
   </section>
 
   <section class="at-card">
@@ -264,13 +263,13 @@
         <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Timing and retention. Changes take effect on the next tick — no restart.</p>
       </div>
     </header>
-    <form method="post" action="/configuration/settings" class="at-stack">
+    <form method="post" action="/configuration/settings" style="display:grid;gap:var(--space-6)">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{range .Settings}}
         <label class="at-field">
           <span class="at-field-label">{{.Label}}</span>
-          <span style="position:relative;display:block">
-            <input class="at-input at-input--mono" type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}" style="padding-right:76px">
+          <span class="at-ratefield">
+            <input class="at-input" type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}">
             <span class="at-ratefield-suffix">{{.Unit}}</span>
           </span>
           <span class="at-field-hint">{{.Description}}</span>
@@ -282,6 +281,36 @@
 </div>
 {{end}}
 {{end}}
+
+{{define "readonly"}}<div class="at-readonly">
+  <span class="at-readonly-label">{{.Label}}</span>
+  <span class="at-readonly-value">
+    <span>{{.Value}}</span>
+    {{if .Note}}<span class="at-readonly-note">{{.Note}}</span>{{end}}
+  </span>
+</div>{{end}}
+
+{{/* Checks are manual: nothing phones home on its own. */}}
+{{define "updatecheck"}}<div class="at-update" data-state="{{.State}}">
+  <span class="at-update-main">
+    <span class="at-update-icon">{{template "updateicon" .State}}</span>
+    <span class="at-update-text">
+      <span class="at-update-label">{{.Label}}</span>
+      <span class="at-update-note">{{.Note}}</span>
+    </span>
+  </span>
+  <span class="at-update-actions">
+    <button class="at-btn" hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML">Check for updates</button>
+    <a class="at-btn {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
+       href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>
+  </span>
+</div>{{end}}
+
+{{define "updateicon"}}
+{{- if eq . "current"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5 9.5 17.5 19.5 7"/></svg>
+{{- else if eq . "available"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+{{- else}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7.6" opacity="0.25"/><circle cx="12" cy="12" r="7.6" pathLength="100" stroke-dasharray="26 74"/></svg>
+{{- end}}{{end}}
 
 {{/* A rate field reads "unlimited" rather than "KB/s" at 0, because a
      bare 0 in a rate box reads as "stopped". */}}

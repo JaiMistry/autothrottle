@@ -103,6 +103,16 @@ func (s *Server) downloaderState(dl db.Downloader) string {
 	}
 }
 
+// authSummary states how login is configured. Read-only on purpose:
+// credentials come from the environment at deploy time, and a field
+// here would imply they can be changed from the browser.
+func (s *Server) authSummary() string {
+	if s.authCfg.Disabled {
+		return "disabled — anyone who can reach this app is signed in"
+	}
+	return "enabled · signed in as " + s.authCfg.Username
+}
+
 func mappingKey(mediaServerID, downloaderID int64) string {
 	return strconv.FormatInt(mediaServerID, 10) + ":" + strconv.FormatInt(downloaderID, 10)
 }
@@ -113,6 +123,8 @@ type configPageData struct {
 	MediaServers      []mediaServerView
 	Downloaders       []downloaderView
 	Mappings          []mappingView
+	AuthSummary       string
+	Update            updateView
 	MappingOn         map[string]bool
 	Settings          []settingView
 	EditMediaServerID int64 // 0 means "add" mode
@@ -218,6 +230,8 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		Mappings:     mapViews,
 		MappingOn:    enabled,
 		Settings:     settingViews(s.settings),
+		AuthSummary:  s.authSummary(),
+		Update:       unknownUpdate(),
 	}, nil
 }
 
