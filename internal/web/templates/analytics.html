@@ -1,7 +1,9 @@
 {{define "content"}}
 <header class="at-page-head">
   <div style="display:grid;gap:var(--space-2)">
-    <h1 class="at-page-title">Analytics</h1>
+    <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
+      <h1 class="at-page-title">Analytics</h1>
+    </div>
     <p class="at-page-sub">Polled from each download client's own rate counters every {{.Interval}}. Full-resolution samples for {{.RawDays}} days, hourly averages for {{.RollupDays}} days.</p>
   </div>
   <div class="at-page-actions">
@@ -46,7 +48,7 @@
     {{template "statcard" dict "Label" "Data transferred" "Value" .Transferred "Tone" "accent" "Footnote" (printf "last %s" .RangeKey)}}
     {{template "statcard" dict "Label" "Time throttled" "Value" .Throttled "Tone" "warn" "Footnote" (printf "%d%% of observed time" .Stats.ThrottledPct)}}
     {{template "statcard" dict "Label" "Throttle periods" "Value" .Stats.Periods "Footnote" (printf "avg %s" .AvgPeriod)}}
-    {{template "statcard" dict "Label" "Sessions" "Value" .Stats.Sessions "Footnote" (plural .Stats.Servers "across %d server" "across %d servers")}}
+    {{template "statcard" dict "Label" "Sessions" "Value" .Stats.Sessions "Footnote" (printf "across %s" (count64 .Stats.Servers "server" "servers"))}}
   </div>
 
   <section class="at-card">

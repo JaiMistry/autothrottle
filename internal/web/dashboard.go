@@ -44,23 +44,37 @@ type logRowView struct {
 	Time    string
 	Level   string
 	Message string
-	Cause   string
+	// Attribution is structured rather than parsed back out of the
+	// message. Either half may stand alone: an event with only a
+	// downloader still names it.
+	Downloader string
+	Server     string
 }
 
 type dashboardData struct {
 	pageData
 	Hero            heroState
+	Overall         overallFlag
 	ActiveSessions  int
+	SessionTone     string
 	SessionFootnote string
 	ThrottledCount  int
-	DownloaderCount int
+	ThrottledTone   string
 	ThrottledLabel  string
 	Paused          bool
-	Configured      bool
+	Empty           bool
 	UnreachableNote string
+	UnreachableN    int
 	Servers         []serverRowView
 	Downloaders     []downloaderRowView
 	Events          []logRowView
+}
+
+// overallFlag is the StatusFlag beside the page title.
+type overallFlag struct {
+	Tone  string
+	Label string
+	Icon  string
 }
 
 func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
@@ -73,12 +87,6 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	downloaders, err := s.db.ListDownloaders()
 	if err != nil {
 		slog.Error("listing downloaders", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	mappings, err := s.db.ListMappings()
-	if err != nil {
-		slog.Error("listing mappings", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -96,9 +104,11 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		// Throttling needs all three: a server to watch, a downloader to
 		// slow down, and a mapping saying the one should affect the
 		// other. Missing any of them, the page has exactly one job.
-		Configured:      len(mediaServers) > 0 && len(downloaders) > 0 && len(mappings) > 0,
-		DownloaderCount: len(downloaders),
-		Events:          logRows(events, mediaServers, downloaders),
+		// Nothing to manage means the page has exactly one job: point at
+		// Configuration. A downloader is the minimum for anything else
+		// on this page to have a subject.
+		Empty:  len(downloaders) == 0,
+		Events: logRows(events, mediaServers, downloaders),
 	}
 
 	var unreachable []string
@@ -127,7 +137,18 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		data.Servers = append(data.Servers, row)
 	}
 
+	// Named for the paused reason line, which says what *would* be
+	// throttling if the override were off.
+	playingServer := ""
+	for _, row := range data.Servers {
+		if row.State == "playing" {
+			playingServer = row.Name
+			break
+		}
+	}
+
 	throttledNames := []string{}
+	unresolvedCount := 0
 	var causes []string
 	for _, dl := range downloaders {
 		state := s.scheduler.State(dl.ID)
@@ -135,7 +156,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case !dl.Enabled:
 			row.State = "disabled"
-			row.Cause = "Not being managed."
+			row.Cause = "excluded from throttling"
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case state.Failure != "":
 			// A failed apply must never read Normal — the rates on the
@@ -143,19 +164,36 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 			row.State = "unreachable"
 			row.Cause = state.Failure
 			unreachable = append(unreachable, dl.Name)
+			unresolvedCount++
+			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case !state.Known:
 			row.State = "unknown"
-			row.Cause = "No state resolved since boot."
+			row.Cause = "no event resolved since boot"
+			unresolvedCount++
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
+		case paused:
+			// "Paused" renders as Normal: the configured default rate is
+			// in force, which is the same rate as any other unthrottled
+			// moment. The reason line carries the override.
+			row.State = "paused"
+			row.Cause = "at its configured default rate — throttling is off"
+			if playingServer != "" {
+				row.Cause += fmt.Sprintf(" while %s plays", playingServer)
+			}
+			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 		case state.Throttled:
 			row.State = "throttled"
-			row.Cause = fmt.Sprintf("because %s is playing", state.Cause)
+			if state.Cause != "" {
+				row.Cause = fmt.Sprintf("because %s is playing", state.Cause)
+			} else {
+				row.Cause = "because a mapped server is playing"
+			}
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 			throttledNames = append(throttledNames, dl.Name)
 			causes = appendUnique(causes, state.Cause)
 		default:
 			row.State = "normal"
-			row.Cause = "Nothing mapped is playing"
+			row.Cause = "nothing mapped is playing"
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 		}
 		if !state.AppliedAt.IsZero() {
@@ -164,12 +202,18 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		data.Downloaders = append(data.Downloaders, row)
 	}
 
+	unresolved := len(downloaders) > 0 && unresolvedCount == len(downloaders)
+
 	data.ActiveSessions = totalSessions
+	data.SessionTone = tone(totalSessions > 0, "accent", "dim")
 	data.ThrottledCount = len(throttledNames)
+	data.ThrottledTone = tone(len(throttledNames) > 0, "warn", "dim")
 	data.ThrottledLabel = fmt.Sprintf("%d of %d", len(throttledNames), len(downloaders))
-	data.Hero = buildHero(paused, totalSessions, throttledNames, causes, len(downloaders), anyResolved(s, downloaders))
+	data.Hero = buildHero(paused, totalSessions, throttledNames, causes, len(downloaders), unresolved)
+	data.Overall = overallStatus(paused, len(throttledNames), data.Empty, unresolved)
 	data.SessionFootnote = sessionFootnote(paused, totalSessions)
 	if len(unreachable) > 0 {
+		data.UnreachableN = len(unreachable)
 		data.UnreachableNote = fmt.Sprintf("%s is currently unreachable. Please check the configuration.",
 			strings.Join(unreachable, " / "))
 	}
@@ -179,37 +223,70 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 
 // buildHero writes the sentence at the top of the page. The wording is
 // exact per state — it is the product's headline, not a status string.
-func buildHero(paused bool, sessions int, throttled, causes []string, downloaders int, resolved bool) heroState {
+func buildHero(paused bool, sessions int, throttled, causes []string, downloaders int, unresolved bool) heroState {
 	switch {
-	case !resolved:
+	case paused:
+		h := heroState{Statement: "Default downloader speeds enforced", Tone: "plain"}
+		if sessions > 0 {
+			h.Reason = fmt.Sprintf("%s would normally throttle %s.",
+				count(sessions, "active session", "active sessions"),
+				count(downloaders, "downloader", "downloaders"))
+		} else {
+			h.Reason = "Nothing mapped is playing, so nothing would be throttled right now in any case."
+		}
+		return h
+	case len(throttled) > 0:
+		verb := "is"
+		if len(causes) > 1 {
+			verb = "are"
+		}
+		return heroState{
+			Statement: fmt.Sprintf("%s throttled", strings.Join(throttled, " and ")),
+			Reason: fmt.Sprintf("because %s %s playing · %s",
+				strings.Join(causes, " and "), verb,
+				count(sessions, "active session", "active sessions")),
+			Tone: "warn",
+		}
+	case unresolved:
 		return heroState{
 			Statement: "State not resolved yet",
 			Reason:    "No session event has arrived since boot. Rates are whatever the downloader had before AutoThrottle started.",
 			Tone:      "dim",
 		}
-	case paused:
-		return heroState{
-			Statement: "Default downloader speeds enforced",
-			Reason: fmt.Sprintf("%s would normally throttle %s.",
-				plural(sessions, "active session", "active sessions"),
-				plural(downloaders, "downloader", "downloaders")),
-			Tone: "plain",
-		}
-	case len(throttled) > 0:
-		return heroState{
-			Statement: fmt.Sprintf("%s throttled", joinNames(throttled)),
-			Reason: fmt.Sprintf("because %s is playing · %s",
-				joinNames(causes), plural(sessions, "active session", "active sessions")),
-			Tone: "warn",
-		}
 	default:
+		tail := fmt.Sprintf("%d downloaders are at their default rate.", downloaders)
+		if downloaders == 1 {
+			tail = "1 downloader is at its default rate."
+		}
 		return heroState{
 			Statement: "Nothing is throttled",
-			Reason: fmt.Sprintf("Nothing mapped is playing. %s at their default rate.",
-				plural(downloaders, "downloader is", "downloaders are")),
-			Tone: "good",
+			Reason:    "Nothing mapped is playing. " + tail,
+			Tone:      "good",
 		}
 	}
+}
+
+// overallStatus is the flag beside the page title.
+func overallStatus(paused bool, throttled int, empty, unresolved bool) overallFlag {
+	switch {
+	case paused:
+		return overallFlag{Tone: "good", Label: "Not throttling", Icon: "normal"}
+	case throttled > 0:
+		return overallFlag{Tone: "warn", Label: "Throttling", Icon: "throttled"}
+	case empty:
+		return overallFlag{Tone: "neutral", Label: "Not configured", Icon: "empty"}
+	case unresolved:
+		return overallFlag{Tone: "neutral", Label: "Unknown", Icon: "unknown"}
+	default:
+		return overallFlag{Tone: "good", Label: "Idle", Icon: "normal"}
+	}
+}
+
+func tone(test bool, whenTrue, whenFalse string) string {
+	if test {
+		return whenTrue
+	}
+	return whenFalse
 }
 
 func sessionFootnote(paused bool, sessions int) string {
@@ -219,26 +296,11 @@ func sessionFootnote(paused bool, sessions int) string {
 	return "local playback exempt"
 }
 
-// anyResolved reports whether the scheduler has decided anything yet.
-// Before the first resolve the app genuinely does not know what rates
-// are in force, and saying so is better than implying Normal.
-func anyResolved(s *Server, downloaders []db.Downloader) bool {
-	for _, dl := range downloaders {
-		if !dl.Enabled {
-			continue
-		}
-		if st := s.scheduler.State(dl.ID); st.Known {
-			return true
-		}
-	}
-	return len(downloaders) == 0
-}
-
 // detailForSessions describes what a server is doing. Session titles
 // and device names are not recorded yet, so this says only what is
 // actually known rather than inventing a "now playing" line.
 func detailForSessions(n int) string {
-	return plural(n, "session counting toward throttling", "sessions counting toward throttling")
+	return count(n, "session counting toward throttling", "sessions counting toward throttling")
 }
 
 func logRows(events []db.Event, servers []db.MediaServer, downloaders []db.Downloader) []logRowView {
@@ -259,10 +321,11 @@ func logRows(events []db.Event, servers []db.MediaServer, downloaders []db.Downl
 		} else {
 			row.Time = e.OccurredAt
 		}
-		// Attribution is structured, not parsed back out of the message:
-		// "qBittorrent ← Living Room Plex".
-		if e.DownloaderID.Valid && e.MediaServerID.Valid {
-			row.Cause = fmt.Sprintf("%s ← %s", downloaderName[e.DownloaderID.Int64], serverName[e.MediaServerID.Int64])
+		if e.DownloaderID.Valid {
+			row.Downloader = downloaderName[e.DownloaderID.Int64]
+		}
+		if e.MediaServerID.Valid {
+			row.Server = serverName[e.MediaServerID.Int64]
 		}
 		out = append(out, row)
 	}
@@ -284,7 +347,7 @@ func joinNames(names []string) string {
 	}
 }
 
-func plural(n int, one, many string) string {
+func count(n int, one, many string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, one)
 	}

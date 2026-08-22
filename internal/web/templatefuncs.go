@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -12,24 +13,21 @@ import (
 // handler where it can be tested, not in a template.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"dict": dict,
-		"cond": cond,
-		// Counts appear in prose all over this UI, and "1 servers"
-		// undoes the care everywhere else.
-		"plural": func(n int64, one, many string) string {
-			if n == 1 {
-				return fmt.Sprintf(one, n)
-			}
-			return fmt.Sprintf(many, n)
-		},
-		"mapkey":   func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
-		"rate":     rateLabel,
-		"bytes":    byteLabel,
-		"duration": durationLabel,
-		"pct":      pctLabel,
-		"clock":    clockLabel,
-		"stamp":    stampLabel,
-		"lower":    strings.ToLower,
+		"dict":   dict,
+		"cond":   cond,
+		"commas": commas,
+		"count":  count,
+		// The analytics stats carry int64 counts.
+		"count64":   func(n int64, one, many string) string { return count(int(n), one, many) },
+		"levelTone": levelTone,
+		"mapkey":    func(a, b int64) string { return fmt.Sprintf("%d:%d", a, b) },
+		"rate":      rateLabel,
+		"bytes":     byteLabel,
+		"duration":  durationLabel,
+		"pct":       pctLabel,
+		"clock":     clockLabel,
+		"stamp":     stampLabel,
+		"lower":     strings.ToLower,
 	}
 }
 
@@ -58,6 +56,37 @@ func cond(test bool, whenTrue, whenFalse any) any {
 		return whenTrue
 	}
 	return whenFalse
+}
+
+// commas groups an integer with thousands separators, matching the
+// design's toLocaleString() on every rate figure.
+func commas(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := strings.HasPrefix(s, "-")
+	s = strings.TrimPrefix(s, "-")
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
+}
+
+// levelTone maps an event level onto the Badge tone that renders it.
+func levelTone(level string) string {
+	switch level {
+	case "error":
+		return "error"
+	case "warn":
+		return "warn"
+	default:
+		return "info"
+	}
 }
 
 // rateLabel renders a KB/s limit. 0 is unlimited and must never render

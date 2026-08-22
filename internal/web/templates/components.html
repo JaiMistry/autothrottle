@@ -69,82 +69,94 @@
   </div>
 </div>{{end}}
 
-{{/* Args: Title, Body, Action */}}
-{{define "emptystate"}}<div class="at-empty">
+{{/* Args: Tone, Title, Body, ActionHref, ActionLabel */}}
+{{define "emptystate"}}<div class="at-empty{{if .Tone}} at-empty--{{.Tone}}{{end}}">
   <div class="at-empty-title">{{.Title}}</div>
   <div class="at-empty-body">{{.Body}}</div>
-  {{if .Action}}<div>{{.Action}}</div>{{end}}
+  {{if .ActionLabel}}<a href="{{.ActionHref}}" class="at-btn at-btn--primary">{{.ActionLabel}}</a>{{end}}
 </div>{{end}}
 
-{{/* Rates in force. Never a hand-written rate string — 0 is unlimited
-     and must not render as a bare 0. */}}
-{{define "ratefigure"}}<span class="at-rate">
-  <b>↓ {{rate .Down}}</b><span class="at-rate-sep">·</span><b>↑ {{rate .Up}}</b>
-</span>{{end}}
+{{/* RateFigure. Chunky arrows on the same 24px grid as the status
+     glyphs but at a heavier weight — a rate figure is data, so its
+     marker has to hold up next to digits.
+     Args: Down, Up (KB/s), Size ("caption" | "ui") */}}
+{{define "ratefigure"}}{{$sz := 13}}{{if eq (or .Size "caption") "ui"}}{{$sz = 14}}{{end}}
+{{- if and (eq .Down 0) (eq .Up 0) -}}
+<span class="at-rate at-rate--unlimited{{if eq (or .Size "caption") "ui"}} at-rate--ui{{end}}">Unlimited</span>
+{{- else -}}
+<span class="at-rate{{if eq (or .Size "caption") "ui"}} at-rate--ui{{end}}">{{- "" -}}
+<span class="at-rate-leg at-rate-leg--down">{{template "ratearrow" dict "Dir" "down" "Size" $sz}}{{if eq .Down 0}}unlimited{{else}}{{commas .Down}}<span class="at-rate-unit">KB/s</span>{{end}}</span>{{- "" -}}
+<span class="at-rate-sep" aria-hidden="true">/</span>{{- "" -}}
+<span class="at-rate-leg at-rate-leg--up">{{template "ratearrow" dict "Dir" "up" "Size" $sz}}{{if eq .Up 0}}unlimited{{else}}{{commas .Up}}<span class="at-rate-unit">KB/s</span>{{end}}</span>{{- "" -}}
+</span>
+{{- end}}{{end}}
 
-{{/* One media server's live state.
-     Args: Name, Type, State, Sessions, Detail */}}
-{{define "serverrow"}}<div class="at-row">
-  <div style="display:flex;align-items:center;gap:var(--space-6);justify-content:space-between">
-    <div style="min-width:0">
-      <div style="display:flex;align-items:baseline;gap:var(--space-4)">
-        <span class="at-dlrow-name">{{.Name}}</span>
-        <span class="at-dlrow-type">{{.Type}}</span>
-      </div>
-      {{if .Detail}}<div class="at-dlrow-cause">{{.Detail}}</div>{{end}}
+{{define "ratearrow"}}<svg width="{{.Size}}" height="{{.Size}}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0">
+{{- if eq .Dir "up"}}<path d="M12 19.4V4.6"/><path d="M6.4 10.4 12 4.6l5.6 5.8"/>{{else}}<path d="M12 4.6v14.8"/><path d="M6.4 13.6 12 19.4l5.6-5.8"/>{{end -}}
+</svg>{{end}}
+
+{{/* ServerRow. Args: Name, Type, State, Sessions, Detail */}}
+{{define "serverrow"}}<div class="at-serverrow" data-state="{{.State}}">
+  <div class="at-serverrow-main">
+    <div class="at-serverrow-head">
+      <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
+      {{if eq .State "playing"}}{{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d playing" .Sessions)}}
+      {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
+      {{else if eq .State "connecting"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting…"}}
+      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
+      {{else}}{{template "statusflag" dict "Tone" "good" "Icon" "idle" "Label" "Idle"}}{{end}}
+      {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
-    <div style="display:flex;align-items:center;gap:var(--space-6);flex-shrink:0">
-      {{if eq .State "playing"}}
-        {{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d active" .Sessions) "Size" "sm"}}
-      {{else if eq .State "unreachable"}}
-        {{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
-      {{else if eq .State "connecting"}}
-        {{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting" "Size" "sm"}}
-      {{else if eq .State "disabled"}}
-        {{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
-      {{else}}
-        {{template "statusflag" dict "Tone" "neutral" "Icon" "idle" "Label" "Idle" "Size" "sm"}}
-      {{end}}
-    </div>
+    {{if .Detail}}<span class="at-serverrow-detail">{{.Detail}}</span>{{end}}
   </div>
 </div>{{end}}
 
-{{/* One downloader's throttle state with its cause. Throttling is
-     per-downloader; there is no global "on".
+{{/* DownloaderRow. Throttling is per-downloader; there is no global
+     "on". The state flag never stands alone — the reason line always
+     says which media server caused it, or why the state is not known.
      Args: Name, Type, State, Cause, Down, Up, AppliedAt */}}
-{{define "downloaderrow"}}<div class="at-dlrow-wrap at-row">
+{{define "downloaderrow"}}<div class="at-dlrow-wrap" data-state="{{.State}}">
   <div class="at-dlrow">
-    <div style="min-width:0">
-      <div style="display:flex;align-items:baseline;gap:var(--space-4)">
-        <span class="at-dlrow-name">{{.Name}}</span>
-        <span class="at-dlrow-type">{{.Type}}</span>
-      </div>
-      {{if .Cause}}<div class="at-dlrow-cause">{{.Cause}}</div>{{end}}
+    <div class="at-dlrow-head">
+      <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
+      {{if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
+      {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
+      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
+      {{else if eq .State "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown"}}
+      {{else}}{{/* normal and paused read the same: throttling off means
+                   the configured default rate is in force, which is the
+                   same rate as any other unthrottled moment. The reason
+                   line carries the override. */}}
+        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal"}}{{end}}
+      {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
-    <div class="at-dlrow-right">
-      {{if eq .State "throttled"}}
-        {{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled" "Size" "sm"}}
-      {{else if eq .State "normal"}}
-        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal" "Size" "sm"}}
-      {{else if eq .State "unreachable"}}
-        {{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
-      {{else if eq .State "disabled"}}
-        {{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
-      {{else}}
-        {{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
-      {{end}}
-      {{template "ratefigure" dict "Down" .Down "Up" .Up}}
-      {{if .AppliedAt}}<span class="at-dlrow-applied">{{.AppliedAt}}</span>{{end}}
+    <span class="at-dlrow-reason">{{.Cause}}</span>
+    <div class="at-dlrow-side">
+      <span class="at-dlrow-rates">{{template "ratefigure" dict "Down" .Down "Up" .Up}}</span>
+      {{if .AppliedAt}}<span class="at-rowapplied">{{.AppliedAt}}</span>{{end}}
     </div>
   </div>
 </div>{{end}}
 
-{{/* One event. The message is the backend's own string, shown verbatim
-     — the cause is already in it. Args: Time, Level, Message, Cause */}}
+{{/* LogRow. The message is the backend's own string, shown verbatim —
+     the cause is already in it, and the attribution beside it is the
+     structured version. Args: Time, Level, Message, Downloader, Server */}}
 {{define "logrow"}}<div class="at-logrow" data-level="{{.Level}}">
   <span class="at-logrow-time">{{.Time}}</span>
-  {{if eq .Level "error"}}{{template "badge" dict "Tone" "error" "Label" "Error"}}
-  {{else if eq .Level "warn"}}{{template "badge" dict "Tone" "warn" "Label" "Warn"}}
-  {{else}}{{template "badge" dict "Tone" "info" "Label" "Info"}}{{end}}
-  <span class="at-logrow-msg">{{.Message}}{{if .Cause}} <span class="at-logrow-cause">{{.Cause}}</span>{{end}}</span>
+  <span class="at-logrow-level">{{template "badge" dict "Tone" (levelTone .Level) "Label" .Level}}</span>
+  <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{.Downloader}}{{if and .Downloader .Server}} ← {{end}}{{.Server}}</span>{{end}}</span>
 </div>{{end}}
+
+{{/* PageHeader. Args: Title, PillTone, PillIcon, PillLabel, Sub, Actions
+     (Actions is rendered by the caller via the "pageactions" block). */}}
+{{define "pagehead"}}<header class="at-page-head">
+  <div style="display:grid;gap:var(--space-2)">
+    <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
+      <h1 class="at-page-title">{{.Title}}</h1>
+      {{if .PillLabel}}<span style="display:inline-flex;align-items:center;transform:translateY(1px)">
+        {{template "statusflag" dict "Tone" .PillTone "Icon" .PillIcon "Label" .PillLabel}}
+      </span>{{end}}
+    </div>
+    {{if .Sub}}<p class="at-page-sub">{{.Sub}}</p>{{end}}
+  </div>
+</header>{{end}}

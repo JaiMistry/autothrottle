@@ -120,8 +120,13 @@
 .at-gh { display: inline-flex; color: var(--text-faint); opacity: .6; transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .at-gh:hover { opacity: 1; color: var(--accent); }
 
-/* Mobile top bar + drawer. One breakpoint; everything else responds to
-   its own container width. */
+/* Mobile top bar + drawer.
+   One rail in the DOM, not two: a second copy for the drawer would
+   mean two <nav> landmarks and two aria-current items, which a screen
+   reader reads out twice. Below the breakpoint the same element is
+   lifted out of the grid, fixed to the edge and translated off-canvas
+   — mounted always, because a conditionally rendered drawer has
+   nothing to transition from and snaps open. */
 .at-topbar { display: none; }
 .at-drawer-scrim {
   position: fixed;
@@ -132,43 +137,46 @@
   pointer-events: none;
   transition: opacity var(--dur-base) var(--ease-standard);
 }
-.at-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 41;
-  width: min(80vw, 264px);
-  box-shadow: var(--shadow);
-  /* Mounted always and translated off-canvas: a conditionally rendered
-     drawer has nothing to transition from and snaps. */
-  transform: translateX(-100%);
-  transition: transform var(--dur-base) var(--ease-out);
-  display: none;
-}
-.at-drawer-close {
-  position: absolute;
-  top: 8px;
-  right: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-}
-body[data-drawer="1"] .at-drawer-scrim { opacity: 1; pointer-events: auto; }
-body[data-drawer="1"] .at-drawer { transform: translateX(0); }
+.at-drawer-close { display: none; }
 
 @media (max-width: 760px) {
   .at-shell, .at-shell[data-collapsed="1"] { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .at-rail { display: none; }
-  .at-drawer { display: block; }
-  .at-drawer .at-rail { display: flex; width: 100%; height: 100%; border-right: 1px solid var(--border); }
+  .at-shell[data-collapsed="1"] .at-rail { padding: var(--pad-nav); }
+  .at-rail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 41;
+    width: min(80vw, 264px);
+    height: 100%;
+    box-shadow: var(--shadow);
+    transform: translateX(-100%);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  body[data-drawer="1"] .at-drawer-scrim { opacity: 1; pointer-events: auto; }
+  body[data-drawer="1"] .at-rail { transform: translateX(0); }
+  /* Collapsing is a desktop affordance; the drawer is already the
+     narrow answer. */
+  .at-rail-toggle { display: none; }
+  .at-shell[data-collapsed="1"] .at-nav-label,
+  .at-shell[data-collapsed="1"] .at-rail-name { display: inline; }
+  .at-shell[data-collapsed="1"] .at-nav-item { justify-content: flex-start; padding: 8px 10px; }
+  .at-drawer-close {
+    display: inline-flex;
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+  }
   .at-topbar {
     position: sticky;
     top: 0;
@@ -404,68 +412,123 @@ body[data-drawer="1"] .at-drawer { transform: translateX(0); }
 
 /* ── Rows ─────────────────────────────────────────────────────────── */
 
-.at-row { padding: var(--pad-row); border-bottom: 1px solid var(--border); }
-.at-row:last-child { border-bottom: 0; }
-.at-rowlist { display: grid; }
-
-/* DownloaderRow responds to its own width, not the viewport: at desktop
-   width this row lives in a ~320px card, where a media query would keep
-   the wide layout and collapse the reason line to three wrapped words. */
-.at-dlrow-wrap { container-type: inline-size; }
-.at-dlrow {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: var(--space-4) var(--space-6);
-  padding: 9px 0;
-}
-.at-dlrow-name { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text); }
-.at-dlrow-type { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); }
-.at-dlrow-cause { font-size: var(--text-caption); color: var(--text-dim); margin-top: 2px; }
-.at-dlrow-right { display: flex; align-items: center; gap: var(--space-6); justify-content: flex-end; }
-.at-dlrow-applied { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-label); color: var(--text-faint); }
-
-@container (max-width: 470px) {
-  .at-dlrow { grid-template-columns: 1fr; }
-  .at-dlrow-right { justify-content: flex-start; }
-}
-@container (max-width: 400px) {
-  .at-dlrow-right { flex-wrap: wrap; gap: var(--space-4); }
-  .at-dlrow-applied { display: none; }
-}
-
+/* RateFigure: a download/upload pair as one readout. Download is
+   --good, upload is --accent — arrow and number take the same colour,
+   so direction is legible before the digits are read. Each side
+   carries its own unit and the two are split by a faint slash. */
 .at-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-caption);
-  color: var(--text-dim);
   white-space: nowrap;
 }
-.at-rate b { font-weight: var(--weight-semibold); color: var(--text); }
-.at-rate-sep { color: var(--text-faint); margin: 0 var(--space-3); }
+.at-rate--ui { font-size: var(--text-ui); }
+.at-rate-leg { display: inline-flex; align-items: center; gap: 3px; }
+.at-rate-leg--down { color: var(--good); }
+.at-rate-leg--up { color: var(--accent); }
+.at-rate-unit { color: var(--text-faint); margin-left: 3px; }
+.at-rate-sep { color: var(--text-faint); }
+/* Both sides unlimited collapses to one word rather than repeating it. */
+.at-rate--unlimited { color: var(--text-dim); }
 
-.at-logrow {
+/* DownloaderRow — the most important row in the product. Three
+   layouts, chosen by the width of the row itself rather than the
+   viewport, so it behaves the same in a narrow card as on a narrow
+   screen. Wide: name line and reason stack on the left, rates centred
+   against the right edge across both. Medium: the name line takes the
+   full width and the rates sit on the reason's own line, on its first
+   baseline. Narrow: nothing shares a line — a shared line here would
+   starve the reason down to three wrapped words. */
+.at-dlrow-wrap {
+  container-type: inline-size;
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  align-content: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.at-dlrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "head rates" "reason rates";
+  column-gap: var(--space-6);
+  row-gap: 3px;
+  align-items: center;
+}
+.at-dlrow-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.at-dlrow-reason { grid-area: reason; min-width: 0; font-size: var(--text-caption); color: var(--text-dim); }
+.at-dlrow-side { grid-area: rates; justify-self: end; display: flex; align-items: center; gap: var(--space-6); }
+
+@container (max-width: 470px) {
+  .at-dlrow { grid-template-areas: "head head" "reason rates"; }
+  .at-dlrow-side { align-self: baseline; }
+}
+@container (max-width: 400px) {
+  .at-dlrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "reason" "rates"; }
+  .at-dlrow-side { justify-self: start; align-self: center; }
+}
+
+.at-rowname { font-size: var(--text-body); font-weight: var(--weight-semibold); color: var(--text); }
+.at-rowname--muted { color: var(--text-faint); }
+.at-rowtype { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); }
+.at-rowapplied { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); white-space: nowrap; }
+.at-dlrow-rates { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-caption); color: var(--text-dim); white-space: nowrap; }
+.at-dlrow-wrap[data-state="throttled"] .at-dlrow-rates { color: var(--warn); }
+.at-dlrow-wrap[data-state="unreachable"] .at-dlrow-reason { color: var(--critical); }
+
+/* ServerRow: a media server and its active-session count. Sessions
+   exempted by skip_local_playback never enter the count, so there is
+   no "ignored" state to render. */
+.at-serverrow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.at-serverrow-main { display: grid; gap: 3px; min-width: 0; }
+.at-serverrow-head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.at-serverrow-detail { font-size: var(--text-caption); color: var(--text-dim); }
+.at-serverrow[data-state="unreachable"] .at-serverrow-detail { color: var(--critical); }
+
+/* LogRow: timestamp, level, message verbatim, optional attribution. */
+.at-logrow {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-6);
+  row-gap: 2px;
   align-items: baseline;
-  gap: var(--space-5);
   padding: var(--pad-row);
+  border-bottom: 1px solid var(--border);
   font-size: var(--text-caption);
 }
 .at-logrow-time {
+  flex: 0 0 auto;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--text-label);
   color: var(--text-faint);
   white-space: nowrap;
 }
-.at-logrow-msg { color: var(--text-dim); min-width: 0; overflow-wrap: anywhere; }
+/* A fixed minimum keeps the message column from stepping left and
+   right as levels change down the list. */
+.at-logrow-level { flex: 0 0 auto; display: inline-flex; min-width: 46px; }
+.at-logrow-msg { flex: 1 1 200px; min-width: 0; color: var(--text-dim); text-wrap: pretty; }
 .at-logrow[data-level="error"] .at-logrow-msg { color: var(--text); }
 .at-logrow-cause {
   font-family: var(--font-mono);
   font-size: var(--text-label);
   color: var(--text-faint);
-  white-space: nowrap;
+  margin-left: 8px;
 }
 
 /* Every live number gets tabular figures: without them, a swapped rate
@@ -505,6 +568,19 @@ body[data-drawer="1"] .at-drawer { transform: translateX(0); }
 }
 .at-empty-title { font-size: var(--text-section); font-weight: var(--weight-bold); color: var(--text); }
 .at-empty-body { font-size: var(--text-caption); color: var(--text-dim); max-width: 46ch; }
+.at-empty--accent { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--fill-accent); border-radius: var(--radius-lg); }
+.at-empty--accent .at-empty-title { color: var(--accent); }
+
+/* The list shell stretches its rows to fill the card, so two cards side
+   by side keep the same height; past two rows it scrolls instead. */
+.at-listshell {
+  display: grid;
+  grid-auto-rows: minmax(min-content, 1fr);
+  align-content: stretch;
+  min-height: 0;
+  overflow-y: auto;
+}
+.at-listempty { font-size: var(--text-caption); color: var(--text-faint); padding: var(--space-4) 0; margin: 0; }
 
 /* Fixed height so a result never shifts the form under the reader's
    cursor, and dismissed by hand — no timer racing them. */

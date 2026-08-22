@@ -48,11 +48,19 @@ type Server struct {
 	settings      *settings.Store
 }
 
+// parsePage builds one page's template set: the shared layout, the
+// shared components, and the page itself. Each page is its own
+// *template.Template because every one defines a template named
+// "content", and those share a namespace per instance.
+func parsePage(page string, funcs template.FuncMap) (*template.Template, error) {
+	return template.New(page).Funcs(funcs).ParseFS(
+		templateFS, "templates/layout.html", "templates/components.html", "templates/"+page+".html")
+}
+
 func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager, store *settings.Store) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
-		t, err := template.New(page).Funcs(templateFuncs()).ParseFS(
-			templateFS, "templates/layout.html", "templates/components.html", "templates/"+page+".html")
+		t, err := parsePage(page, templateFuncs())
 		if err != nil {
 			return nil, err
 		}
