@@ -22,10 +22,15 @@ type BandwidthPoint struct {
 	At                  time.Time
 	DownloadBytesPerSec int64
 	UploadBytesPerSec   int64
-	// Throttled reports whether throttling was active during the
-	// bucket. For a bucket spanning several samples this is "at any
-	// point", not "throughout".
+	// Throttled reports whether throttling was active at any point in
+	// the bucket — what a chart shades. It is deliberately not what
+	// totals are derived from: see ThrottledSampleCount.
 	Throttled bool
+	// ThrottledSampleCount is how many of the bucket's observations
+	// were throttled. Totals must use this rather than treating a
+	// throttled bucket as throttled throughout, which at hourly
+	// resolution would report a ten-minute stream as a full hour.
+	ThrottledSampleCount int64
 	// DownloadLimitKBps and UploadLimitKBps are the limits in force at
 	// the end of the bucket. Zero means unlimited. Only meaningful when
 	// Resolution is ResolutionRaw.
@@ -148,20 +153,19 @@ func (d *DB) rawPoints(downloaderID int64, since, until time.Time, bucket time.D
 	var out []BandwidthPoint
 	for rows.Next() {
 		var (
-			bucketStart      int64
-			avgDown, avgUp   float64
-			throttledSamples int64
-			lastSampledAt    string
-			p                BandwidthPoint
+			bucketStart    int64
+			avgDown, avgUp float64
+			lastSampledAt  string
+			p              BandwidthPoint
 		)
-		if err := rows.Scan(&bucketStart, &avgDown, &avgUp, &throttledSamples,
+		if err := rows.Scan(&bucketStart, &avgDown, &avgUp, &p.ThrottledSampleCount,
 			&p.SampleCount, &lastSampledAt, &p.DownloadLimitKBps, &p.UploadLimitKBps); err != nil {
 			return nil, fmt.Errorf("scanning bandwidth sample: %w", err)
 		}
 		p.At = time.Unix(bucketStart, 0).UTC()
 		p.DownloadBytesPerSec = int64(avgDown)
 		p.UploadBytesPerSec = int64(avgUp)
-		p.Throttled = throttledSamples > 0
+		p.Throttled = p.ThrottledSampleCount > 0
 		p.Resolution = ResolutionRaw
 		out = append(out, p)
 	}
@@ -188,12 +192,11 @@ func (d *DB) rollupPoints(downloaderID int64, since, until time.Time) ([]Bandwid
 	var out []BandwidthPoint
 	for rows.Next() {
 		var (
-			hour             string
-			throttledSamples int64
-			p                BandwidthPoint
+			hour string
+			p    BandwidthPoint
 		)
 		if err := rows.Scan(&hour, &p.DownloadBytesPerSec, &p.UploadBytesPerSec,
-			&throttledSamples, &p.SampleCount); err != nil {
+			&p.ThrottledSampleCount, &p.SampleCount); err != nil {
 			return nil, fmt.Errorf("scanning bandwidth rollup: %w", err)
 		}
 		parsed, err := time.Parse(TimeFormat, hour)
@@ -201,7 +204,7 @@ func (d *DB) rollupPoints(downloaderID int64, since, until time.Time) ([]Bandwid
 			return nil, fmt.Errorf("parsing rollup hour: %w", err)
 		}
 		p.At = parsed
-		p.Throttled = throttledSamples > 0
+		p.Throttled = p.ThrottledSampleCount > 0
 		p.Resolution = ResolutionHour
 		out = append(out, p)
 	}
@@ -250,9 +253,7 @@ func (d *DB) BandwidthSummary(downloaderID int64, since, until time.Time, sample
 		summary.DownloadBytes += p.DownloadBytesPerSec * seconds * p.SampleCount
 		summary.UploadBytes += p.UploadBytesPerSec * seconds * p.SampleCount
 		summary.SampleCount += p.SampleCount
-		if p.Throttled {
-			summary.ThrottledSamples += p.SampleCount
-		}
+		summary.ThrottledSamples += p.ThrottledSampleCount
 	}
 
 	summary.ObservedDuration = time.Duration(summary.SampleCount) * sampleInterval
@@ -326,4 +327,75 @@ func (d *DB) ThrottlePeriods(downloaderID int64, since, until time.Time, sampleI
 		periods = append(periods, *open)
 	}
 	return periods, nil
+}
+
+// DailyBandwidth is one calendar day of a downloader's activity.
+type DailyBandwidth struct {
+	Day           time.Time
+	DownloadBytes int64
+	UploadBytes   int64
+	// ThrottledDuration and ObservedDuration are sample-derived, so a
+	// day the app was partly down reports less observed time than 24h
+	// — which is the honest reading, and what makes a gap visible at
+	// this resolution.
+	ThrottledDuration time.Duration
+	ObservedDuration  time.Duration
+	// ThrottledFraction is throttled over observed, 0 to 1.
+	ThrottledFraction float64
+}
+
+// DailyBandwidth aggregates a downloader's window into calendar days
+// in UTC.
+//
+// This exists because an instantaneous-rate line stops being the right
+// picture past about a day. Over weeks nobody is reading the shape of
+// the curve; the question becomes how much moved each day and how much
+// of each day was throttled — which a bar answers and a squiggle does
+// not.
+//
+// It also removes the seam. A month-long range is part full-resolution
+// samples and part hourly rollups, and drawing both on one rate line
+// makes the chart visibly change character partway along, with the
+// speed-limit series appearing out of nowhere at the boundary. Rolling
+// everything up to a day makes the two tiers indistinguishable,
+// because both can produce an honest daily total.
+func (d *DB) DailyBandwidth(downloaderID int64, since, until time.Time, sampleInterval time.Duration) ([]DailyBandwidth, error) {
+	if sampleInterval <= 0 {
+		return nil, fmt.Errorf("sample interval must be positive, got %s", sampleInterval)
+	}
+
+	// One hour is the finest bucket both tiers can supply, so asking
+	// for it makes the two sources return the same shape.
+	points, err := d.BandwidthSeries(downloaderID, since, until, time.Hour)
+	if err != nil {
+		return nil, err
+	}
+
+	seconds := int64(sampleInterval / time.Second)
+	byDay := make(map[time.Time]*DailyBandwidth)
+	var order []time.Time
+
+	for _, p := range points {
+		day := p.At.UTC().Truncate(24 * time.Hour)
+		entry, ok := byDay[day]
+		if !ok {
+			entry = &DailyBandwidth{Day: day}
+			byDay[day] = entry
+			order = append(order, day)
+		}
+		entry.DownloadBytes += p.DownloadBytesPerSec * seconds * p.SampleCount
+		entry.UploadBytes += p.UploadBytesPerSec * seconds * p.SampleCount
+		entry.ObservedDuration += time.Duration(p.SampleCount) * sampleInterval
+		entry.ThrottledDuration += time.Duration(p.ThrottledSampleCount) * sampleInterval
+	}
+
+	out := make([]DailyBandwidth, 0, len(order))
+	for _, day := range order {
+		entry := byDay[day]
+		if entry.ObservedDuration > 0 {
+			entry.ThrottledFraction = float64(entry.ThrottledDuration) / float64(entry.ObservedDuration)
+		}
+		out = append(out, *entry)
+	}
+	return out, nil
 }

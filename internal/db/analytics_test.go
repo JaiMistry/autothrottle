@@ -289,3 +289,129 @@ func TestBandwidthSeriesRejectsUnusableBucket(t *testing.T) {
 		t.Error("a zero sample interval must be rejected")
 	}
 }
+
+// Regression: an hourly rollup carries how many of its samples were
+// throttled. Treating a rollup as "throttled throughout" because one
+// sample was inflates time-throttled by up to the bucket size — at
+// hourly resolution, a ten-minute stream reported as a full hour.
+func TestBandwidthSummaryUsesRealThrottledCountsAtHourlyResolution(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	hour := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	const interval = time.Minute
+
+	// Ten throttled minutes inside an hour of samples.
+	for i := 0; i < 60; i++ {
+		addSample(t, d, id, hour.Add(time.Duration(i)*interval), 1000, 100, i < 10, 0)
+	}
+	if _, err := d.RollUpBandwidth(hour.Add(time.Hour)); err != nil {
+		t.Fatalf("RollUpBandwidth: %v", err)
+	}
+
+	summary, err := d.BandwidthSummary(id, hour.Add(-time.Hour), hour.Add(2*time.Hour), interval)
+	if err != nil {
+		t.Fatalf("BandwidthSummary: %v", err)
+	}
+	if summary.ThrottledSamples != 10 {
+		t.Errorf("throttled samples = %d, want 10", summary.ThrottledSamples)
+	}
+	if summary.ThrottledDuration != 10*interval {
+		t.Errorf("throttled duration = %s, want %s", summary.ThrottledDuration, 10*interval)
+	}
+	if got := summary.ThrottledFraction; got < 0.16 || got > 0.17 {
+		t.Errorf("throttled fraction = %v, want about 1/6", got)
+	}
+}
+
+// The same must hold when several samples share a bucket at raw
+// resolution.
+func TestBandwidthSeriesReportsThrottledCountPerBucket(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	base := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+
+	addSample(t, d, id, base, 100, 10, true, 500)
+	addSample(t, d, id, base.Add(time.Minute), 100, 10, false, 0)
+	addSample(t, d, id, base.Add(2*time.Minute), 100, 10, false, 0)
+
+	points, err := d.BandwidthSeries(id, base.Add(-time.Hour), base.Add(time.Hour), 5*time.Minute)
+	if err != nil {
+		t.Fatalf("BandwidthSeries: %v", err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("got %d buckets, want 1", len(points))
+	}
+	if points[0].SampleCount != 3 || points[0].ThrottledSampleCount != 1 {
+		t.Errorf("counts = %d throttled of %d, want 1 of 3",
+			points[0].ThrottledSampleCount, points[0].SampleCount)
+	}
+	if !points[0].Throttled {
+		t.Error("a bucket with any throttled sample should still shade as throttled")
+	}
+}
+
+// The daily view has to read the same whether a day came from raw
+// samples or from rollups — that uniformity is the whole point of it.
+func TestDailyBandwidthSpansBothRetentionTiers(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	day1 := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	day2 := day1.Add(24 * time.Hour)
+	const interval = time.Minute
+
+	// Day 1: 60 samples, 30 throttled — then rolled up.
+	for i := 0; i < 60; i++ {
+		addSample(t, d, id, day1.Add(time.Duration(i)*interval), 1000, 100, i < 30, 0)
+	}
+	if _, err := d.RollUpBandwidth(day1.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Day 2: 60 samples, 30 throttled — still raw.
+	for i := 0; i < 60; i++ {
+		addSample(t, d, id, day2.Add(time.Duration(i)*interval), 1000, 100, i < 30, 0)
+	}
+
+	days, err := d.DailyBandwidth(id, day1.Add(-time.Hour), day2.Add(2*time.Hour), interval)
+	if err != nil {
+		t.Fatalf("DailyBandwidth: %v", err)
+	}
+	if len(days) != 2 {
+		t.Fatalf("got %d days, want 2: %+v", len(days), days)
+	}
+	for i, day := range days {
+		if day.ThrottledDuration != 30*interval {
+			t.Errorf("day %d throttled = %s, want %s", i, day.ThrottledDuration, 30*interval)
+		}
+		if day.ObservedDuration != 60*interval {
+			t.Errorf("day %d observed = %s, want %s", i, day.ObservedDuration, 60*interval)
+		}
+		if want := int64(1000 * 60 * 60); day.DownloadBytes != want {
+			t.Errorf("day %d bytes = %d, want %d", i, day.DownloadBytes, want)
+		}
+		if day.ThrottledFraction != 0.5 {
+			t.Errorf("day %d fraction = %v, want 0.5", i, day.ThrottledFraction)
+		}
+	}
+	if !days[0].Day.Before(days[1].Day) {
+		t.Error("days must be ordered oldest first")
+	}
+}
+
+func TestDailyBandwidthSkipsDaysWithNoData(t *testing.T) {
+	d := newTestDB(t)
+	id := addTestDownloader(t, d, "qb")
+	day1 := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+
+	addSample(t, d, id, day1.Add(time.Hour), 1000, 100, false, 0)
+	// nothing on day 2
+	addSample(t, d, id, day1.Add(48*time.Hour), 1000, 100, false, 0)
+
+	days, err := d.DailyBandwidth(id, day1, day1.Add(72*time.Hour), time.Minute)
+	if err != nil {
+		t.Fatalf("DailyBandwidth: %v", err)
+	}
+	if len(days) != 2 {
+		t.Fatalf("got %d days, want 2 — a day with no data must not be invented", len(days))
+	}
+}

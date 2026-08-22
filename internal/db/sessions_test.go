@@ -19,7 +19,7 @@ func addTestMediaServer(t *testing.T, d *DB, name string) int64 {
 
 func openSessions(t *testing.T, d *DB, since, until time.Time) []SessionRecord {
 	t.Helper()
-	sessions, err := d.ListSessions(since, until)
+	sessions, err := d.ListSessions(0, since, until)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestSessionSummaryCountsSessionsAndServers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessions, servers, err := d.SessionSummary(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	sessions, servers, err := d.SessionSummary(0, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("SessionSummary: %v", err)
 	}
@@ -310,5 +310,83 @@ func TestPruneSessionHistoryKeepsOpenSessions(t *testing.T) {
 	sessions := openSessions(t, d, old.Add(-time.Hour), time.Now().Add(time.Hour))
 	if len(sessions) != 1 || sessions[0].SessionKey != "still-open" {
 		t.Errorf("the open session must survive pruning: %+v", sessions)
+	}
+}
+
+// Analytics is presented per downloader, so a server that does not
+// throttle the selected downloader must not appear beside its chart.
+func TestSessionQueriesScopeToMappedServers(t *testing.T) {
+	d := newTestDB(t)
+	mapped := addTestMediaServer(t, d, "Living Room Plex")
+	unmapped := addTestMediaServer(t, d, "Attic Jellyfin")
+	qb := addTestDownloader(t, d, "qb")
+	other := addTestDownloader(t, d, "transmission")
+
+	if _, err := d.CreateMapping(mapped, qb); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.CreateMapping(unmapped, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.OpenSession(mapped, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.OpenSession(unmapped, "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	since, until := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+
+	scoped, err := d.ListSessions(qb, since, until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scoped) != 1 || scoped[0].MediaServerID != mapped {
+		t.Fatalf("scoped listing = %+v, want only the mapped server's session", scoped)
+	}
+
+	sessions, servers, err := d.SessionSummary(qb, since, until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions != 1 || servers != 1 {
+		t.Errorf("scoped summary = %d sessions across %d servers, want 1 and 1", sessions, servers)
+	}
+
+	// Zero still means "everything", for a view not scoped to one
+	// downloader.
+	all, err := d.ListSessions(0, since, until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Errorf("unscoped listing returned %d sessions, want 2", len(all))
+	}
+}
+
+// A disabled mapping means that server's playback is not driving this
+// downloader, so its sessions should not be attributed to it.
+func TestSessionScopeIgnoresDisabledMappings(t *testing.T) {
+	d := newTestDB(t)
+	server := addTestMediaServer(t, d, "Plex")
+	qb := addTestDownloader(t, d, "qb")
+
+	mappingID, err := d.CreateMapping(server, qb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetMappingEnabled(mappingID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.OpenSession(server, "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	scoped, err := d.ListSessions(qb, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scoped) != 0 {
+		t.Errorf("got %+v, want nothing — the mapping is disabled", scoped)
 	}
 }

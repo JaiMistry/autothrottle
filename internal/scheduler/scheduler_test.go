@@ -243,7 +243,7 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	window := time.Now().Add(-time.Hour)
 
 	s.HandleSessionEvent(msID, "42", true)
-	sessions, err := database.ListSessions(window, time.Now().Add(time.Hour))
+	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	}
 
 	s.HandleSessionEvent(msID, "42", false)
-	sessions, err = database.ListSessions(window, time.Now().Add(time.Hour))
+	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	window := time.Now().Add(-time.Hour)
 
 	s.ReplaceSessions(msID, []string{"a", "b"})
-	sessions, err := database.ListSessions(window, time.Now().Add(time.Hour))
+	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestReplaceSessionsRecordsHistory(t *testing.T) {
 
 	// "a" ended, "b" continues.
 	s.ReplaceSessions(msID, []string{"b"})
-	sessions, err = database.ListSessions(window, time.Now().Add(time.Hour))
+	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestClearSessionsClosesHistory(t *testing.T) {
 	s.HandleSessionEvent(msID, "42", true)
 	s.ClearSessions(msID)
 
-	sessions, err := database.ListSessions(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	sessions, err := database.ListSessions(0, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

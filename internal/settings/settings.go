@@ -32,7 +32,7 @@ const (
 	DefaultSessionReconcileInterval  = 60 * time.Second
 	DefaultPausedSessionTimeout      = 30 * time.Minute
 	DefaultBandwidthSampleInterval   = 60 * time.Second
-	DefaultBandwidthRawRetentionDays = 7
+	DefaultBandwidthRawRetentionDays = 8
 	DefaultBandwidthRollupRetention  = 90
 	DefaultEventRetentionDays        = 90
 	DefaultMaintenanceInterval       = time.Hour
@@ -70,8 +70,8 @@ var Definitions = []Definition{
 	},
 	{
 		Key: KeyBandwidthRawRetentionDays, Label: "Raw sample retention",
-		Description: "How long full-resolution bandwidth samples are kept before being rolled up into hourly averages.",
-		Unit:        "days", Default: "7", Min: 1, Max: 365,
+		Description: "How long full-resolution bandwidth samples are kept before being rolled up into hourly averages. Slightly longer than a week so a 7-day chart is always full resolution end to end.",
+		Unit:        "days", Default: "8", Min: 1, Max: 365,
 	},
 	{
 		Key: KeyBandwidthRollupRetention, Label: "Hourly rollup retention",

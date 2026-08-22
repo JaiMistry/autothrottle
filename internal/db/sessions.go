@@ -110,16 +110,42 @@ func (d *DB) CloseDanglingSessions() (int64, error) {
 	return result.RowsAffected()
 }
 
+// mappedServersClause restricts a query to the media servers whose
+// playback actually throttles one downloader. A downloaderID of 0
+// means every server.
+//
+// Analytics is presented per downloader, so an unmapped server's
+// sessions did not drive that downloader's throttling and must not
+// appear alongside its chart. Note this filters on the mapping's
+// *current* state: a mapping enabled last week and disabled today
+// takes its history with it, because nothing records when a mapping
+// changed.
+func mappedServersClause(downloaderID int64) (string, []any) {
+	if downloaderID == 0 {
+		return "", nil
+	}
+	return ` AND media_server_id IN (
+		SELECT media_server_id FROM mappings
+		WHERE downloader_id = ? AND enabled = 1
+	)`, []any{downloaderID}
+}
+
 // ListSessions returns sessions overlapping [since, until], newest
 // first. A session counts as overlapping while it is still open, so an
 // in-progress session always appears in a window ending now.
-func (d *DB) ListSessions(since, until time.Time) ([]SessionRecord, error) {
+//
+// downloaderID restricts the result to servers mapped to that
+// downloader; 0 returns every server's sessions.
+func (d *DB) ListSessions(downloaderID int64, since, until time.Time) ([]SessionRecord, error) {
+	clause, args := mappedServersClause(downloaderID)
+	params := append([]any{FormatTime(until), FormatTime(since)}, args...)
+
 	rows, err := d.conn.Query(
 		`SELECT id, media_server_id, session_key, started_at, ended_at
 		 FROM session_history
-		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)
+		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`+clause+`
 		 ORDER BY started_at DESC`,
-		FormatTime(until), FormatTime(since),
+		params...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing sessions: %w", err)
@@ -140,12 +166,16 @@ func (d *DB) ListSessions(since, until time.Time) ([]SessionRecord, error) {
 // SessionSummary counts sessions in a window and how many distinct
 // media servers they came from — the "6 sessions across 2 servers"
 // figure, without making the caller aggregate a full list to get it.
-func (d *DB) SessionSummary(since, until time.Time) (sessions int64, servers int64, err error) {
+// downloaderID scopes it the same way ListSessions does.
+func (d *DB) SessionSummary(downloaderID int64, since, until time.Time) (sessions int64, servers int64, err error) {
+	clause, args := mappedServersClause(downloaderID)
+	params := append([]any{FormatTime(until), FormatTime(since)}, args...)
+
 	err = d.conn.QueryRow(
 		`SELECT COUNT(*), COUNT(DISTINCT media_server_id)
 		 FROM session_history
-		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`,
-		FormatTime(until), FormatTime(since),
+		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`+clause,
+		params...,
 	).Scan(&sessions, &servers)
 	if err != nil {
 		return 0, 0, fmt.Errorf("summarising sessions: %w", err)
