@@ -21,7 +21,7 @@
     <div class="at-tabs at-tabs--sm" role="tablist">
       {{$sel := .Selected}}{{$cur := .RangeKey}}
       {{range .Ranges}}
-        <a class="at-tab" role="tab" {{if eq $cur .Key}}aria-selected="true"{{end}}
+        <a class="at-tab" role="tab" aria-selected="{{if eq $cur .Key}}true{{else}}false{{end}}"
            href="/analytics?range={{.Key}}&client={{$sel}}">{{.Label}}</a>
       {{end}}
     </div>

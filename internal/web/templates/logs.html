@@ -17,13 +17,13 @@
 
 {{$q := .Search}}{{$per := .Log.PerPage}}
 <div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-8)">
-  <a class="at-tab" role="tab" {{if eq .Level ""}}aria-selected="true"{{end}} href="/logs?per={{$per}}&q={{$q}}"
+  <a class="at-tab" role="tab" aria-selected="{{if eq .Level ""}}true{{else}}false{{end}}" href="/logs?per={{$per}}&q={{$q}}"
      hx-get="/logs/rows?per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">All <span class="at-tab-count">{{.CountAll}}</span></a>
-  <a class="at-tab" role="tab" {{if eq .Level "info"}}aria-selected="true"{{end}} href="/logs?level=info&per={{$per}}&q={{$q}}"
+  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "info"}}true{{else}}false{{end}}" href="/logs?level=info&per={{$per}}&q={{$q}}"
      hx-get="/logs/rows?level=info&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Info <span class="at-tab-count">{{index .Counts "info"}}</span></a>
-  <a class="at-tab" role="tab" {{if eq .Level "warn"}}aria-selected="true"{{end}} href="/logs?level=warn&per={{$per}}&q={{$q}}"
+  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "warn"}}true{{else}}false{{end}}" href="/logs?level=warn&per={{$per}}&q={{$q}}"
      hx-get="/logs/rows?level=warn&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Warn <span class="at-tab-count">{{index .Counts "warn"}}</span></a>
-  <a class="at-tab" role="tab" {{if eq .Level "error"}}aria-selected="true"{{end}} href="/logs?level=error&per={{$per}}&q={{$q}}"
+  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "error"}}true{{else}}false{{end}}" href="/logs?level=error&per={{$per}}&q={{$q}}"
      hx-get="/logs/rows?level=error&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Error <span class="at-tab-count">{{index .Counts "error"}}</span></a>
 </div>
 

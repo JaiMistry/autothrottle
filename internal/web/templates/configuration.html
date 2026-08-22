@@ -9,11 +9,11 @@
   </div>
 </header>
 
-<div class="at-tabs" role="tablist" style="margin-bottom:var(--space-8)">
-  <a class="at-tab" role="tab" {{if eq $tab "media-servers"}}aria-selected="true"{{end}} href="/configuration?tab=media-servers">Media Servers</a>
-  <a class="at-tab" role="tab" {{if eq $tab "downloaders"}}aria-selected="true"{{end}} href="/configuration?tab=downloaders">Downloaders</a>
-  <a class="at-tab" role="tab" {{if eq $tab "mappings"}}aria-selected="true"{{end}} href="/configuration?tab=mappings">Mappings</a>
-  <a class="at-tab" role="tab" {{if eq $tab "about"}}aria-selected="true"{{end}} href="/configuration?tab=about">About</a>
+<div class="at-tabs" role="tablist" style="margin-bottom:var(--space-9)">
+  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "media-servers"}}true{{else}}false{{end}}" href="/configuration?tab=media-servers">Media Servers</a>
+  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "downloaders"}}true{{else}}false{{end}}" href="/configuration?tab=downloaders">Downloaders</a>
+  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "mappings"}}true{{else}}false{{end}}" href="/configuration?tab=mappings">Mappings</a>
+  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "about"}}true{{else}}false{{end}}" href="/configuration?tab=about">About</a>
 </div>
 
 {{if .FormError}}{{template "alert" dict "Tone" "error" "Title" "That didn't save" "Body" .FormError}}<div style="height:var(--space-6)"></div>{{end}}
@@ -55,7 +55,7 @@
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
               <p class="at-dialog-body">Its mappings are removed too. History entries are kept.</p>
               <div class="at-dialog-actions">
-                <button class="at-btn" type="button" onclick="document.getElementById('del-ms-{{.ID}}').close()">Cancel</button>
+                <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('del-ms-{{.ID}}').close()">Cancel</button>
                 <form method="post" action="/configuration/media-servers/{{.ID}}/delete">
                   <input type="hidden" name="csrf_token" value="{{$csrf}}">
                   <button class="at-btn at-btn--danger" type="submit">Delete</button>
@@ -96,21 +96,24 @@
         </div>
       </div>
 
-      <label class="at-field" data-credpane="token">
-        <span class="at-field-label">Token{{if .EditMediaServer.HasCredential}} — leave blank to keep{{end}}</span>
-        <input class="at-input at-input--mono" type="password" name="token" placeholder="••••••••••••" autocomplete="off">
-        <span class="at-field-hint">A Plex token, or an Emby/Jellyfin API key. Never displayed once saved.</span>
-      </label>
+      <div data-credpane="token">
+        {{template "credentialfield" dict "Label" "Token" "Name" "token" "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"}}
+      </div>
 
       <div data-credpane="signin" hidden>
         <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
       </div>
-      <div>
-        <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
-          Exempt sessions playing from the local network</label>
-        <p class="at-field-hint" style="margin:var(--space-2) 0 0 26px">Exempt sessions never enter the active count, so they can never trigger throttling. Off by default — a VPN client also looks local while its stream does cross your internet link.</p>
-      </div>
-      <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditMediaServer.Enabled (not .EditMediaServerID)}}checked{{end}}> Enabled</label>
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
+        <span class="at-check-text">
+          <span>Exempt sessions playing from the local network</span>
+          <span class="at-check-desc">Exempt sessions never enter the active count, so they can never trigger throttling.</span>
+        </span>
+      </label>
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditMediaServer.Enabled (not .EditMediaServerID)}}checked{{end}}>
+        <span class="at-check-text"><span>Enabled</span></span>
+      </label>
       <div id="ms-form-test"><div class="at-testresult--idle"></div></div>
       <div style="display:flex;gap:var(--space-4)">
         <button type="submit" class="at-btn at-btn--primary">{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
@@ -154,7 +157,7 @@
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
               <p class="at-dialog-body">Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it.</p>
               <div class="at-dialog-actions">
-                <button class="at-btn" type="button" onclick="document.getElementById('del-dl-{{.ID}}').close()">Cancel</button>
+                <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('del-dl-{{.ID}}').close()">Cancel</button>
                 <form method="post" action="/configuration/downloaders/{{.ID}}/delete">
                   <input type="hidden" name="csrf_token" value="{{$csrf}}">
                   <button class="at-btn at-btn--danger" type="submit">Delete</button>
@@ -188,21 +191,19 @@
       <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
         <label class="at-field"><span class="at-field-label">Username</span>
           <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>
-        <label class="at-field"><span class="at-field-label">Password{{if .EditDownloader.HasCredential}} — leave blank to keep{{end}}</span>
-          <input class="at-input" type="password" name="password" placeholder="••••••••••••" autocomplete="off"></label>
+        {{template "credentialfield" dict "Label" "Password" "Name" "password" "HasCredential" .EditDownloader.HasCredential "Placeholder" ""}}
       </div>
-      <div class="at-section-label" style="margin:var(--space-2) 0 0">Default rates</div>
-      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
-        {{template "ratefield" dict "Name" "default_download_limit" "Label" "Download" "Value" .EditDownloader.DefaultDownloadLimit}}
-        {{template "ratefield" dict "Name" "default_upload_limit" "Label" "Upload" "Value" .EditDownloader.DefaultUploadLimit}}
-      </div>
-      <div class="at-section-label" style="margin:var(--space-2) 0 0">Throttled rates</div>
-      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
-        {{template "ratefield" dict "Name" "backup_download_limit" "Label" "Download" "Value" .EditDownloader.BackupDownloadLimit}}
-        {{template "ratefield" dict "Name" "backup_upload_limit" "Label" "Upload" "Value" .EditDownloader.BackupUploadLimit}}
-      </div>
-      <span class="at-field-hint">Rates are KB/s. 0 means unlimited.</span>
-      <label class="at-check-label"><input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditDownloader.Enabled (not .EditDownloaderID)}}checked{{end}}> Enabled</label>
+      {{template "ratepair" dict "Legend" "Default rates" "Tone" "default"
+        "DownName" "default_download_limit" "UpName" "default_upload_limit"
+        "Down" .EditDownloader.DefaultDownloadLimit "Up" .EditDownloader.DefaultUploadLimit}}
+      {{template "ratepair" dict "Legend" "Throttled rates" "Tone" "warn"
+        "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
+        "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
+        "Note" "Rates are KB/s. 0 means unlimited — the field says so as you type."}}
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditDownloader.Enabled (not .EditDownloaderID)}}checked{{end}}>
+        <span class="at-check-text"><span>Enabled</span></span>
+      </label>
       <div id="dl-form-test"><div class="at-testresult--idle"></div></div>
       <div style="display:flex;gap:var(--space-4)">
         <button type="submit" class="at-btn at-btn--primary">{{if .EditDownloaderID}}Save changes{{else}}Add download client{{end}}</button>
@@ -325,16 +326,29 @@
 {{- else}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7.6" opacity="0.25"/><circle cx="12" cy="12" r="7.6" pathLength="100" stroke-dasharray="26 74"/></svg>
 {{- end}}{{end}}
 
-{{/* A rate field reads "unlimited" rather than "KB/s" at 0, because a
-     bare 0 in a rate box reads as "stopped". */}}
-{{define "ratefield"}}<label class="at-field">
-  <span class="at-field-label">{{.Label}}</span>
-  <span class="at-ratefield">
-    <input class="at-input" type="number" name="{{.Name}}" value="{{.Value}}" min="0"
-           oninput="this.closest('.at-ratefield').querySelector('.at-ratefield-suffix').textContent = (this.value === '' || this.value === '0') ? 'unlimited' : 'KB/s'">
-    <span class="at-ratefield-suffix">{{if eq .Value 0}}unlimited{{else}}KB/s{{end}}</span>
-  </span>
-</label>{{end}}
+{{/* One rate field: arrow, bare number, and the suffix that flips to
+     "unlimited" at 0 — all inside one bordered box.
+     Args: Name, Label, Value, Dir ("down"|"up") */}}
+{{define "ratefield"}}<div class="at-ratefield">
+  <span class="at-ratefield-label">{{.Label}}</span>
+  <div class="at-ratebox">
+    <span class="at-ratebox-arrow" data-dir="{{.Dir}}" aria-hidden="true">{{template "ratearrow" dict "Dir" .Dir "Size" 14}}</span>
+    <input type="number" min="0" name="{{.Name}}" value="{{.Value}}"
+           oninput="this.parentNode.querySelector('.at-ratebox-suffix').textContent = (this.value === '' || this.value === '0') ? 'unlimited' : 'KB/s'">
+    <span class="at-ratebox-suffix">{{if eq .Value 0}}unlimited{{else}}KB/s{{end}}</span>
+  </div>
+</div>{{end}}
+
+{{/* The download/upload pair, with its legend.
+     Args: Legend, Tone, DownName, UpName, Down, Up, Note */}}
+{{define "ratepair"}}<fieldset class="at-ratepair">
+  {{if .Legend}}<legend class="at-ratepair-legend{{if ne .Tone "warn"}} at-ratepair-legend--default{{end}}">{{.Legend}}</legend>{{end}}
+  <div class="at-ratepair-grid">
+    {{template "ratefield" dict "Name" .DownName "Label" "Download" "Value" .Down "Dir" "down"}}
+    {{template "ratefield" dict "Name" .UpName "Label" "Upload" "Value" .Up "Dir" "up"}}
+  </div>
+  {{if .Note}}<span class="at-ratepair-note">{{.Note}}</span>{{end}}
+</fieldset>{{end}}
 
 {{/* The Plex sign-in panel. Four states in one bounded block, swapped
      in place, so starting or finishing a sign-in never moves the form

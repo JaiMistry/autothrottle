@@ -74,6 +74,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-toggle-expand { align-self: cente
 .at-nav-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-5);
   font-size: var(--text-ui);
   font-weight: var(--weight-medium);
@@ -100,9 +101,25 @@ html[data-rail="collapsed"] .at-shell .at-rail-name { display: none; }
 .at-rail-foot { margin-top: auto; display: grid; gap: var(--space-4); }
 html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
-.at-brand { display: inline-flex; align-items: center; gap: var(--space-5); min-width: 0; text-decoration: none; color: var(--text); }
+.at-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  text-decoration: none;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-ui);
+  color: var(--text);
+}
+/* The mark is user-replaceable, so it is always a plain square file
+   with the radius applied here rather than baked into the asset. */
+.at-brand img { border-radius: var(--radius-md); }
+/* The rail's lockup overrides the component's defaults, as AppShell
+   does: a larger mark and body-size text. */
+.at-rail .at-brand, .at-topbar .at-brand { gap: var(--space-5); }
+.at-brand img[width="20"], .at-brand img[width="16"] { border-radius: var(--radius-sm); }
 .at-brand img { display: block; flex-shrink: 0; }
-.at-rail-name { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.005em; white-space: nowrap; }
+.at-rail-name { font-size: var(--text-body); }
 
 .at-main-col { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
 .at-theme-bar { display: flex; justify-content: flex-end; padding: 14px 26px 0; }
@@ -554,47 +571,45 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
 /* ── Feedback ─────────────────────────────────────────────────────── */
 
+/* Inline and persistent. This app has no toasts — a condition that
+   matters stays on screen until it stops being true. */
 .at-alert {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
-  padding: 12px 14px;
+  display: grid;
+  gap: var(--space-2);
+  background: var(--fill-neutral);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
   font-size: var(--text-caption);
-  color: var(--text-dim);
+  color: var(--text);
 }
-.at-alert-title { font-weight: var(--weight-bold); color: var(--text); margin-bottom: 2px; }
-.at-alert--warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); background: var(--fill-warn); }
+.at-alert-title { font-weight: var(--weight-bold); color: var(--text); }
+.at-alert-body { color: var(--text-dim); }
+.at-alert--good { background: var(--fill-good); border-color: var(--good); }
+.at-alert--good .at-alert-title { color: var(--good); }
+.at-alert--warn { background: var(--fill-warn); border-color: var(--warn); }
 .at-alert--warn .at-alert-title { color: var(--warn); }
-.at-alert--error { border-color: color-mix(in srgb, var(--critical) 40%, var(--border)); background: var(--fill-critical); }
+.at-alert--error { background: var(--fill-critical); border-color: var(--critical); }
 .at-alert--error .at-alert-title { color: var(--critical); }
-.at-alert--accent { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--fill-accent); }
+.at-alert--accent { background: var(--fill-accent); border-color: var(--accent); }
 .at-alert--accent .at-alert-title { color: var(--accent); }
 
+/* What is missing, why the page is blank, and one way forward. The
+   dashed edge says "nothing here yet" rather than "something broke". */
 .at-empty {
   display: grid;
+  gap: var(--space-4);
   justify-items: center;
-  gap: var(--space-5);
   text-align: center;
-  padding: var(--space-14) var(--space-8);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px;
 }
-.at-empty-title { font-size: var(--text-section); font-weight: var(--weight-bold); color: var(--text); }
-.at-empty-body { font-size: var(--text-caption); color: var(--text-dim); max-width: 46ch; }
-.at-empty--accent { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--fill-accent); border-radius: var(--radius-lg); }
-.at-empty--accent .at-empty-title { color: var(--accent); }
-
-/* The list shell stretches its rows to fill the card, so two cards side
-   by side keep the same height; past two rows it scrolls instead. */
-.at-listshell {
-  display: grid;
-  grid-auto-rows: minmax(min-content, 1fr);
-  align-content: stretch;
-  min-height: 0;
-  overflow-y: auto;
-}
-.at-listempty { font-size: var(--text-caption); color: var(--text-faint); padding: var(--space-4) 0; margin: 0; }
+.at-empty--accent { border-color: var(--accent); }
+.at-empty-title { margin: 0; font-size: var(--text-ui); font-weight: var(--weight-bold); color: var(--text); }
+.at-empty-body { margin: 0; font-size: var(--text-caption); color: var(--text-dim); max-width: 46ch; text-wrap: pretty; }
+.at-empty-action { margin-top: var(--space-2); }
 
 /* The swap target for a connection test. Four states, one bounded box,
    so the result never shifts the form around it. Dismissed by hand — it
@@ -644,22 +659,25 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-dialog { border: 0; padding: 0; background: transparent; }
 .at-dialog::backdrop { background: var(--scrim); }
 .at-dialog-panel {
+  width: min(420px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
-  padding: var(--space-9);
-  max-width: 420px;
+  padding: 18px 20px;
   display: grid;
   gap: var(--space-6);
 }
-.at-dialog-title { margin: 0; font-size: var(--text-section); font-weight: var(--weight-bold); color: var(--text); }
-.at-dialog-body { font-size: var(--text-caption); color: var(--text-dim); }
+.at-dialog-title { margin: 0; font-size: var(--text-section); font-weight: var(--weight-bold); }
+.at-dialog-body { margin: 0; font-size: var(--text-caption); color: var(--text-dim); text-wrap: pretty; }
 .at-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-4); }
 
-/* ── Forms ────────────────────────────────────────────────────────── */
+/* ── Forms ───────────────────────────────────────────────────────── */
 
-.at-field { display: grid; gap: var(--space-3); }
+/* Label above the control, hint beneath it. alignContent:start keeps
+   rows at their natural height when a field sits beside a taller
+   sibling in a grid — otherwise the gaps stretch to fill. */
+.at-field { display: grid; align-content: start; gap: var(--space-2); }
 .at-field-label {
   font-size: var(--text-label);
   text-transform: uppercase;
@@ -667,40 +685,120 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   color: var(--text-faint);
   font-weight: var(--weight-semibold);
 }
-.at-field-hint { font-size: var(--text-label); color: var(--text-faint); }
+.at-field-hint { font-size: var(--text-caption); color: var(--text-faint); }
+.at-field-error { font-size: var(--text-caption); color: var(--critical); }
+
 .at-input, .at-select {
   width: 100%;
-  font-family: var(--font-sans);
-  font-size: var(--text-ui);
+  background: var(--surface);
   color: var(--text);
-  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 8px 10px;
-  transition: border-color var(--dur-fast) var(--ease-standard);
+  font-size: var(--text-ui);
+  font-family: var(--font-sans);
+  line-height: var(--leading-ui);
+  text-align: left;
 }
-.at-input:hover, .at-select:hover { border-color: var(--text-faint); }
+.at-select { appearance: auto; }
 .at-input::placeholder { color: var(--text-faint); }
-.at-input--mono { font-family: var(--font-mono); }
+.at-input--mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.at-input--invalid { border-color: var(--critical); }
 
-.at-checkbox { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-.at-check-label { display: inline-flex; align-items: center; gap: var(--space-4); font-size: var(--text-ui); color: var(--text); cursor: pointer; }
+/* Checkbox with an inline label, and an optional description under it.
+   Top-aligned so a wrapping description does not drag the box down. */
+.at-check-label {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  cursor: pointer;
+}
+.at-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.at-check-text { display: grid; gap: 2px; }
+.at-check-text > span:first-child { font-size: var(--text-ui); color: var(--text); }
+.at-check-desc { font-size: var(--text-caption); color: var(--text-faint); }
 
-/* The suffix reads "unlimited" instead of "KB/s" at 0, because a bare
-   0 in a rate field reads as "stopped". */
-.at-ratepair { display: grid; gap: var(--space-4); }
-.at-ratefield { position: relative; display: block; }
-.at-ratefield .at-input { padding-right: 76px; font-family: var(--font-mono); }
-.at-ratefield-suffix {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-family: var(--font-mono);
+/* The rate pair solves "0 means unlimited" in place: the suffix inside
+   each field reads "unlimited" instead of "KB/s" the moment the value
+   is 0, so the meaning is visible without reading a hint. Each field
+   carries its direction arrow at the head of the number — green down,
+   cyan up — matching how rates read everywhere else. */
+.at-ratepair { border: 0; margin: 0; padding: 0; display: grid; gap: var(--space-8); }
+.at-ratepair-legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
   font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  font-weight: var(--weight-semibold);
+  color: var(--warn);
+}
+.at-ratepair-legend--default { color: var(--text-faint); }
+.at-ratepair-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: var(--space-6);
+}
+.at-ratefield { display: grid; gap: var(--space-2); }
+.at-ratefield-label {
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
   color: var(--text-faint);
+  font-weight: var(--weight-semibold);
+}
+/* The box is the control; the input inside it is bare, so the arrow
+   and the unit sit inside the same border as the number. */
+.at-ratebox {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  /* Without this the box cannot shrink below the width of "unlimited"
+     and overflows its grid track into the field beside it. */
+  min-width: 0;
+}
+.at-ratebox-arrow { display: flex; flex-shrink: 0; color: var(--good); }
+.at-ratebox-arrow[data-dir="up"] { color: var(--accent); }
+.at-ratebox input {
+  flex: 1;
+  min-width: 40px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
+  -moz-appearance: textfield;
+}
+.at-ratebox input::-webkit-outer-spin-button,
+.at-ratebox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.at-ratebox-suffix {
+  font-size: var(--text-label);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  white-space: nowrap;
   pointer-events: none;
 }
+.at-ratepair-note { font-size: var(--text-caption); color: var(--text-faint); }
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 
@@ -755,6 +853,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: var(--text-ui); }
 .at-table th {
   text-align: left;
+  line-height: normal;
   font-size: var(--text-label);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
@@ -765,6 +864,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   white-space: nowrap;
 }
 .at-table td {
+  text-align: left;
+  line-height: normal;
   padding: 9px 12px 9px 0;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
@@ -779,6 +880,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-table td.at-cell--right, .at-table th.at-cell--right { text-align: right; }
 .at-table-empty { padding: 22px 0; text-align: center; color: var(--text-faint); font-size: var(--text-caption); }
 .at-rowactions { display: inline-flex; gap: var(--space-4); justify-content: flex-end; align-items: center; }
+/* A POST needs a form around its button, but the form must not become
+   the flex item — otherwise the button stops being one and loses the
+   blockification and min-width:auto that every sibling control has. */
+.at-rowactions form, .at-dialog-actions form { display: contents; }
 
 /* ── Grids ────────────────────────────────────────────────────────── */
 

@@ -63,17 +63,15 @@
 
 {{/* Args: Tone, Title, Body */}}
 {{define "alert"}}<div class="at-alert{{if .Tone}} at-alert--{{.Tone}}{{end}}" role="{{if eq .Tone "error"}}alert{{else}}status{{end}}">
-  <div>
-    {{if .Title}}<div class="at-alert-title">{{.Title}}</div>{{end}}
-    {{if .Body}}<div>{{.Body}}</div>{{end}}
-  </div>
+  {{if .Title}}<strong class="at-alert-title">{{.Title}}</strong>{{end}}
+  {{if .Body}}<span class="at-alert-body">{{.Body}}</span>{{end}}
 </div>{{end}}
 
 {{/* Args: Tone, Title, Body, ActionHref, ActionLabel */}}
 {{define "emptystate"}}<div class="at-empty{{if .Tone}} at-empty--{{.Tone}}{{end}}">
-  <div class="at-empty-title">{{.Title}}</div>
-  <div class="at-empty-body">{{.Body}}</div>
-  {{if .ActionLabel}}<a href="{{.ActionHref}}" class="at-btn at-btn--primary">{{.ActionLabel}}</a>{{end}}
+  <h3 class="at-empty-title">{{.Title}}</h3>
+  {{if .Body}}<p class="at-empty-body">{{.Body}}</p>{{end}}
+  {{if .ActionLabel}}<div class="at-empty-action"><a href="{{.ActionHref}}" class="at-btn at-btn--primary">{{.ActionLabel}}</a></div>{{end}}
 </div>{{end}}
 
 {{/* RateFigure. Chunky arrows on the same 24px grid as the status
@@ -217,3 +215,17 @@
     </div>
   </div>
 </section>{{end}}
+
+{{/* CredentialField. Never echoes a stored secret — not even a hidden
+     field. Empty means "keep what is saved", and the note that says so
+     lives under the control rather than in the label, so the label
+     stays one line and keeps aligning with a plain field beside it.
+     Args: Label, Name, HasCredential, Placeholder */}}
+{{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
+  <label class="at-field">
+    <span class="at-field-label">{{.Label}}</span>
+    <input class="at-input at-input--mono" type="password" name="{{or .Name "token"}}" autocomplete="off"
+           placeholder="{{if .HasCredential}}••••••••{{else}}{{.Placeholder}}{{end}}">
+    {{if .HasCredential}}<span class="at-field-hint">Leave blank to keep the existing value.</span>{{end}}
+  </label>
+</div>{{end}}
