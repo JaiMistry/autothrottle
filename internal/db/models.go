@@ -242,10 +242,14 @@ func (d *DB) InsertEvent(e Event) error {
 // someone finds the matrix and turns it on. Throttling is the point, so
 // a new pair defaults to on. Rows that already exist are left alone —
 // this only fills in the pairs nobody has expressed an opinion about.
+//
+// The `WHERE true` is load-bearing: without it SQLite cannot tell
+// whether ON CONFLICT belongs to the SELECT or the INSERT, and refuses
+// to parse the statement at all.
 func (d *DB) EnableMappingsForMediaServer(mediaServerID int64) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
-		 SELECT ?, id, 1 FROM downloaders
+		 SELECT ?, id, 1 FROM downloaders WHERE true
 		 ON CONFLICT(media_server_id, downloader_id) DO NOTHING`,
 		mediaServerID,
 	)
@@ -260,7 +264,7 @@ func (d *DB) EnableMappingsForMediaServer(mediaServerID int64) error {
 func (d *DB) EnableMappingsForDownloader(downloaderID int64) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
-		 SELECT id, ?, 1 FROM media_servers
+		 SELECT id, ?, 1 FROM media_servers WHERE true
 		 ON CONFLICT(media_server_id, downloader_id) DO NOTHING`,
 		downloaderID,
 	)

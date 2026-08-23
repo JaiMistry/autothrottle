@@ -356,7 +356,12 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		var newID int64
 		newID, err = s.db.CreateMediaServer(ms)
 		if err == nil {
-			err = s.db.EnableMappingsForMediaServer(newID)
+			// Seeding is a convenience, not part of the save. Failing the
+			// whole request here would report an error for a server that
+			// had in fact been created.
+			if seedErr := s.db.EnableMappingsForMediaServer(newID); seedErr != nil {
+				slog.Error("seeding mappings for new media server", "error", seedErr)
+			}
 		}
 	} else {
 		err = s.db.UpdateMediaServer(ms)
@@ -519,7 +524,9 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		var newID int64
 		newID, err = s.db.CreateDownloader(dl)
 		if err == nil {
-			err = s.db.EnableMappingsForDownloader(newID)
+			if seedErr := s.db.EnableMappingsForDownloader(newID); seedErr != nil {
+				slog.Error("seeding mappings for new downloader", "error", seedErr)
+			}
 		}
 	} else {
 		err = s.db.UpdateDownloader(dl)
