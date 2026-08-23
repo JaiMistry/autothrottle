@@ -26,6 +26,11 @@ COPY . .
 COPY --from=tailwind /out/tailwind.css internal/web/static/css/tailwind.css
 COPY --from=tailwind /out/apexcharts.min.js internal/web/static/js/apexcharts.min.js
 ARG VERSION=dev
+# The build context carries no .git, so the revision and build date the
+# toolchain would normally embed have to be passed in. Both are optional:
+# without them About falls back to what the binary can tell about itself.
+ARG COMMIT=""
+ARG BUILD_DATE=""
 # Compilation is the memory peak of this image, and modernc.org/sqlite
 # is a very large package to build. Unbounded, the toolchain starts one
 # compile per core and the peak scales with the build machine's core
@@ -34,7 +39,10 @@ ARG VERSION=dev
 # costs a few seconds.
 ENV GOFLAGS=-p=2 GOMAXPROCS=2
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
-      -ldflags="-s -w -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION}" \
+      -ldflags="-s -w \
+        -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION} \
+        -X github.com/JaiMistry/autothrottle/internal/version.Commit=${COMMIT} \
+        -X github.com/JaiMistry/autothrottle/internal/version.BuildDate=${BUILD_DATE}" \
       -o /out/autothrottle ./cmd/autothrottle
 # Pre-create /data owned by distroless's nonroot UID (65532) here, since
 # the final stage has no shell to chown with. A named volume mounted at

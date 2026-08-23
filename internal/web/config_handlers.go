@@ -15,7 +15,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
-	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 const testConnectionTimeout = 10 * time.Second
@@ -51,34 +50,6 @@ type mappingView struct {
 	MediaServerID, DownloaderID     int64
 	MediaServerName, DownloaderName string
 	Enabled                         bool
-}
-
-// settingView renders one runtime knob generically, from the
-// definitions the settings package publishes — so a new setting needs
-// no template change.
-type settingView struct {
-	Key         string
-	Label       string
-	Description string
-	Unit        string
-	Value       string
-	Min, Max    int64
-}
-
-func settingViews(store *settings.Store) []settingView {
-	current := store.All()
-	out := make([]settingView, 0, len(settings.Definitions))
-	for _, def := range settings.Definitions {
-		value := current[def.Key]
-		if value == "" {
-			value = def.Default
-		}
-		out = append(out, settingView{
-			Key: def.Key, Label: def.Label, Description: def.Description,
-			Unit: def.Unit, Value: value, Min: def.Min, Max: def.Max,
-		})
-	}
-	return out
 }
 
 // downloaderState collapses the scheduler's view into the one word the
@@ -125,7 +96,8 @@ type configPageData struct {
 	AuthSummary       string
 	Update            updateView
 	MappingOn         map[string]bool
-	Settings          []settingView
+	About             aboutView
+	Uptime            string
 	EditMediaServerID int64 // 0 means "add" mode
 	EditMediaServer   mediaServerView
 	EditDownloaderID  int64
@@ -228,9 +200,10 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		Downloaders:  dlViews,
 		Mappings:     mapViews,
 		MappingOn:    enabled,
-		Settings:     settingViews(s.settings),
+		About:        s.aboutView(),
+		Uptime:       uptimeSince(s.startedAt),
 		AuthSummary:  s.authSummary(),
-		Update:       unknownUpdate(),
+		Update:       idleUpdate(),
 	}, nil
 }
 
@@ -745,25 +718,4 @@ func (s *Server) writeTestResult(w http.ResponseWriter, ok bool, target, message
 	if err := s.templates["configuration"].ExecuteTemplate(w, "testresult", view); err != nil {
 		slog.Error("rendering test result", "error", err)
 	}
-}
-
-// saveSettings writes the runtime knobs. Each is validated by the
-// settings package against its own declared bounds; an out-of-range
-// value is reported rather than silently clamped on the way in.
-func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	for _, def := range settings.Definitions {
-		value := strings.TrimSpace(r.FormValue(def.Key))
-		if value == "" {
-			continue
-		}
-		if err := s.settings.Set(def.Key, value); err != nil {
-			s.renderConfigError(w, r, "about", err.Error())
-			return
-		}
-	}
-	http.Redirect(w, r, "/configuration?tab=about", http.StatusSeeOther)
 }

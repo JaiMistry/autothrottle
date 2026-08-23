@@ -272,32 +272,13 @@
 <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8);max-width:min(620px,100%)">
   <section class="at-card">
     <header class="at-card-head"><h2 class="at-card-title">About</h2></header>
-    {{template "readonly" dict "Label" "Version" "Value" (printf "v%s" .Version) "Note" "early development"}}
-    {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set with environment variables at deploy time — not editable here"}}
+    {{template "readonly" dict "Label" "Build" "Value" .About.Commit "Note" .About.BuiltNote}}
+    {{/* Ticks forward in the page from the boot timestamp; the value
+         rendered here is only the first frame. */}}
+    {{template "readonly" dict "Label" "Uptime" "Value" .Uptime "Note" .About.BootNote "Tick" .About.BootUnix}}
+    {{template "readonly" dict "Label" "Runtime" "Value" .About.Runtime "Note" "Reported by the running process"}}
+    {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set via environment variables at deploy time"}}
     <div id="update-check">{{template "updatecheck" .Update}}</div>
-  </section>
-
-  <section class="at-card">
-    <header class="at-card-head">
-      <div>
-        <h2 class="at-card-title">Settings</h2>
-        <p style="margin:2px 0 0;font-size:var(--text-caption);color:var(--text-faint)">Timing and retention. Changes take effect on the next tick — no restart.</p>
-      </div>
-    </header>
-    <form method="post" action="/configuration/settings" style="display:grid;gap:var(--space-6)">
-      <input type="hidden" name="csrf_token" value="{{$csrf}}">
-      {{range .Settings}}
-        <label class="at-field">
-          <span class="at-field-label">{{.Label}}</span>
-          <span class="at-ratefield">
-            <input class="at-input" type="number" name="{{.Key}}" value="{{.Value}}" min="{{.Min}}" max="{{.Max}}">
-            <span class="at-ratefield-suffix">{{.Unit}}</span>
-          </span>
-          <span class="at-field-hint">{{.Description}}</span>
-        </label>
-      {{end}}
-      <div><button type="submit" class="at-btn at-btn--primary">Save settings</button></div>
-    </form>
   </section>
 </div>
 {{end}}
@@ -312,31 +293,35 @@
 {{define "readonly"}}<div class="at-readonly">
   <span class="at-readonly-label">{{.Label}}</span>
   <span class="at-readonly-value">
-    <span>{{.Value}}</span>
+    <span{{if .Tick}} data-uptime-since="{{.Tick}}"{{end}}>{{.Value}}</span>
     {{if .Note}}<span class="at-readonly-note">{{.Note}}</span>{{end}}
   </span>
 </div>{{end}}
 
-{{/* Checks are manual: nothing phones home on its own. */}}
+{{/* Checks are manual: nothing phones home on its own. Four states,
+     and the resting one names the running build rather than admitting
+     to not knowing something it was never asked to find out. */}}
 {{define "updatecheck"}}<div class="at-update" data-state="{{.State}}">
   <span class="at-update-main">
-    <span class="at-update-icon">{{template "updateicon" .State}}</span>
+    <span class="at-update-icon{{if eq .State "checking"}} at-spin{{end}}">{{template "updateicon" .State}}</span>
     <span class="at-update-text">
       <span class="at-update-label">{{.Label}}</span>
-      <span class="at-update-note">{{.Note}}</span>
+      <span class="at-update-note">{{.NotePre}}{{if .NoteStrong}}<strong>{{.NoteStrong}}</strong>{{end}}{{.NotePost}}</span>
     </span>
   </span>
   <span class="at-update-actions">
-    <button class="at-btn" hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML">Check for updates</button>
-    <a class="at-btn {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
+    <button class="at-btn at-btn--sm" hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML"
+            {{if eq .State "checking"}}disabled{{end}}>Check for updates</button>
+    <a class="at-btn at-btn--sm {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
        href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>
   </span>
 </div>{{end}}
 
 {{define "updateicon"}}
-{{- if eq . "current"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.5 9.5 17.5 19.5 7"/></svg>
-{{- else if eq . "available"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
-{{- else}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7.6" opacity="0.25"/><circle cx="12" cy="12" r="7.6" pathLength="100" stroke-dasharray="26 74"/></svg>
+{{- if eq . "current"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg>
+{{- else if eq . "available"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16.4V7.8M8.4 11.4L12 7.8l3.6 3.6"/></svg>
+{{- else if eq . "checking"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-8.5 6.1"/></svg>
+{{- else}}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3v5.5"/><circle cx="12" cy="12" r="3.4"/><path d="M12 15.5v5.5"/></svg>
 {{- end}}{{end}}
 
 {{/* One rate field: arrow, bare number, and the suffix that flips to

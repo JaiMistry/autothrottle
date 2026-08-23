@@ -91,9 +91,10 @@ func TestPagesRender(t *testing.T) {
 			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true, Sessions: 2}},
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
 			MappingOn:    map[string]bool{"1:1": true},
-			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+			About:        aboutView{Commit: "a3f9c21", BuiltNote: "built 12 Aug 2026", Runtime: "go1.26 · linux/amd64 · docker", BootNote: "last restart: 16 Aug 2026, 09:41", BootUnix: 1755337260000},
+			Uptime:       "0d : 00h : 00m : 00s",
 			AuthSummary:  "enabled · signed in as admin",
-			Update:       unknownUpdate(),
+			Update:       idleUpdate(),
 		},
 		"analytics": analyticsData{
 			pageData:   pageData{Title: "Analytics", Authenticated: true, Version: "test", Asset: func(p string) string { return p }},
@@ -128,9 +129,10 @@ func TestConfigurationTabsRender(t *testing.T) {
 			MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true}},
 			Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
 			MappingOn:    map[string]bool{"1:1": true},
-			Settings:     []settingView{{Key: "k", Label: "L", Unit: "seconds", Value: "60"}},
+			About:        aboutView{Commit: "a3f9c21", BuiltNote: "built 12 Aug 2026", Runtime: "go1.26 · linux/amd64 · docker", BootNote: "last restart: 16 Aug 2026, 09:41", BootUnix: 1755337260000},
+			Uptime:       "0d : 00h : 00m : 00s",
 			AuthSummary:  "enabled · signed in as admin",
-			Update:       unknownUpdate(),
+			Update:       idleUpdate(),
 		}
 		if err := tmpl.ExecuteTemplate(discard{}, "layout", data); err != nil {
 			t.Errorf("rendering tab %s: %v", tab, err)

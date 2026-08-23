@@ -12,21 +12,44 @@ import (
 )
 
 // updateView is the About tab's release status.
+//
+// The note is split around its one emphasised word rather than carrying
+// markup, so the version number can be bold without the view ever
+// holding HTML.
 type updateView struct {
-	State string // unknown | current | available | error
-	Label string
-	Note  string
+	State      string // idle | checking | current | available
+	Label      string
+	NotePre    string
+	NoteStrong string
+	NotePost   string
 }
 
-// unknownUpdate is what About shows before anyone asks. Checking is
+// idleUpdate is what About shows before anyone asks. Checking is
 // deliberately manual: this app never contacts an update service on its
-// own, and the copy says so rather than leaving the reader to wonder.
-func unknownUpdate() updateView {
+// own, so the resting state names the running build and nothing else.
+func idleUpdate() updateView {
 	return updateView{
-		State: "unknown",
-		Label: "Update status unknown",
-		Note:  "Checks are manual — nothing phones home on its own.",
+		State:   "idle",
+		Label:   installedLabel(version.Version),
+		NotePre: "Not checked for updates yet.",
 	}
+}
+
+// installedLabel reads "v0.4.2 installed", or says "dev build" when
+// there is no release number to print.
+func installedLabel(v string) string {
+	if v == "" || v == "dev" {
+		return "dev build installed"
+	}
+	return fmt.Sprintf("v%s installed", strings.TrimPrefix(v, "v"))
+}
+
+// unreachable keeps the resting state's shape when the check itself
+// could not run. There is no designed state for a failed check, and
+// inventing one would say more about the failure than it deserves —
+// but silently reporting "up to date" would be a lie.
+func unreachable(why string) updateView {
+	return updateView{State: "idle", Label: installedLabel(version.Version), NotePre: why}
 }
 
 const releasesAPI = "https://api.github.com/repos/JaiMistry/autothrottle/releases/latest"
@@ -45,65 +68,45 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 func checkLatestRelease(ctx context.Context, current string) updateView {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesAPI, nil)
 	if err != nil {
-		return updateView{State: "error", Label: "Could not check", Note: err.Error()}
+		return unreachable("The update check could not be started.")
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
 	if err != nil {
-		return updateView{
-			State: "error",
-			Label: "Could not check",
-			Note:  "No answer from GitHub. This is expected on a box with no outbound internet access.",
-		}
+		return unreachable("No answer from GitHub. Expected on a box with no outbound internet access.")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusNotFound {
-		// Also what a private repository returns to an unauthenticated
-		// caller, which is worth saying plainly rather than reporting as
-		// a failure the user could act on.
-		return updateView{
-			State: "unknown",
-			Label: "No published releases",
-			Note:  "Nothing has been tagged yet, or the repository is not public.",
-		}
-	}
 	if resp.StatusCode != http.StatusOK {
-		return updateView{
-			State: "error",
-			Label: "Could not check",
-			Note:  fmt.Sprintf("GitHub answered %d.", resp.StatusCode),
-		}
+		return unreachable(fmt.Sprintf("GitHub answered %d.", resp.StatusCode))
 	}
 
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return updateView{State: "error", Label: "Could not check", Note: "GitHub's answer could not be read."}
+		return unreachable("GitHub's answer could not be read.")
 	}
 
 	latest := strings.TrimPrefix(release.TagName, "v")
 	running := strings.TrimPrefix(current, "v")
 	switch {
 	case latest == "":
-		return updateView{State: "unknown", Label: "No published releases", Note: "Nothing has been tagged yet."}
+		return unreachable("GitHub reported no release tag.")
 	case running == "dev":
-		// A dev build has no release to compare against, and claiming it
-		// is out of date would be wrong as often as not.
-		return updateView{
-			State: "unknown",
-			Label: fmt.Sprintf("Latest release is v%s", latest),
-			Note:  "This is a development build, so there is no version to compare it against.",
-		}
+		// A dev build has no version to compare against, and calling it
+		// out of date would be wrong as often as not.
+		return unreachable(fmt.Sprintf("This is a development build. v%s is the latest release.", latest))
 	case latest == running:
-		return updateView{State: "current", Label: "Up to date", Note: fmt.Sprintf("v%s is the latest release.", latest)}
+		return updateView{
+			State: "current", Label: "Up to date",
+			NoteStrong: "v" + latest, NotePost: " is the latest release.",
+		}
 	default:
 		return updateView{
-			State: "available",
-			Label: fmt.Sprintf("v%s available", latest),
-			Note:  fmt.Sprintf("You are on v%s. Pull the new image and restart.", running),
+			State: "available", Label: fmt.Sprintf("v%s available", latest),
+			NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". Pull the new image and restart.",
 		}
 	}
 }

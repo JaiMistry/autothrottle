@@ -1105,10 +1105,11 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
   flex-wrap: wrap;
 }
 .at-update-main { display: flex; align-items: center; gap: var(--space-6); min-width: 0; }
-.at-update-icon { display: inline-flex; color: var(--text-faint); }
+.at-update-icon { display: inline-flex; color: var(--text-dim); }
 .at-update-text { display: grid; gap: 2px; }
-.at-update-label { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text-faint); }
+.at-update-label { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text-dim); }
 .at-update-note { font-size: var(--text-caption); color: var(--text-faint); }
+.at-update-note strong { font-weight: var(--weight-semibold); color: var(--text); }
 .at-update[data-state="checking"] .at-update-icon,
 .at-update[data-state="checking"] .at-update-label,
 .at-update[data-state="available"] .at-update-icon,

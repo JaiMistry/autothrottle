@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/clients"
@@ -50,6 +51,7 @@ type Server struct {
 	settings      *settings.Store
 	plex          plexSignIn
 	assets        *staticAssets
+	startedAt     time.Time
 }
 
 // parsePage builds one page's template set: the shared layout, the
@@ -93,6 +95,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 		watchers:      watchers,
 		settings:      store,
 		assets:        newStaticAssets(staticSub),
+		startedAt:     time.Now(),
 	}, nil
 }
 
@@ -130,7 +133,6 @@ func (s *Server) Router() http.Handler {
 	// The mappings matrix toggles a cell by pair rather than by id: a
 	// cell has no id until it is first ticked.
 	protected.HandleFunc("POST /configuration/mappings/set", s.setMapping)
-	protected.HandleFunc("POST /configuration/settings", s.saveSettings)
 	protected.HandleFunc("GET /configuration/update-check", s.updateCheck)
 	protected.HandleFunc("POST /configuration/plex-signin", s.startPlexSignIn)
 	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
