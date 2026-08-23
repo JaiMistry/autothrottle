@@ -14,6 +14,7 @@ services:
       - AUTOTHROTTLE_AUTH_USERNAME=admin
       - AUTOTHROTTLE_AUTH_PASSWORD=devpassword
       - AUTOTHROTTLE_SECURE_COOKIES=false
+      - TZ=America/Los_Angeles
     volumes:
       - autothrottle_data:/data
     ports:

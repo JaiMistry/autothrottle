@@ -23,7 +23,7 @@
   <section class="at-card">
     <div class="at-tablewrap">
       <table class="at-table">
-        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Local exempt</th><th>Sessions</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Local exempt</th><th>Sessions</th><th>Status</th><th class="at-col-actions">Actions</th></tr></thead>
         <tbody>
         {{range .MediaServers}}
           <tr>
@@ -34,7 +34,7 @@
             <td class="at-cell--mono">{{.Sessions}}</td>
             <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{end}}</td>
             <td>
-              <span class="at-rowactions" style="gap:6px">
+              <span class="at-rowactions">
                 <a class="at-btn at-btn--xs" href="/configuration?tab=media-servers&edit={{.ID}}">Edit</a>
                 <form method="post" action="/configuration/media-servers/{{.ID}}/test" data-testtarget="{{.URL}}"
                       hx-post="/configuration/media-servers/{{.ID}}/test" hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">
@@ -140,7 +140,7 @@
   <section class="at-card">
     <div class="at-tablewrap">
       <table class="at-table">
-        <thead><tr><th>Name</th><th>URL</th><th>Default rate</th><th>Throttled rate</th><th>Now</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>URL</th><th>Default rate</th><th>Throttled rate</th><th>Status</th><th class="at-col-actions">Actions</th></tr></thead>
         <tbody>
         {{range .Downloaders}}
           <tr>
@@ -150,7 +150,7 @@
             <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
             <td>{{template "dlstateflag" .State}}</td>
             <td>
-              <span class="at-rowactions" style="gap:6px">
+              <span class="at-rowactions">
                 <a class="at-btn at-btn--xs" href="/configuration?tab=downloaders&edit={{.ID}}">Edit</a>
                 <form method="post" action="/configuration/downloaders/{{.ID}}/test" data-testtarget="{{.URL}}"
                       hx-post="/configuration/downloaders/{{.ID}}/test" hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">
@@ -229,45 +229,7 @@
 
 {{else if eq $tab "mappings"}}
 {{if and .MediaServers .Downloaders}}
-<section class="at-card">
-  <header class="at-card-head"><h2 class="at-card-title">Mappings</h2></header>
-  <div style="overflow-x:auto">
-    <table class="at-matrix">
-      <thead>
-        <tr>
-          <th>Media server / Downloader →</th>
-          {{range .Downloaders}}<th>{{.Name}}</th>{{end}}
-        </tr>
-      </thead>
-      <tbody>
-      {{$on := .MappingOn}}{{$dls := .Downloaders}}
-      {{range $ms := .MediaServers}}
-        <tr>
-          <td>{{$ms.Name}}</td>
-          {{range $dl := $dls}}
-            {{$enabled := index $on (mapkey $ms.ID $dl.ID)}}
-            <td>
-              <form method="post" action="/configuration/mappings/set" style="display:contents">
-                <input type="hidden" name="csrf_token" value="{{$csrf}}">
-                <input type="hidden" name="media_server_id" value="{{$ms.ID}}">
-                <input type="hidden" name="downloader_id" value="{{$dl.ID}}">
-                <input type="hidden" name="enabled" value="{{if $enabled}}0{{else}}1{{end}}">
-                <button type="submit" class="at-matrix-cell" aria-pressed="{{if $enabled}}true{{else}}false{{end}}"
-                        title="{{if $enabled}}Leave {{$dl.Name}} at its default rate when {{$ms.Name}} plays{{else}}Throttle {{$dl.Name}} when {{$ms.Name}} plays{{end}}">
-                  {{if $enabled}}Throttle{{else}}Default{{end}}
-                </button>
-              </form>
-            </td>
-          {{end}}
-        </tr>
-      {{end}}
-      </tbody>
-    </table>
-  </div>
-  <p class="at-matrix-note">
-    A downloader is throttled while <strong>any</strong> enabled mapping points it at a server with at least one active session. Rate values live on the downloader, not on the mapping.
-  </p>
-</section>
+{{template "mappingmatrix" .}}
 {{else}}
   {{template "emptystate" dict
     "Title" "Nothing to map yet"
@@ -296,6 +258,52 @@
 </template>
 {{end}}
 
+{{/* The matrix is its own template so toggling one cell can re-render
+     just the matrix. Returning 204 instead left the button looking dead:
+     the mapping did change, but nothing on the page said so. */}}
+{{define "mappingmatrix"}}{{$csrf := .CSRFToken}}
+<section class="at-card" id="mapping-matrix">
+  <header class="at-card-head"><h2 class="at-card-title">Mappings</h2></header>
+  <div style="overflow-x:auto">
+    <table class="at-matrix">
+      <thead>
+        <tr>
+          <th>Media server / Downloader →</th>
+          {{range .Downloaders}}<th>{{.Name}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+      {{$on := .MappingOn}}{{$dls := .Downloaders}}
+      {{range $ms := .MediaServers}}
+        <tr>
+          <td>{{$ms.Name}}</td>
+          {{range $dl := $dls}}
+            {{$enabled := index $on (mapkey $ms.ID $dl.ID)}}
+            <td>
+              <form method="post" action="/configuration/mappings/set" style="display:contents"
+                    hx-post="/configuration/mappings/set" hx-target="#mapping-matrix" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                <input type="hidden" name="media_server_id" value="{{$ms.ID}}">
+                <input type="hidden" name="downloader_id" value="{{$dl.ID}}">
+                <input type="hidden" name="enabled" value="{{if $enabled}}0{{else}}1{{end}}">
+                <button type="submit" class="at-matrix-cell" aria-pressed="{{if $enabled}}true{{else}}false{{end}}"
+                        title="{{if $enabled}}Leave {{$dl.Name}} at its default rate when {{$ms.Name}} plays{{else}}Throttle {{$dl.Name}} when {{$ms.Name}} plays{{end}}">
+                  {{if $enabled}}Throttle{{else}}Default{{end}}
+                </button>
+              </form>
+            </td>
+          {{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="at-matrix-note">
+    A downloader is throttled while <strong>any</strong> enabled mapping points it at a server with at least one active session. Rate values live on the downloader, not on the mapping.
+  </p>
+</section>
+{{end}}
+
 {{define "readonly"}}<div class="at-readonly">
   <span class="at-readonly-label">{{.Label}}</span>
   <span class="at-readonly-value">
@@ -317,15 +325,20 @@
   </span>
   <span class="at-update-actions">
     <button class="at-btn at-btn--sm" hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML"
-            {{if eq .State "checking"}}disabled{{end}}>Check for updates</button>
+            {{if eq .State "checking"}}disabled{{end}}>{{if eq .State "failed"}}Try again{{else}}Check for updates{{end}}</button>
     <a class="at-btn at-btn--sm {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
        href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>
   </span>
 </div>{{end}}
 
+{{/* Shared by the sign-in failure and the update-check failure — one
+     glyph for "this did not work", wherever it happens. */}}
+{{define "cautionicon"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/></svg>{{end}}
+
 {{define "updateicon"}}
 {{- if eq . "current"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.6"/></svg>
 {{- else if eq . "available"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16.4V7.8M8.4 11.4L12 7.8l3.6 3.6"/></svg>
+{{- else if eq . "failed"}}{{template "cautionicon"}}
 {{- else if eq . "checking"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-8.5 6.1"/></svg>
 {{- else}}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3v5.5"/><circle cx="12" cy="12" r="3.4"/><path d="M12 15.5v5.5"/></svg>
 {{- end}}{{end}}
@@ -377,7 +390,7 @@
     </span>
     {{- else if eq .State "error"}}
     <span class="at-plexsignin-status">
-      <span class="at-plexsignin-dot" data-tone="critical" aria-hidden="true"></span>
+      <span class="at-plexsignin-caution" data-tone="critical">{{template "cautionicon"}}</span>
       <span class="at-plexsignin-label" data-tone="critical">Sign-in failed</span>
     </span>
     {{- end}}

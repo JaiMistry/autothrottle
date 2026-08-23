@@ -50,6 +50,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 RUN mkdir -p /out/data && chown 65532:65532 /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
+# Timestamps in the UI are rendered in this zone. Override it at run
+# time with -e TZ=... ; the zone database is compiled into the binary,
+# so any IANA name works without adding tzdata to the image.
+ENV TZ=America/Los_Angeles
 COPY --from=build /out/autothrottle /autothrottle
 COPY --from=build --chown=65532:65532 /out/data /data
 USER nonroot:nonroot

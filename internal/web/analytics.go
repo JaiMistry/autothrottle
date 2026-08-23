@@ -214,8 +214,19 @@ func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 	}
 	s.applyConfigChange(false)
 
+	// Re-render the matrix rather than answering 204. HTMX does nothing
+	// with an empty response, so the cell kept its old label and the
+	// toggle read as broken even though the mapping had changed.
 	if r.Header.Get("HX-Request") == "true" {
-		w.WriteHeader(http.StatusNoContent)
+		data, err := s.buildConfigPageData(r, "mappings")
+		if err != nil {
+			slog.Error("rebuilding mappings after toggle", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := s.templates["configuration"].ExecuteTemplate(w, "mappingmatrix", data); err != nil {
+			slog.Error("rendering mappings matrix", "error", err)
+		}
 		return
 	}
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)

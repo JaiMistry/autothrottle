@@ -13,6 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	// The final image is distroless and carries no zoneinfo, so TZ would
+	// silently fall back to UTC and every timestamp in the UI would be
+	// wrong for everyone outside it. Embedding the database costs about
+	// 450 KB and makes TZ work the way an operator expects.
+	_ "time/tzdata"
+
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"

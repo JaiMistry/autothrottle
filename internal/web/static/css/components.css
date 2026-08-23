@@ -467,6 +467,9 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-plexsignin-dot[data-tone="critical"] { background: var(--critical); }
 .at-plexsignin-label[data-tone="critical"] { color: var(--critical); }
 .at-plexsignin-note { font-size: var(--text-caption); color: var(--text-faint); text-wrap: pretty; }
+.at-plexsignin:not([data-state="idle"]) .at-plexsignin-note { font-weight: var(--weight-semibold); }
+.at-plexsignin-caution { display: inline-flex; flex-shrink: 0; }
+.at-plexsignin-caution[data-tone="critical"] { color: var(--critical); }
 
 .at-spin { display: inline-flex; animation: atSpin 1.1s linear infinite; }
 @keyframes atSpin { to { transform: rotate(360deg); } }
@@ -951,6 +954,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-table td.at-cell--dim { color: var(--text-dim); }
 .at-table td.at-cell--right, .at-table th.at-cell--right { text-align: right; }
+/* The actions column takes only what its buttons need, so the columns
+   that carry real content get the rest of the width. */
+.at-table th.at-col-actions { width: 1%; white-space: nowrap; }
+.at-table td.at-cell--actions { white-space: nowrap; }
+
 .at-table-empty { padding: 22px 0; text-align: center; color: var(--text-faint); font-size: var(--text-caption); }
 .at-rowactions { display: inline-flex; gap: var(--space-4); justify-content: flex-end; align-items: center; }
 /* A POST needs a form around its button, but the form must not become
@@ -1110,6 +1118,8 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-update-label { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text-dim); }
 .at-update-note { font-size: var(--text-caption); color: var(--text-faint); }
 .at-update-note strong { font-weight: var(--weight-semibold); color: var(--text); }
+.at-update[data-state="failed"] .at-update-icon,
+.at-update[data-state="failed"] .at-update-label { color: var(--critical); }
 .at-update[data-state="checking"] .at-update-icon,
 .at-update[data-state="checking"] .at-update-label,
 .at-update[data-state="available"] .at-update-icon,

@@ -128,7 +128,7 @@
                    the configured default rate is in force, which is the
                    same rate as any other unthrottled moment. The reason
                    line carries the override. */}}
-        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal"}}{{end}}
+        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
     <span class="at-dlrow-reason">{{.Cause}}</span>
@@ -169,7 +169,7 @@
 {{- else if eq . "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
 {{- else if eq . "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
 {{- else if eq . "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
-{{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Normal" "Size" "sm"}}{{end}}{{end}}
+{{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates" "Size" "sm"}}{{end}}{{end}}
 
 {{/* Args: Shape (line|dashed|area|hatch), Color, Label */}}
 {{define "legenditem"}}<span class="at-legenditem">
@@ -194,7 +194,7 @@
   </header>
   <div style="display:grid">
     {{if .Cleared}}
-      <span class="at-listempty">Log cleared. Refresh to reload.</span>
+      {{template "emptystate" dict "Title" "Log cleared" "Body" "Refresh to reload the events from the server."}}
     {{else if not .Events}}
       <span class="at-listempty">{{or .EmptyNote "No events."}}</span>
     {{else}}
@@ -205,9 +205,9 @@
         {{if and .Total (not .Cleared)}}{{.RangeFrom}}–{{.RangeTo}} of {{.Total}}{{else}}0 of 0{{end}}
       </span>
       <div style="display:flex;align-items:center;gap:var(--space-4)">
-        <select class="at-select" style="width:auto;padding:4px 8px;font-size:var(--text-caption)" name="per"
+        <select class="at-select at-select--pager" name="per"
                 hx-get="{{.Endpoint}}?{{.QueryNoAmp}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML" aria-label="Rows per page">
-          {{$per := .PerPage}}{{range .PerOptions}}<option value="{{.}}" {{if eq . $per}}selected{{end}}>{{.}} rows</option>{{end}}
+          {{$per := .PerPage}}{{range .PerOptions}}<option value="{{.}}" {{if eq . $per}}selected{{end}}>{{.}} per page</option>{{end}}
         </select>
         <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasPrev}}disabled{{end}} aria-label="Previous page"
                 hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.PrevPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">{{template "ratearrow" dict "Dir" "left" "Size" 13}}</button>

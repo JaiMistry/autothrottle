@@ -710,7 +710,18 @@ type testResultView struct {
 // The backend's own error string is shown verbatim in mono, wrapped by
 // a plain-language headline rather than replaced by one — the machine's
 // words are usually the only thing that says what actually went wrong.
+// minTestDuration is how long a probe is held before its answer is
+// written. A client on the same LAN can answer in single-digit
+// milliseconds, which made the result look like it had appeared without
+// a test having run. Only the reply waits — the elapsed time on the
+// card is the real one, and a probe slower than this is not delayed at
+// all. Validation errors, which never reach the network, skip it.
+const minTestDuration = 550 * time.Millisecond
+
 func (s *Server) writeTestResult(w http.ResponseWriter, ok bool, target, message string, elapsed time.Duration) {
+	if elapsed > 0 && elapsed < minTestDuration {
+		time.Sleep(minTestDuration - elapsed)
+	}
 	view := testResultView{
 		State: "failed", Tone: "critical", Icon: "unreachable", Label: "Failed",
 		Target: target, Detail: message, Dismissable: true,
