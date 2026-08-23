@@ -43,6 +43,9 @@ func classifyProbeError(kind probeKind, err error) (field, hint string) {
 	case strings.Contains(msg, "connection refused"):
 		return fieldURL, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
 
+	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
+		return fieldURL, "No route to that address from the AutoThrottle container. Check the address, and that the container can reach that network."
+
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
 		return fieldURL, "No reply in 8s. Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."

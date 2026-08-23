@@ -762,6 +762,15 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%238b95a5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
 }
 .at-select::-ms-expand { display: none; }
+
+/* The pager's own select: narrower, and sized to hold "50 per page". */
+.at-select--pager {
+  width: 132px;
+  flex: 0 0 auto;
+  padding: 5px 28px 5px 8px;
+  font-size: var(--text-caption);
+  background-position: right 9px center;
+}
 /* Small "?" that links out to a vendor's own documentation. */
 .at-helplink {
   display: inline-flex;

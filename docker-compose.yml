@@ -5,6 +5,11 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
+        # Populate these for a local build that should identify itself:
+        #   COMMIT=$(git rev-parse --short HEAD) \
+        #   BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose build
+        COMMIT: ${COMMIT:-}
+        BUILD_DATE: ${BUILD_DATE:-}
     image: autothrottle-local:latest
     pull_policy: never
     container_name: autothrottle
