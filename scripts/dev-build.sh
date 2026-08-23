@@ -12,8 +12,13 @@ cd "$(dirname "$0")/.."
 commit=$(git rev-parse --short HEAD)
 git diff --quiet && git diff --cached --quiet || commit="${commit}-dirty"
 
+# The commit's own date, not the wall clock. Rebuilding the same commit
+# has to give the same answer, or the field says more about the machine
+# that compiled it than about the code — and two identical binaries
+# would disagree about their age. It also keeps the build reproducible,
+# which -trimpath in the Dockerfile is already reaching for.
 COMMIT="$commit" \
-BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+BUILD_DATE="$(git log -1 --format=%cI)" \
   docker compose build --memory 1500m "$@"
 COMMIT="$commit" docker compose up -d
 

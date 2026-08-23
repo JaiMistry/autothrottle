@@ -41,6 +41,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # The released commit's own date, matching scripts/dev-build.sh, so a
+      # local build and a release build of the same commit agree.
+      - name: Commit date
+        id: stamp
+        run: echo "date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -54,4 +60,4 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.pushed_at }}
+            BUILD_DATE=${{ steps.stamp.outputs.date }}
