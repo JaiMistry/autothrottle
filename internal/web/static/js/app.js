@@ -200,7 +200,7 @@
   }
 
   function watchPlexWindow() {
-    stopPlexWatch();
+    if (plexWatch) return;
     plexWatch = setInterval(function () {
       if (plexWindow && !plexWindow.closed) return;
       stopPlexWatch();
@@ -223,19 +223,32 @@
 
   document.addEventListener("click", function (e) {
     if (!e.target.closest("[data-plexstart]")) return;
-    plexWindow = window.open("", "at-plex-signin", "width=620,height=760,noopener=no");
+    // No "noopener" here, deliberately: the token is honoured whatever
+    // its value, and it makes window.open return null — which loses the
+    // handle this flow needs to point the window at Plex and to notice
+    // it being closed.
+    plexWindow = window.open("", "at-plex-signin", "width=620,height=760,menubar=no,toolbar=no,location=no");
   });
+
+  var plexSentTo = "";
 
   function syncPlexPanel() {
     var panel = document.querySelector(".at-plexsignin");
     if (!panel) return;
     var url = panel.dataset.authurl;
     if (url && plexWindow && !plexWindow.closed) {
-      plexWindow.location = url;
+      // Only on a URL we have not sent yet. The panel re-renders on
+      // every poll, and re-navigating each time would throw away
+      // whatever the user had already done in that window.
+      if (url !== plexSentTo) {
+        plexWindow.location = url;
+        plexSentTo = url;
+      }
       watchPlexWindow();
     }
     if (panel.dataset.state !== "waiting") {
       stopPlexWatch();
+      plexSentTo = "";
       if (panel.dataset.state === "done" && plexWindow && !plexWindow.closed) plexWindow.close();
     }
   }
