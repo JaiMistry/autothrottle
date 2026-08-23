@@ -50,7 +50,16 @@
                form. Nothing is rendered until a test runs, so an untested
                list carries no reserved gaps. */}}
           <tr><td colspan="7" class="at-testcell"><div id="ms-test-{{.ID}}"></div></td></tr>
-          <dialog class="at-dialog" id="del-ms-{{.ID}}">
+        {{else}}
+          <tr><td colspan="7" class="at-table-empty" style="border-bottom:0">No media servers yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{/* Outside the table on purpose: a <dialog> is not valid inside
+         <tbody>, and the parser hoists it out anyway — landing it above
+         the rows, where its own buttons come first in the document. */}}
+    {{range .MediaServers}}    <dialog class="at-dialog" id="del-ms-{{.ID}}">
             <div class="at-dialog-panel">
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
               <p class="at-dialog-body">Its mappings are removed too. History entries are kept.</p>
@@ -62,13 +71,8 @@
                 </form>
               </div>
             </div>
-          </dialog>
-        {{else}}
-          <tr><td colspan="7" class="at-table-empty" style="border-bottom:0">No media servers yet.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
+    </dialog>
+    {{end}}
   </section>
 
   <section class="at-card" style="width:520px;max-width:100%">
@@ -159,7 +163,14 @@
             </td>
           </tr>
           <tr><td colspan="6" class="at-testcell"><div id="dl-test-{{.ID}}"></div></td></tr>
-          <dialog class="at-dialog" id="del-dl-{{.ID}}">
+        {{else}}
+          <tr><td colspan="6" class="at-table-empty" style="border-bottom:0">No downloaders yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{/* Outside the table, for the same reason as the media servers. */}}
+    {{range .Downloaders}}    <dialog class="at-dialog" id="del-dl-{{.ID}}">
             <div class="at-dialog-panel">
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
               <p class="at-dialog-body">Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it.</p>
@@ -171,13 +182,8 @@
                 </form>
               </div>
             </div>
-          </dialog>
-        {{else}}
-          <tr><td colspan="6" class="at-table-empty" style="border-bottom:0">No downloaders yet.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
+    </dialog>
+    {{end}}
   </section>
 
   <section class="at-card" style="width:520px;max-width:100%">
