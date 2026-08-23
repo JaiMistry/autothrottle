@@ -99,10 +99,25 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 	}, nil
 }
 
+// noStoreHTML makes every generated page revalidate.
+//
+// Without a directive a browser is free to apply its own heuristic and
+// reuse the page — and iOS does. A stale page still references the
+// previous build's content-hashed CSS, so a deploy appears not to have
+// landed and a refresh does not fix it, because the refresh reuses the
+// same cached HTML. Static assets are unaffected: they are hashed and
+// set their own immutable headers.
+func noStoreHTML(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /login", s.loginPage)
+	mux.Handle("GET /login", noStoreHTML(http.HandlerFunc(s.loginPage)))
 	mux.HandleFunc("POST /login", auth.LoginHandler(s.authCfg, s.sessions, s.limiter, s.loginFailed))
 	mux.HandleFunc("POST /logout", auth.LogoutHandler(s.sessions))
 	mux.HandleFunc("GET /health", s.healthHandler)
@@ -138,9 +153,11 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
 	protected.HandleFunc("POST /configuration/plex-signin/cancel", s.cancelPlexSignIn)
 
-	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
+	// Wraps "/" only. "/static/" is a more specific pattern registered
+	// below, so hashed assets keep their immutable headers.
+	mux.Handle("/", noStoreHTML(auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
-	))
+	)))
 
 	if s.assets != nil {
 		mux.Handle("/static/", http.StripPrefix("/static/", s.assets))
