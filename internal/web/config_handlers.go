@@ -619,7 +619,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
+	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: reachedMessage(username != "" || password != ""), Elapsed: time.Since(started)})
 }
 
 func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
@@ -648,7 +648,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Target: dl.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, testResult{OK: true, Target: dl.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
+	s.writeTestResult(w, testResult{OK: true, Target: dl.URL, Message: reachedMessage(username != "" || password != ""), Elapsed: time.Since(started)})
 }
 
 // --- mappings ---
@@ -758,6 +758,18 @@ type testResultView struct {
 // card is the real one, and a probe slower than this is not delayed at
 // all. Validation errors, which never reach the network, skip it.
 const minTestDuration = 550 * time.Millisecond
+
+// reachedMessage is the success line for a connection test.
+//
+// A downloader WebUI with authentication switched off is a normal
+// setup on a home network, and claiming a credential "was accepted"
+// when none was sent is simply untrue — nothing was checked.
+func reachedMessage(hadCredential bool) string {
+	if hadCredential {
+		return "Reachable, and the credential was accepted."
+	}
+	return "Reachable. No credentials were sent, so none were checked."
+}
 
 // testResult is one probe's outcome, in the shape the card renders.
 type testResult struct {
