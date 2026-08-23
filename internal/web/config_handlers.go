@@ -393,54 +393,60 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		s.writeTestResult(w, false, "", "bad form data", 0)
+		s.writeTestResult(w, testResult{Message: "bad form data"})
 		return
 	}
 	msType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	token := mediaServerCredential(r, msType)
-	if rawURL == "" || token == "" {
-		s.writeTestResult(w, false, "", "enter a URL and token first", 0)
+	if rawURL == "" {
+		s.writeTestResult(w, testResult{Message: "No URL", Field: fieldURL, Hint: "Enter the server's URL first — nothing was sent."})
+		return
+	}
+	if token == "" {
+		s.writeTestResult(w, testResult{Message: "No credential", Field: fieldCredential, Hint: "Enter a token, or sign in with Plex, before testing."})
 		return
 	}
 	if !clients.SupportedMediaServerType(msType) {
-		s.writeTestResult(w, false, "", "choose a supported media server type first", 0)
+		s.writeTestResult(w, testResult{Message: "choose a supported media server type first"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
-		s.writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
+		field, hint := classifyProbeError(probeServer, err)
+		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
 }
 
 func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		s.writeTestResult(w, false, "", "bad id", 0)
+		s.writeTestResult(w, testResult{Message: "bad id"})
 		return
 	}
 	ms, err := s.db.GetMediaServer(id)
 	if err != nil {
-		s.writeTestResult(w, false, "", "media server not found", 0)
+		s.writeTestResult(w, testResult{Message: "media server not found"})
 		return
 	}
 	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
-		s.writeTestResult(w, false, "", "stored credential could not be decrypted", 0)
+		s.writeTestResult(w, testResult{Message: "stored credential could not be decrypted", Field: fieldCredential, Hint: "Re-enter the token and save the server again."})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
-		s.writeTestResult(w, false, ms.URL, err.Error(), time.Since(started))
+		field, hint := classifyProbeError(probeServer, err)
+		s.writeTestResult(w, testResult{Target: ms.URL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, true, ms.URL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, testResult{OK: true, Target: ms.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
 }
 
 // --- downloaders ---
@@ -558,17 +564,17 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		s.writeTestResult(w, false, "", "bad form data", 0)
+		s.writeTestResult(w, testResult{Message: "bad form data"})
 		return
 	}
 	dlType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
-		s.writeTestResult(w, false, "", "enter a URL first", 0)
+		s.writeTestResult(w, testResult{Message: "No URL", Field: fieldURL, Hint: "Enter the client's URL first — nothing was sent."})
 		return
 	}
 	if !clients.SupportedDownloaderType(dlType) {
-		s.writeTestResult(w, false, "", "choose a supported downloader type first", 0)
+		s.writeTestResult(w, testResult{Message: "choose a supported downloader type first"})
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
@@ -578,27 +584,28 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
-		s.writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
+		field, hint := classifyProbeError(probeServer, err)
+		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
 }
 
 func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		s.writeTestResult(w, false, "", "bad id", 0)
+		s.writeTestResult(w, testResult{Message: "bad id"})
 		return
 	}
 	dl, err := s.db.GetDownloader(id)
 	if err != nil {
-		s.writeTestResult(w, false, "", "downloader not found", 0)
+		s.writeTestResult(w, testResult{Message: "downloader not found"})
 		return
 	}
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
-		s.writeTestResult(w, false, "", "stored credential could not be read", 0)
+		s.writeTestResult(w, testResult{Message: "stored credential could not be read", Field: fieldCredential, Hint: "Re-enter the password and save the client again."})
 		return
 	}
 
@@ -606,10 +613,11 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
-		s.writeTestResult(w, false, dl.URL, err.Error(), time.Since(started))
+		field, hint := classifyProbeError(probeDownloader, err)
+		s.writeTestResult(w, testResult{Target: dl.URL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
-	s.writeTestResult(w, true, dl.URL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, testResult{OK: true, Target: dl.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
 }
 
 // --- mappings ---
@@ -702,6 +710,8 @@ type testResultView struct {
 	Target      string
 	Elapsed     string
 	Detail      string
+	Hint        string
+	Field       string
 	Dismissable bool
 }
 
@@ -718,19 +728,30 @@ type testResultView struct {
 // all. Validation errors, which never reach the network, skip it.
 const minTestDuration = 550 * time.Millisecond
 
-func (s *Server) writeTestResult(w http.ResponseWriter, ok bool, target, message string, elapsed time.Duration) {
-	if elapsed > 0 && elapsed < minTestDuration {
-		time.Sleep(minTestDuration - elapsed)
+// testResult is one probe's outcome, in the shape the card renders.
+type testResult struct {
+	OK      bool
+	Target  string
+	Message string
+	Hint    string
+	Field   string
+	Elapsed time.Duration
+}
+
+func (s *Server) writeTestResult(w http.ResponseWriter, res testResult) {
+	if res.Elapsed > 0 && res.Elapsed < minTestDuration {
+		time.Sleep(minTestDuration - res.Elapsed)
 	}
 	view := testResultView{
 		State: "failed", Tone: "critical", Icon: "unreachable", Label: "Failed",
-		Target: target, Detail: message, Dismissable: true,
+		Target: res.Target, Detail: res.Message, Hint: res.Hint, Field: res.Field, Dismissable: true,
 	}
-	if ok {
+	if res.OK {
 		view.State, view.Tone, view.Icon, view.Label = "connected", "good", "normal", "Connected"
+		view.Field = ""
 	}
-	if elapsed > 0 {
-		view.Elapsed = fmt.Sprintf("%.1fs", elapsed.Seconds())
+	if res.Elapsed > 0 {
+		view.Elapsed = fmt.Sprintf("%.1fs", res.Elapsed.Seconds())
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates["configuration"].ExecuteTemplate(w, "testresult", view); err != nil {

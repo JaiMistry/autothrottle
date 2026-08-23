@@ -1,0 +1,69 @@
+package web
+
+import "strings"
+
+// probeKind distinguishes the two things a connection test can be
+// talking to, because the same network error deserves different advice
+// depending on which it was.
+type probeKind int
+
+const (
+	probeServer probeKind = iota
+	probeDownloader
+)
+
+// failureField names the form control a failure points at, so the card
+// can outline it. An empty string means the cause is not attributable to
+// one field, and nothing is outlined — better than guessing and sending
+// someone to edit a field that was fine.
+const (
+	fieldURL        = "url"
+	fieldCredential = "credential"
+)
+
+// classifyProbeError turns a backend's error into the field to blame and
+// a plain-language line under the raw text.
+//
+// Matching is on substrings of what Go's net and http stacks actually
+// produce, which is stable enough for the handful of failures that make
+// up nearly every real report. Anything unrecognised gets no field and
+// no hint: the raw error is still shown, and inventing advice for an
+// error we do not understand is worse than staying quiet.
+func classifyProbeError(kind probeKind, err error) (field, hint string) {
+	if err == nil {
+		return "", ""
+	}
+	msg := strings.ToLower(err.Error())
+	thing, port := "server", "port"
+	if kind == probeDownloader {
+		thing, port = "client", "WebUI port"
+	}
+
+	switch {
+	case strings.Contains(msg, "connection refused"):
+		return fieldURL, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
+
+	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
+		strings.Contains(msg, "timeout awaiting"):
+		return fieldURL, "No reply in 8s. Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
+
+	case strings.Contains(msg, "x509"), strings.Contains(msg, "certificate"), strings.Contains(msg, "tls:"):
+		return fieldURL, "TLS handshake failed. Use http:// on a LAN address, or install the certificate."
+
+	case strings.Contains(msg, "no such host"), strings.Contains(msg, "server misbehaving"):
+		return fieldURL, "That hostname did not resolve. Check the spelling, or use an IP address."
+
+	case strings.Contains(msg, "401"), strings.Contains(msg, "403"),
+		strings.Contains(msg, "unauthorized"), strings.Contains(msg, "forbidden"),
+		strings.Contains(msg, "credential"), strings.Contains(msg, "invalid token"):
+		if kind == probeDownloader {
+			return fieldCredential, "Reached the WebUI, but the username or password was rejected."
+		}
+		return fieldCredential, "Reached the server, but the credential was rejected. Check the token."
+
+	case strings.Contains(msg, "unsupported protocol scheme"), strings.Contains(msg, "missing protocol scheme"),
+		strings.Contains(msg, "invalid url"), strings.Contains(msg, "first path segment"):
+		return fieldURL, "That is not a complete URL. Include the scheme, as in http://192.168.1.12:32400."
+	}
+	return "", ""
+}

@@ -188,6 +188,85 @@
     tick();
   }
 
+  // Nothing can be submitted until the form can actually succeed. The
+  // rules differ per form, so each declares its own required set rather
+  // than this guessing from the markup.
+  function gateSubmit(form) {
+    var require = form.getAttribute("data-require");
+    var submit = form.querySelector("[data-submit]");
+    if (!require || !submit) return;
+    var val = function (name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      return el && !el.disabled && !el.closest("[hidden]") ? el.value.trim() : "";
+    };
+    var ok = true;
+    require.split(",").forEach(function (need) {
+      if (need === "credential") {
+        // A stored credential counts, and so does a token Plex just
+        // handed over — neither is typed into a visible field.
+        ok = ok && (!!val("token") || !!val("api_token") || !!val("plex_token") ||
+                    form.getAttribute("data-hascredential") === "1");
+      } else {
+        ok = ok && !!val(need);
+      }
+    });
+    submit.disabled = !ok;
+  }
+
+  function gateAllSubmits() {
+    document.querySelectorAll("form[data-require]").forEach(gateSubmit);
+  }
+
+  document.addEventListener("input", function (e) {
+    var form = e.target.closest("form[data-require]");
+    if (form) gateSubmit(form);
+  });
+  document.addEventListener("change", function (e) {
+    var form = e.target.closest("form[data-require]");
+    if (form) gateSubmit(form);
+  });
+
+  // A failed test names the field that caused it, so the card can outline
+  // it. The names differ per form, and a downloader's credential is two
+  // controls rather than one.
+  var testFieldSelectors = {
+    url: '[name="url"]',
+    credential: '[name="token"], [name="api_token"], [name="password"], [name="username"]',
+  };
+
+  function markTestField(box) {
+    var form = box && box.closest("form");
+    if (!form) return;
+    form.querySelectorAll(".at-input--invalid").forEach(function (el) {
+      el.classList.remove("at-input--invalid");
+    });
+    var sel = testFieldSelectors[box.dataset.field];
+    if (!sel) return;
+    form.querySelectorAll(sel).forEach(function (el) {
+      if (!el.closest("[hidden]")) el.classList.add("at-input--invalid");
+    });
+  }
+
+  function syncTestFields() {
+    document.querySelectorAll("form .at-testresult").forEach(markTestField);
+  }
+
+  // Editing the field the failure blamed retires the result outright —
+  // it is describing a state that no longer exists.
+  document.addEventListener("input", function (e) {
+    var form = e.target.closest("form");
+    if (!form) return;
+    var box = form.querySelector(".at-testresult[data-field]");
+    if (!box) return;
+    var sel = testFieldSelectors[box.dataset.field];
+    if (sel && e.target.matches(sel)) {
+      form.querySelectorAll(".at-input--invalid").forEach(function (el) {
+        el.classList.remove("at-input--invalid");
+      });
+      box.remove();
+    }
+  });
+
   // Plex sign-in runs in a popup the browser will only allow if it is
   // opened inside the click itself. The auth URL is not known until the
   // server answers, so the window is opened blank and pointed at Plex
@@ -316,6 +395,8 @@
   // and which credential inputs are live.
   function syncAfterRender() {
     startUptime();
+    syncTestFields();
+    gateAllSubmits();
     syncPlexPanel();
     document.querySelectorAll("form").forEach(syncCredentialUI);
   }

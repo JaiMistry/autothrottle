@@ -77,7 +77,7 @@
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
-    <form method="post" action="/configuration/media-servers" id="ms-form" style="display:grid;gap:var(--space-6)">
+    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} style="display:grid;gap:var(--space-6)">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
@@ -125,12 +125,13 @@
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditMediaServer.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
-      <div id="ms-form-test"></div>
-      <div style="display:flex;gap:var(--space-4)">
-        <button type="submit" class="at-btn at-btn--primary">{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
-        <button type="button" class="at-btn" hx-post="/configuration/media-servers/test" hx-include="#ms-form" hx-target="#ms-form-test" hx-swap="innerHTML">Test connection</button>
+      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
+        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
+        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/media-servers/test" hx-include="#ms-form"
+                hx-target="#ms-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
         {{if .EditMediaServerID}}<a href="/configuration?tab=media-servers" class="at-btn at-btn--ghost">Cancel</a>{{end}}
       </div>
+      <div id="ms-form-test"></div>
     </form>
   </section>
 </div>
@@ -188,7 +189,7 @@
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
-    <form method="post" action="/configuration/downloaders" id="dl-form" style="display:grid;gap:var(--space-6)">
+    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} style="display:grid;gap:var(--space-6)">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
@@ -207,9 +208,13 @@
         {{template "credentialfield" dict "Label" "Password" "Name" "password" "HasCredential" .EditDownloader.HasCredential "Placeholder" ""}}
       </div>
       {{template "ratepair" dict "Legend" "Default rates" "Tone" "default"
+        "Hint" "Applied when nothing" "HintTail" "is playing."
+        "HintLabel" "Applied when nothing mapped is playing." "HintID" "hint-default-rates"
         "DownName" "default_download_limit" "UpName" "default_upload_limit"
         "Down" .EditDownloader.DefaultDownloadLimit "Up" .EditDownloader.DefaultUploadLimit}}
       {{template "ratepair" dict "Legend" "Throttled rates" "Tone" "warn"
+        "Hint" "Applied while a" "HintTail" "server is playing."
+        "HintLabel" "Applied while a mapped server is playing." "HintID" "hint-throttled-rates"
         "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
         "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
         "Note" "Rates are KB/s. 0 means unlimited — the field says so as you type."}}
@@ -217,12 +222,13 @@
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
-      <div id="dl-form-test"></div>
-      <div style="display:flex;gap:var(--space-4)">
-        <button type="submit" class="at-btn at-btn--primary">{{if .EditDownloaderID}}Save changes{{else}}Add download client{{end}}</button>
-        <button type="button" class="at-btn" hx-post="/configuration/downloaders/test" hx-include="#dl-form" hx-target="#dl-form-test" hx-swap="innerHTML">Test connection</button>
+      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
+        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditDownloaderID}}Save changes{{else}}Add downloader{{end}}</button>
+        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/downloaders/test" hx-include="#dl-form"
+                hx-target="#dl-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
         {{if .EditDownloaderID}}<a href="/configuration?tab=downloaders" class="at-btn at-btn--ghost">Cancel</a>{{end}}
       </div>
+      <div id="dl-form-test"></div>
     </form>
   </section>
 </div>
@@ -359,7 +365,12 @@
 {{/* The download/upload pair, with its legend.
      Args: Legend, Tone, DownName, UpName, Down, Up, Note */}}
 {{define "ratepair"}}<fieldset class="at-ratepair">
-  {{if .Legend}}<legend class="at-ratepair-legend{{if ne .Tone "warn"}} at-ratepair-legend--default{{end}}">{{.Legend}}</legend>{{end}}
+  {{if .Legend}}<legend class="at-ratepair-legend{{if ne .Tone "warn"}} at-ratepair-legend--default{{end}}">{{.Legend}}
+    {{- if .Hint}}<span class="at-hint">
+      <button type="button" class="at-hint-dot" aria-label="{{.HintLabel}}" aria-describedby="{{.HintID}}">?</button>
+      <span class="at-hint-bubble" id="{{.HintID}}" role="tooltip">{{.Hint}} <a class="at-hint-link" href="/configuration?tab=mappings">mapped</a> {{.HintTail}}</span>
+    </span>{{end -}}
+  </legend>{{end}}
   <div class="at-ratepair-grid">
     {{template "ratefield" dict "Name" .DownName "Label" "Download" "Value" .Down "Dir" "down"}}
     {{template "ratefield" dict "Name" .UpName "Label" "Upload" "Value" .Up "Dir" "up"}}

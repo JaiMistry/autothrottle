@@ -668,6 +668,14 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   word-break: break-all;
 }
 .at-testresult[data-state="failed"] .at-testresult-detail { color: var(--text); }
+/* The plain-language line under the raw error: what to do about it. */
+.at-testresult-hint { font-size: var(--text-caption); color: var(--text-dim); text-wrap: pretty; }
+
+/* The test button says what it is doing. htmx marks the element it is
+   requesting for, so the swap needs no script of its own. */
+.at-btn-busy { display: none; }
+.at-btn.htmx-request .at-btn-idle { display: none; }
+.at-btn.htmx-request .at-btn-busy { display: inline; }
 .at-testresult-close {
   margin-left: var(--space-2);
   display: inline-flex;
@@ -812,6 +820,54 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   color: var(--warn);
 }
 .at-ratepair-legend--default { color: var(--accent); }
+
+/* The legend's "?" and its bubble. The bubble stays in the DOM so the
+   button can point at it with aria-describedby, which lets the hint
+   carry a link instead of being a plain title attribute. */
+.at-hint { position: relative; display: inline-flex; vertical-align: middle; margin-left: 5px; }
+.at-hint-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  cursor: help;
+}
+.at-hint-bubble {
+  position: absolute;
+  left: -6px;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: 6px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  color: var(--text-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.at-hint:hover .at-hint-bubble,
+.at-hint:focus-within .at-hint-bubble { opacity: 1; visibility: visible; pointer-events: auto; }
+.at-hint-link { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.at-hint-link:hover { color: var(--accent); }
 .at-ratepair-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));

@@ -227,7 +227,7 @@
 {{/* The swap target for a connection test. One bounded box, and it
      holds still until dismissed by hand — a result that vanished on its
      own would take the error text with it. */}}
-{{define "testresult"}}<div class="at-testresult" data-state="{{.State}}" role="status">
+{{define "testresult"}}<div class="at-testresult" data-state="{{.State}}"{{if .Field}} data-field="{{.Field}}"{{end}} role="status">
   <div class="at-testresult-head">
     {{template "statusflag" dict "Tone" .Tone "Icon" .Icon "Label" .Label "Size" "sm"}}
     {{if .Target}}<span class="at-testresult-target">{{.Target}}</span>{{end}}
@@ -235,6 +235,7 @@
     {{if .Dismissable}}<button type="button" class="at-testresult-close" data-testdismiss aria-label="Dismiss test result" title="Dismiss">&#10005;</button>{{end}}
   </div>
   {{if .Detail}}<span class="at-testresult-detail">{{.Detail}}</span>{{end}}
+  {{if .Hint}}<span class="at-testresult-hint">{{.Hint}}</span>{{end}}
 </div>{{end}}
 
 {{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
