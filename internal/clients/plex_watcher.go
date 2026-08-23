@@ -182,7 +182,12 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", now) {
 			continue
 		}
-		active = append(active, Session{Key: s.SessionKey, Title: s.label(), Device: s.device()})
+		active = append(active, Session{
+			Key: s.SessionKey, Title: s.label(), Device: s.device(),
+			Position: time.Duration(s.ViewOffset) * time.Millisecond,
+			Duration: time.Duration(s.Duration) * time.Millisecond,
+			Local:    s.Player.Local,
+		})
 	}
 	w.paused.retain(present)
 
@@ -217,7 +222,11 @@ type plexSession struct {
 	Index            int    `json:"index"`
 	ParentIndex      int    `json:"parentIndex"`
 	Type             string `json:"type"`
-	Player           struct {
+	// Both in milliseconds. Plex reports them on every session in
+	// /status/sessions, so the progress bar needs no extra request.
+	ViewOffset int64 `json:"viewOffset"`
+	Duration   int64 `json:"duration"`
+	Player     struct {
 		Local  bool   `json:"local"`
 		State  string `json:"state"`
 		Title  string `json:"title"`

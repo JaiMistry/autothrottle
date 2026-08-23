@@ -28,7 +28,23 @@ type serverRowView struct {
 	Type     string
 	State    string
 	Sessions int
-	Detail   string
+	// Detail is the one-line message for a server that is not playing
+	// anything. Playing servers use Playing instead, one entry per
+	// session, so each can carry its own progress.
+	Detail  string
+	Playing []sessionLineView
+}
+
+// sessionLineView is one playing session: what it is, where, and how
+// far in. Percent is -1 when the server reported no position, which is
+// the signal to draw no progress bar rather than an empty one.
+type sessionLineView struct {
+	Title   string
+	Device  string
+	Local   bool
+	At      string
+	Of      string
+	Percent int
 }
 
 type downloaderRowView struct {
@@ -114,6 +130,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 
 	var unreachable []string
 	totalSessions := 0
+	countsLocal := false
 	for _, ms := range mediaServers {
 		sessions := s.scheduler.ActiveSessionCount(ms.ID)
 		totalSessions += sessions
@@ -138,7 +155,12 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 				// here would hide the thing that actually matters
 				// behind a transport detail.
 				row.State = "playing"
-				row.Detail = s.playingDetail(ms.ID, sessions)
+				row.Playing = sessionLines(s.scheduler.ActiveSessions(ms.ID))
+				if len(row.Playing) == 0 {
+					// Counted, but nothing described it yet — the event
+					// stream carries keys only, and no snapshot has landed.
+					row.Detail = s.playingDetail(ms.ID, sessions)
+				}
 			case known && !conn.Connected:
 				// Nothing to report but the feed is down: say how long
 				// it has been down and whether anything is still trying.
@@ -147,6 +169,11 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 			default:
 				row.State = "idle"
 				row.Detail = "No activity detected."
+			}
+		}
+		for _, line := range row.Playing {
+			if line.Local {
+				countsLocal = true
 			}
 		}
 		data.Servers = append(data.Servers, row)
@@ -226,7 +253,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	data.ThrottledLabel = fmt.Sprintf("%d of %d", len(throttledNames), len(downloaders))
 	data.Hero = buildHero(paused, totalSessions, throttledNames, causes, len(downloaders), unresolved)
 	data.Overall = overallStatus(paused, len(throttledNames), data.Empty, unresolved)
-	data.SessionFootnote = sessionFootnote(paused, totalSessions)
+	data.SessionFootnote = sessionFootnote(paused, totalSessions, countsLocal)
 	if len(unreachable) > 0 {
 		data.UnreachableN = len(unreachable)
 		data.UnreachableNote = fmt.Sprintf("%s is currently unreachable. Please check the configuration.",
@@ -304,11 +331,60 @@ func tone(test bool, whenTrue, whenFalse string) string {
 	return whenFalse
 }
 
-func sessionFootnote(paused bool, sessions int) string {
-	if paused && sessions > 0 {
+// sessionFootnote qualifies the active-session count.
+//
+// "local playback exempt" is only true when nothing local is being
+// counted. A server with skip_local_playback off will happily count a
+// session playing from the LAN, and claiming otherwise under a number
+// that includes it would be a plain misstatement.
+func sessionFootnote(paused bool, sessions int, countsLocal bool) string {
+	switch {
+	case paused && sessions > 0:
 		return "counted, but not acted on"
+	case countsLocal:
+		return "includes local playback"
+	default:
+		return "local playback exempt"
 	}
-	return "local playback exempt"
+}
+
+// timecode renders a position the way a player does: h:mm:ss once past
+// an hour, m:ss below it.
+func timecode(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	total := int(d.Seconds())
+	h, m, sec := total/3600, (total%3600)/60, total%60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, sec)
+	}
+	return fmt.Sprintf("%d:%02d", m, sec)
+}
+
+// sessionLines turns the scheduler's live sessions into rows. Anything
+// the server did not report is left out rather than guessed at.
+func sessionLines(sessions []clients.Session) []sessionLineView {
+	out := make([]sessionLineView, 0, len(sessions))
+	for _, session := range sessions {
+		line := sessionLineView{
+			Title:   session.Title,
+			Device:  session.Device,
+			Local:   session.Local,
+			Percent: -1,
+		}
+		if session.Duration > 0 {
+			line.At = timecode(session.Position)
+			line.Of = timecode(session.Duration)
+			pct := int(session.Position * 100 / session.Duration)
+			line.Percent = min(100, max(0, pct))
+		}
+		if line.Title == "" && line.Device == "" && line.Percent < 0 {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // reconnectDetail says how long the feed has been down and when the

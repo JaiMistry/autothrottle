@@ -55,8 +55,11 @@
   {{end}}
 
   {{/* Both cards take the same height; past two rows the list scrolls
-       instead of stretching the page. One row still shrinks to fit. */}}
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:var(--space-8);align-items:stretch">
+       instead of stretching the page. One row still shrinks to fit.
+       The cards are no longer forced to equal height: a session row is
+       several lines tall now, so matching the taller card just left a
+       void under the shorter one. */}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:var(--space-8);align-items:start">
     <section class="at-card" style="display:grid;grid-template-rows:auto 1fr">
       <header class="at-card-head">
         <h2 class="at-card-title">Downloaders</h2>
@@ -81,7 +84,7 @@
       <div style="display:grid;min-height:0">
         <div class="at-listshell" data-cap-rows>
           {{range .Servers}}
-            {{template "serverrow" dict "Name" .Name "Type" .Type "State" .State "Sessions" .Sessions "Detail" .Detail}}
+            {{template "serverrow" dict "Name" .Name "Type" .Type "State" .State "Sessions" .Sessions "Detail" .Detail "Playing" .Playing}}
           {{else}}
             <p class="at-listempty">No media servers configured.</p>
           {{end}}

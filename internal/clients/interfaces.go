@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // MediaServerType names one supported media server, for a UI that
@@ -96,6 +97,16 @@ type Session struct {
 	Key    string
 	Title  string
 	Device string
+	// Position and Duration describe where playback has reached. Both
+	// are zero when the server did not report them; the UI draws no
+	// progress bar in that case rather than guessing at one.
+	Position time.Duration
+	Duration time.Duration
+	// Local reports playback from the same network as the server. It is
+	// informational here — whether a local session counts toward
+	// throttling is decided by the server's skip_local_playback setting,
+	// not by this field.
+	Local bool
 }
 
 // RateLimiter applies a download client's global speed limits. Limits

@@ -84,7 +84,12 @@
   function bindCaps(scope) {
     (scope || document).querySelectorAll("[data-cap-rows]").forEach(function (list) {
       capList(list);
-      if (observer) observer.observe(list);
+      if (!observer) return;
+      observer.observe(list);
+      // Each row too: a capped list stops changing size itself, so a
+      // row growing taller (a session line wrapping, a progress bar
+      // appearing) would otherwise never re-trigger the measurement.
+      list.querySelectorAll(":scope > *").forEach(function (row) { observer.observe(row); });
     });
   }
 

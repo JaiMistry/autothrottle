@@ -122,7 +122,13 @@
       markers: { size: 0 }
     }));
 
-    chart.render().then(function () {
+    /* The gap bands are drawn in a sentinel colour and re-painted as a
+       diagonal hatch once the SVG exists. ApexCharts redraws its
+       annotations on every resize — and the sidebar now animates its
+       width, so that happens constantly — which restores the sentinel.
+       Re-applying on each redraw is what keeps the band hatched instead
+       of a flat block of #00fe01. */
+    function applyHatch() {
       var svg = el.querySelector(".apexcharts-svg");
       if (!svg) return;
       var NS = "http://www.w3.org/2000/svg";
@@ -152,7 +158,21 @@
         r.setAttribute("stroke-dasharray", "3 3");
         r.setAttribute("stroke-opacity", "0.75");
       });
+    }
+
+    chart.render().then(function () {
+      applyHatch();
+      // Belt and braces: the chart's own redraw hooks do not fire for
+      // every path that repaints an annotation, so watch the box too.
+      if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function () {
+          requestAnimationFrame(applyHatch);
+        });
+        ro.observe(el);
+      }
     });
+    chart.addEventListener("updated", applyHatch);
+    chart.addEventListener("mounted", applyHatch);
     return chart;
   }
 

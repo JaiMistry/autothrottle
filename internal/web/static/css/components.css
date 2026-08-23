@@ -478,6 +478,44 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-spin { display: inline-flex; animation: atSpin 1.1s linear infinite; }
 @keyframes atSpin { to { transform: rotate(360deg); } }
 
+/* The body of a Dashboard list card. Rows share the height evenly until
+   the two-row cap takes over, at which point it scrolls inside the card
+   rather than stretching the page. min-height:0 is what allows a grid
+   item to shrink below its content and actually scroll. */
+.at-listshell {
+  display: grid;
+  grid-auto-rows: minmax(min-content, 1fr);
+  align-content: stretch;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A playing session: what it is, where, and how far in. */
+.at-sessions { display: grid; gap: var(--space-4); font-size: var(--text-caption); color: var(--text-dim); }
+.at-session { display: grid; gap: 4px; font-size: var(--text-caption); min-width: 0; }
+.at-session-head { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; min-width: 0; }
+.at-session-title { color: var(--text); }
+.at-session-device { color: var(--text-faint); }
+.at-session-local { color: var(--accent); font-size: var(--text-label); }
+.at-session-progress { display: flex; align-items: center; gap: var(--space-4); }
+.at-session-bar {
+  position: relative;
+  flex: 1;
+  min-width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill-neutral);
+  overflow: hidden;
+}
+.at-session-fill { position: absolute; inset: 0; background: var(--accent); opacity: .75; }
+.at-session-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-label);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 /* ── Rows ─────────────────────────────────────────────────────────── */
 
 /* RateFigure: a download/upload pair as one readout. Download is

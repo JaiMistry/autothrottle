@@ -303,7 +303,11 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 		if !w.paused.counts(s.ID, s.PlayState.IsPaused, now) {
 			continue
 		}
-		active[s.ID] = Session{Key: s.ID, Title: s.label(), Device: s.DeviceName}
+		active[s.ID] = Session{
+			Key: s.ID, Title: s.label(), Device: s.DeviceName,
+			Position: s.position(), Duration: s.duration(),
+			Local: embySessionIsLocal(s.RemoteEndPoint),
+		}
 	}
 	// Every push is a full session list, so this is always the complete
 	// picture of what still exists.

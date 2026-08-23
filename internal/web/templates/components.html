@@ -108,9 +108,27 @@
       {{else}}{{template "statusflag" dict "Tone" "good" "Icon" "idle" "Label" "Idle"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
+    {{if .Playing}}<span class="at-sessions">
+      {{range .Playing}}{{template "sessionline" .}}{{end}}
+    </span>{{end}}
     {{if .Detail}}<span class="at-serverrow-detail">{{.Detail}}</span>{{end}}
   </div>
 </div>{{end}}
+
+{{/* One playing session. Position is carried by a hairline bar with the
+     timecode trailing it — progress is a quantity, and a bar states it
+     without competing with the title for attention. */}}
+{{define "sessionline"}}<span class="at-session">
+  <span class="at-session-head">
+    {{if .Title}}<span class="at-session-title">{{.Title}}</span>{{end}}
+    {{if .Device}}<span class="at-session-device">{{.Device}}</span>{{end}}
+    {{if .Local}}<span class="at-session-local" title="Playing from the local network">local</span>{{end}}
+  </span>
+  {{if ge .Percent 0}}<span class="at-session-progress">
+    <span class="at-session-bar" aria-hidden="true"><span class="at-session-fill" style="width:{{.Percent}}%"></span></span>
+    <span class="at-session-time">{{.At}} / {{.Of}}</span>
+  </span>{{end}}
+</span>{{end}}
 
 {{/* DownloaderRow. Throttling is per-downloader; there is no global
      "on". The state flag never stands alone — the reason line always

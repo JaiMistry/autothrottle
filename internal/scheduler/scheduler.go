@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -29,6 +30,12 @@ type Scheduler struct {
 
 	mu     sync.Mutex
 	active map[int64]map[string]bool // media server ID -> active session keys
+	// live holds the last full description of each active session —
+	// what is playing, on what, and how far in. The active set is only
+	// keys because that is all throttling needs; the Dashboard needs
+	// more, and position changes constantly, so it cannot come from the
+	// session history table.
+	live map[int64]map[string]clients.Session
 	// applied tracks what was last successfully pushed to each
 	// downloader — not just whether it's throttled, but the actual
 	// rate pair, so editing a limit while a downloader is already in
@@ -78,6 +85,7 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		encryptionKey: encryptionKey,
 		settings:      store,
 		active:        make(map[int64]map[string]bool),
+		live:          make(map[int64]map[string]clients.Session),
 		applied:       make(map[int64]appliedState),
 		limiterFor:    clients.RateLimiterFor,
 		// Restored from the settings table rather than defaulting to
@@ -115,6 +123,26 @@ func (s *Scheduler) ActiveSessionCount(mediaServerID int64) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.active[mediaServerID])
+}
+
+// ActiveSessions describes what is currently playing on one media
+// server, in a stable order so the Dashboard's rows do not shuffle
+// between refreshes. Sessions the event stream started but no snapshot
+// has described yet appear with only their key filled in.
+func (s *Scheduler) ActiveSessions(mediaServerID int64) []clients.Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := s.active[mediaServerID]
+	out := make([]clients.Session, 0, len(keys))
+	for key := range keys {
+		if session, ok := s.live[mediaServerID][key]; ok {
+			out = append(out, session)
+			continue
+		}
+		out = append(out, clients.Session{Key: key})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 // AppliedLimits reports the rate pair last successfully pushed to a
@@ -163,6 +191,7 @@ func (s *Scheduler) DownloaderThrottled(downloaderID int64) (throttled, known bo
 func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Lock()
 	delete(s.active, mediaServerID)
+	delete(s.live, mediaServerID)
 	s.mu.Unlock()
 
 	// Nothing is watching this server any more, so its open sessions
@@ -201,6 +230,16 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	// where the session set has not changed at all. Doing this only on
 	// a change would leave every session that started via the event
 	// stream permanently untitled.
+	// Position moves on every poll, so the live view is refreshed even
+	// when the session set itself has not changed.
+	s.mu.Lock()
+	if len(detail) == 0 {
+		delete(s.live, mediaServerID)
+	} else {
+		s.live[mediaServerID] = detail
+	}
+	s.mu.Unlock()
+
 	for _, session := range sessions {
 		if session.Title != "" || session.Device != "" {
 			s.recordSession(mediaServerID, session, true)
@@ -293,8 +332,17 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 	}
 	if active {
 		set[session.Key] = true
+		// The event stream carries a key and little else, so a sparse
+		// event must not erase detail a snapshot already supplied.
+		if session.Title != "" || session.Device != "" || session.Duration > 0 {
+			if s.live[mediaServerID] == nil {
+				s.live[mediaServerID] = map[string]clients.Session{}
+			}
+			s.live[mediaServerID][session.Key] = session
+		}
 	} else {
 		delete(set, session.Key)
+		delete(s.live[mediaServerID], session.Key)
 	}
 	s.mu.Unlock()
 

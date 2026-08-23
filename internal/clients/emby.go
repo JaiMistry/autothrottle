@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Emby and Jellyfin speak nearly the same protocol — Jellyfin forked
@@ -68,6 +69,9 @@ type embyNowPlaying struct {
 	SeriesName   string `json:"SeriesName"`
 	SeasonNumber *int   `json:"ParentIndexNumber"`
 	Episode      *int   `json:"IndexNumber"`
+	// Ticks are 100-nanosecond units, which is what .NET's TimeSpan
+	// serialises to — not milliseconds like Plex's.
+	RunTimeTicks int64 `json:"RunTimeTicks"`
 }
 
 // embySession is the subset of /Sessions this app reads.
@@ -82,8 +86,25 @@ type embySession struct {
 	NowPlayingItem *embyNowPlaying `json:"NowPlayingItem"`
 	DeviceName     string          `json:"DeviceName"`
 	PlayState      struct {
-		IsPaused bool `json:"IsPaused"`
+		IsPaused      bool  `json:"IsPaused"`
+		PositionTicks int64 `json:"PositionTicks"`
 	} `json:"PlayState"`
+}
+
+// embyTick is the duration of one .NET tick.
+const embyTick = 100 * time.Nanosecond
+
+// position and duration report where playback has reached, or zero when
+// the server did not say.
+func (s embySession) position() time.Duration {
+	return time.Duration(s.PlayState.PositionTicks) * embyTick
+}
+
+func (s embySession) duration() time.Duration {
+	if s.NowPlayingItem == nil {
+		return 0
+	}
+	return time.Duration(s.NowPlayingItem.RunTimeTicks) * embyTick
 }
 
 // label renders what is playing, matching the form Plex uses so a
