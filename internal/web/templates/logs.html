@@ -4,40 +4,56 @@
     <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
       <h1 class="at-page-title">Logs</h1>
     </div>
-    <p class="at-page-sub">{{.Matching}} of the last {{.Log.Total}} events.</p>
+    <p class="at-page-sub" id="log-count">{{.Matching}} of the last {{.Log.Total}} events.</p>
   </div>
   <div class="at-page-actions">
     <input class="at-input at-input--mono" type="search" name="q" placeholder="filter…" value="{{.Search}}"
            style="width:190px"
-           hx-get="/logs/rows?level={{.Level}}&per={{.Log.PerPage}}"
+           hx-get="/logs/panel?level={{.Level}}&per={{.Log.PerPage}}"
            hx-trigger="input changed delay:300ms, search"
-           hx-target="#log-card" hx-swap="outerHTML">
+           hx-target="#log-panel" hx-swap="outerHTML">
   </div>
 </header>
 
-{{$q := .Search}}{{$per := .Log.PerPage}}
-<div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-8)">
-  <a class="at-tab" role="tab" aria-selected="{{if eq .Level ""}}true{{else}}false{{end}}" href="/logs?per={{$per}}&q={{$q}}"
-     hx-get="/logs/rows?per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">All <span class="at-tab-count">{{.CountAll}}</span></a>
-  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "info"}}true{{else}}false{{end}}" href="/logs?level=info&per={{$per}}&q={{$q}}"
-     hx-get="/logs/rows?level=info&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Info <span class="at-tab-count">{{index .Counts "info"}}</span></a>
-  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "warn"}}true{{else}}false{{end}}" href="/logs?level=warn&per={{$per}}&q={{$q}}"
-     hx-get="/logs/rows?level=warn&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Warn <span class="at-tab-count">{{index .Counts "warn"}}</span></a>
-  <a class="at-tab" role="tab" aria-selected="{{if eq .Level "error"}}true{{else}}false{{end}}" href="/logs?level=error&per={{$per}}&q={{$q}}"
-     hx-get="/logs/rows?level=error&per={{$per}}&q={{$q}}" hx-target="#log-card" hx-swap="outerHTML">Error <span class="at-tab-count">{{index .Counts "error"}}</span></a>
-</div>
+{{template "logpanel" .}}
+{{end}}
 
-{{if .NoEvents}}
-  {{template "emptystate" dict
-    "Title" "No events yet"
-    "Body" "Throttle state changes and connection failures land here, each with the media server that caused it."
-    "ActionHref" "/configuration"
-    "ActionLabel" "Go to Configuration"}}
-{{else if eq .Matching 0}}
-  {{template "emptystate" dict
-    "Title" "Nothing matches that filter"
-    "Body" (filterEmptyNote .Level .Search)}}
-{{else}}
-  {{template "pagedlog" .Log}}
+{{/* Tabs and results swap together. Keeping the tabs outside the swap
+     left them showing the old selection, and an empty result had no
+     card to replace — which is why every filter but All looked dead. */}}
+{{define "logpanel"}}{{$q := .Search}}{{$per := .Log.PerPage}}
+<div id="log-panel">
+  <div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-8)">
+    {{template "logtab" dict "Label" "All" "Level" "" "Count" .CountAll "Active" (eq .Level "") "Q" $q "Per" $per}}
+    {{template "logtab" dict "Label" "Info" "Level" "info" "Count" (index .Counts "info") "Active" (eq .Level "info") "Q" $q "Per" $per}}
+    {{template "logtab" dict "Label" "Warn" "Level" "warn" "Count" (index .Counts "warn") "Active" (eq .Level "warn") "Q" $q "Per" $per}}
+    {{template "logtab" dict "Label" "Error" "Level" "error" "Count" (index .Counts "error") "Active" (eq .Level "error") "Q" $q "Per" $per}}
+  </div>
+
+  {{if .NoEvents}}
+    {{template "emptystate" dict
+      "Title" "No events yet"
+      "Body" "Throttle state changes and connection failures land here, each with the media server that caused it."
+      "ActionHref" "/configuration"
+      "ActionLabel" "Go to Configuration"}}
+  {{else if eq .Matching 0}}
+    {{template "emptystate" dict
+      "Title" "Nothing matches that filter"
+      "Body" (filterEmptyNote .Level .Search)}}
+  {{else}}
+    {{template "pagedlog" .Log}}
+  {{end}}
+</div>
 {{end}}
-{{end}}
+
+{{/* The swapped response also carries the header count, which sits
+     outside the panel — an out-of-band swap keeps it in step without
+     rebuilding the search box and stealing the caret mid-type. */}}
+{{define "logpanelfragment"}}{{template "logpanel" .}}
+<p class="at-page-sub" id="log-count" hx-swap-oob="true">{{.Matching}} of the last {{.Log.Total}} events.</p>{{end}}
+
+{{define "logtab"}}<a class="at-tab" role="tab" aria-selected="{{if .Active}}true{{else}}false{{end}}"
+   href="/logs?{{if .Level}}level={{.Level}}&{{end}}per={{.Per}}&q={{.Q}}"
+   hx-get="/logs/panel?{{if .Level}}level={{.Level}}&{{end}}per={{.Per}}&q={{.Q}}"
+   hx-target="#log-panel" hx-swap="outerHTML"
+   hx-push-url="/logs?{{if .Level}}level={{.Level}}&{{end}}per={{.Per}}&q={{.Q}}">{{.Label}} <span class="at-tab-count">{{.Count}}</span></a>{{end}}

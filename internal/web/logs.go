@@ -41,8 +41,25 @@ func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "logs", data)
 }
 
-// logRowsFragment serves the card on its own, for paging and filtering
-// without a full page load.
+// logPanelFragment serves the tabs and the results together, for a
+// change of filter or search term. They have to move as one: the tabs
+// carry the selection, and a filter that matches nothing replaces the
+// card with an empty state rather than emptying it.
+func (s *Server) logPanelFragment(w http.ResponseWriter, r *http.Request) {
+	data, err := s.buildLogsPage(r)
+	if err != nil {
+		slog.Error("building log panel", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := s.templates["logs"].ExecuteTemplate(w, "logpanelfragment", data); err != nil {
+		slog.Error("rendering log panel", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+// logRowsFragment serves the card on its own, for paging within a
+// filter that is already applied.
 func (s *Server) logRowsFragment(w http.ResponseWriter, r *http.Request) {
 	data, err := s.buildLogsPage(r)
 	if err != nil {

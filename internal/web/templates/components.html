@@ -90,7 +90,10 @@
 {{- end}}{{end}}
 
 {{define "ratearrow"}}<svg width="{{.Size}}" height="{{.Size}}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0">
-{{- if eq .Dir "up"}}<path d="M12 19.4V4.6"/><path d="M6.4 10.4 12 4.6l5.6 5.8"/>{{else}}<path d="M12 4.6v14.8"/><path d="M6.4 13.6 12 19.4l5.6-5.8"/>{{end -}}
+{{- if eq .Dir "up"}}<path d="M12 19.4V4.6"/><path d="M6.4 10.4 12 4.6l5.6 5.8"/>
+{{- else if eq .Dir "left"}}<path d="M19.4 12H4.6"/><path d="M10.4 6.4 4.6 12l5.8 5.6"/>
+{{- else if eq .Dir "right"}}<path d="M4.6 12h14.8"/><path d="M13.6 6.4 19.4 12l-5.8 5.6"/>
+{{- else}}<path d="M12 4.6v14.8"/><path d="M6.4 13.6 12 19.4l5.6-5.8"/>{{end -}}
 </svg>{{end}}
 
 {{/* ServerRow. Args: Name, Type, State, Sessions, Detail */}}
@@ -207,10 +210,10 @@
           {{$per := .PerPage}}{{range .PerOptions}}<option value="{{.}}" {{if eq . $per}}selected{{end}}>{{.}} rows</option>{{end}}
         </select>
         <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasPrev}}disabled{{end}} aria-label="Previous page"
-                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.PrevPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">←</button>
+                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.PrevPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">{{template "ratearrow" dict "Dir" "left" "Size" 13}}</button>
         <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">{{.Page}} / {{.Pages}}</span>
         <button class="at-btn at-btn--ghost at-btn--xs" {{if not .HasNext}}disabled{{end}} aria-label="Next page"
-                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.NextPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">→</button>
+                hx-get="{{.Endpoint}}?per={{.PerPage}}&page={{.NextPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">{{template "ratearrow" dict "Dir" "right" "Size" 13}}</button>
       </div>
     </div>
   </div>
