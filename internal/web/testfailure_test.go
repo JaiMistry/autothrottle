@@ -27,9 +27,13 @@ func TestClassifyProbeError(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			field, hint := classifyProbeError(c.kind, c.err)
-			if field != c.wantField {
-				t.Errorf("field = %q, want %q", field, c.wantField)
+			fields, hint := classifyProbeError(c.kind, c.err)
+			got := ""
+			if len(fields) > 0 {
+				got = fields[0]
+			}
+			if got != c.wantField {
+				t.Errorf("field = %q, want %q", got, c.wantField)
 			}
 			if c.wantIn != "" && !strings.Contains(hint, c.wantIn) {
 				t.Errorf("hint = %q, want it to contain %q", hint, c.wantIn)
@@ -40,9 +44,32 @@ func TestClassifyProbeError(t *testing.T) {
 
 // An error nobody anticipated must not be given invented advice: the raw
 // text is still shown, and no field is outlined.
+// Every blank is named at once, so fixing one does not just surface the
+// next on the following attempt.
+func TestMissingRequiredNamesEveryBlank(t *testing.T) {
+	fields, hint := missingRequired("", "", "", true)
+	if len(fields) != 3 {
+		t.Fatalf("want name, url and credential, got %v", fields)
+	}
+	for _, want := range []string{"a name", "a URL", "a credential"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint %q is missing %q", hint, want)
+		}
+	}
+
+	// A downloader does not require credentials at all.
+	if fields, _ := missingRequired("qb", "http://x", "", false); fields != nil {
+		t.Errorf("a named downloader with a URL needs nothing else, got %v", fields)
+	}
+	// A credential already stored counts as present.
+	if fields, _ := missingRequired("plex", "http://x", "stored-token", true); fields != nil {
+		t.Errorf("a supplied credential should satisfy the check, got %v", fields)
+	}
+}
+
 func TestClassifyProbeErrorStaysQuietWhenUnsure(t *testing.T) {
-	field, hint := classifyProbeError(probeServer, errors.New("something nobody has seen before"))
-	if field != "" || hint != "" {
-		t.Fatalf("want no field and no hint, got %q / %q", field, hint)
+	fields, hint := classifyProbeError(probeServer, errors.New("something nobody has seen before"))
+	if len(fields) != 0 || hint != "" {
+		t.Fatalf("want no field and no hint, got %v / %q", fields, hint)
 	}
 }

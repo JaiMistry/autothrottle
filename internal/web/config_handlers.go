@@ -391,20 +391,47 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/configuration?tab=media-servers", http.StatusSeeOther)
 }
 
+// storedMediaServerCredential returns the credential already saved for
+// the server this form is editing, if there is one.
+func (s *Server) storedMediaServerCredential(r *http.Request) (string, bool) {
+	idStr := r.FormValue("id")
+	if idStr == "" {
+		return "", false
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return "", false
+	}
+	ms, err := s.db.GetMediaServer(id)
+	if err != nil || ms.CredentialEncrypted == "" {
+		return "", false
+	}
+	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
+	if err != nil {
+		return "", false
+	}
+	return token, true
+}
+
 func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		s.writeTestResult(w, testResult{Message: "bad form data"})
 		return
 	}
 	msType := r.FormValue("type")
+	name := strings.TrimSpace(r.FormValue("name"))
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	token := mediaServerCredential(r, msType)
-	if rawURL == "" {
-		s.writeTestResult(w, testResult{Message: "No URL", Field: fieldURL, Hint: "Enter the server's URL first — nothing was sent."})
-		return
-	}
+	// Editing an existing server: an untouched credential field means
+	// "keep what is stored", so the test uses the stored one rather than
+	// demanding it be retyped.
 	if token == "" {
-		s.writeTestResult(w, testResult{Message: "No credential", Field: fieldCredential, Hint: "Enter a token, or sign in with Plex, before testing."})
+		if stored, ok := s.storedMediaServerCredential(r); ok {
+			token = stored
+		}
+	}
+	if fields, hint := missingRequired(name, rawURL, token, true); fields != nil {
+		s.writeTestResult(w, testResult{Message: "Nothing to test", Fields: fields, Hint: hint})
 		return
 	}
 	if !clients.SupportedMediaServerType(msType) {
@@ -416,7 +443,7 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
 		field, hint := classifyProbeError(probeServer, err)
-		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
+		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
 	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
@@ -435,7 +462,7 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
-		s.writeTestResult(w, testResult{Message: "stored credential could not be decrypted", Field: fieldCredential, Hint: "Re-enter the token and save the server again."})
+		s.writeTestResult(w, testResult{Message: "stored credential could not be decrypted", Fields: []string{fieldCredential}, Hint: "Re-enter the token and save the server again."})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
@@ -443,7 +470,7 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
 		field, hint := classifyProbeError(probeServer, err)
-		s.writeTestResult(w, testResult{Target: ms.URL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
+		s.writeTestResult(w, testResult{Target: ms.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
 	s.writeTestResult(w, testResult{OK: true, Target: ms.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
@@ -568,9 +595,13 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dlType := r.FormValue("type")
+	name := strings.TrimSpace(r.FormValue("name"))
 	rawURL := strings.TrimSpace(r.FormValue("url"))
-	if rawURL == "" {
-		s.writeTestResult(w, testResult{Message: "No URL", Field: fieldURL, Hint: "Enter the client's URL first — nothing was sent."})
+	// A downloader's credentials are genuinely optional — a WebUI with
+	// authentication switched off is a legitimate setup — so only the
+	// name and the URL are required here.
+	if fields, hint := missingRequired(name, rawURL, "", false); fields != nil {
+		s.writeTestResult(w, testResult{Message: "Nothing to test", Fields: fields, Hint: hint})
 		return
 	}
 	if !clients.SupportedDownloaderType(dlType) {
@@ -585,7 +616,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
 		field, hint := classifyProbeError(probeServer, err)
-		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
+		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
 	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
@@ -605,7 +636,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
-		s.writeTestResult(w, testResult{Message: "stored credential could not be read", Field: fieldCredential, Hint: "Re-enter the password and save the client again."})
+		s.writeTestResult(w, testResult{Message: "stored credential could not be read", Fields: []string{fieldCredential}, Hint: "Re-enter the password and save the client again."})
 		return
 	}
 
@@ -614,7 +645,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
 		field, hint := classifyProbeError(probeDownloader, err)
-		s.writeTestResult(w, testResult{Target: dl.URL, Message: err.Error(), Field: field, Hint: hint, Elapsed: time.Since(started)})
+		s.writeTestResult(w, testResult{Target: dl.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
 	s.writeTestResult(w, testResult{OK: true, Target: dl.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
@@ -711,7 +742,7 @@ type testResultView struct {
 	Elapsed     string
 	Detail      string
 	Hint        string
-	Field       string
+	Fields      []string
 	Dismissable bool
 }
 
@@ -734,7 +765,7 @@ type testResult struct {
 	Target  string
 	Message string
 	Hint    string
-	Field   string
+	Fields  []string
 	Elapsed time.Duration
 }
 
@@ -744,11 +775,11 @@ func (s *Server) writeTestResult(w http.ResponseWriter, res testResult) {
 	}
 	view := testResultView{
 		State: "failed", Tone: "critical", Icon: "unreachable", Label: "Failed",
-		Target: res.Target, Detail: res.Message, Hint: res.Hint, Field: res.Field, Dismissable: true,
+		Target: res.Target, Detail: res.Message, Hint: res.Hint, Fields: res.Fields, Dismissable: true,
 	}
 	if res.OK {
 		view.State, view.Tone, view.Icon, view.Label = "connected", "good", "normal", "Connected"
-		view.Field = ""
+		view.Fields = nil
 	}
 	if res.Elapsed > 0 {
 		view.Elapsed = fmt.Sprintf("%.1fs", res.Elapsed.Seconds())

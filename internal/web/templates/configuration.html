@@ -81,7 +81,7 @@
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
-        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}" placeholder="Living room Plex" required></label>
+        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}" required></label>
       <label class="at-field"><span class="at-field-label">Type</span>
         <select class="at-select" name="type">
           <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
@@ -250,7 +250,7 @@
     {{/* Ticks forward in the page from the boot timestamp; the value
          rendered here is only the first frame. */}}
     {{template "readonly" dict "Label" "Uptime" "Value" .Uptime "Note" .About.BootNote "Tick" .About.BootUnix}}
-    {{template "readonly" dict "Label" "Runtime" "Value" .About.Runtime "Note" "Reported by the running process"}}
+    {{template "readonly" dict "Label" "Runtime" "Value" .About.Runtime "Note" "Currently running processes"}}
     {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set via environment variables at deploy time"}}
     <div id="update-check">{{template "updatecheck" .Update}}</div>
   </section>
@@ -368,7 +368,12 @@
   {{if .Legend}}<legend class="at-ratepair-legend{{if ne .Tone "warn"}} at-ratepair-legend--default{{end}}">{{.Legend}}
     {{- if .Hint}}<span class="at-hint">
       <button type="button" class="at-hint-dot" aria-label="{{.HintLabel}}" aria-describedby="{{.HintID}}">?</button>
-      <span class="at-hint-bubble" id="{{.HintID}}" role="tooltip">{{.Hint}} <a class="at-hint-link" href="/configuration?tab=mappings">mapped</a> {{.HintTail}}</span>
+      {{/* Two elements on purpose: the outer one spans the gap between
+           dot and bubble with padding, so the pointer can travel up to
+           the link without crossing dead space and closing it. */}}
+      <span class="at-hint-anchor">
+        <span class="at-hint-bubble" id="{{.HintID}}" role="tooltip">{{.Hint}} <a class="at-hint-link" href="/configuration?tab=mappings">mapped</a> {{.HintTail}}</span>
+      </span>
     </span>{{end -}}
   </legend>{{end}}
   <div class="at-ratepair-grid">

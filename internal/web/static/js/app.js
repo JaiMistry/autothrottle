@@ -230,9 +230,18 @@
   // it. The names differ per form, and a downloader's credential is two
   // controls rather than one.
   var testFieldSelectors = {
+    name: '[name="name"]',
     url: '[name="url"]',
     credential: '[name="token"], [name="api_token"], [name="password"], [name="username"]',
   };
+
+  // A failure can blame more than one field at once — an empty form
+  // blames all of them — so the attribute holds a space-separated list.
+  function testFieldSelector(box) {
+    var parts = (box.dataset.field || "").split(/\s+/).filter(Boolean)
+      .map(function (f) { return testFieldSelectors[f]; }).filter(Boolean);
+    return parts.length ? parts.join(", ") : null;
+  }
 
   function markTestField(box) {
     var form = box && box.closest("form");
@@ -240,7 +249,7 @@
     form.querySelectorAll(".at-input--invalid").forEach(function (el) {
       el.classList.remove("at-input--invalid");
     });
-    var sel = testFieldSelectors[box.dataset.field];
+    var sel = testFieldSelector(box);
     if (!sel) return;
     form.querySelectorAll(sel).forEach(function (el) {
       if (!el.closest("[hidden]")) el.classList.add("at-input--invalid");
@@ -258,7 +267,7 @@
     if (!form) return;
     var box = form.querySelector(".at-testresult[data-field]");
     if (!box) return;
-    var sel = testFieldSelectors[box.dataset.field];
+    var sel = testFieldSelector(box);
     if (sel && e.target.matches(sel)) {
       form.querySelectorAll(".at-input--invalid").forEach(function (el) {
         el.classList.remove("at-input--invalid");

@@ -227,7 +227,7 @@
 {{/* The swap target for a connection test. One bounded box, and it
      holds still until dismissed by hand — a result that vanished on its
      own would take the error text with it. */}}
-{{define "testresult"}}<div class="at-testresult" data-state="{{.State}}"{{if .Field}} data-field="{{.Field}}"{{end}} role="status">
+{{define "testresult"}}<div class="at-testresult" data-state="{{.State}}"{{if .Fields}} data-field="{{range $i, $f := .Fields}}{{if $i}} {{end}}{{$f}}{{end}}"{{end}} role="status">
   <div class="at-testresult-head">
     {{template "statusflag" dict "Tone" .Tone "Icon" .Icon "Label" .Label "Size" "sm"}}
     {{if .Target}}<span class="at-testresult-target">{{.Target}}</span>{{end}}

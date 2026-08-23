@@ -17,6 +17,7 @@ const (
 // one field, and nothing is outlined — better than guessing and sending
 // someone to edit a field that was fine.
 const (
+	fieldName       = "name"
 	fieldURL        = "url"
 	fieldCredential = "credential"
 )
@@ -29,9 +30,9 @@ const (
 // up nearly every real report. Anything unrecognised gets no field and
 // no hint: the raw error is still shown, and inventing advice for an
 // error we do not understand is worse than staying quiet.
-func classifyProbeError(kind probeKind, err error) (field, hint string) {
+func classifyProbeError(kind probeKind, err error) (fields []string, hint string) {
 	if err == nil {
-		return "", ""
+		return nil, ""
 	}
 	msg := strings.ToLower(err.Error())
 	thing, port := "server", "port"
@@ -41,32 +42,67 @@ func classifyProbeError(kind probeKind, err error) (field, hint string) {
 
 	switch {
 	case strings.Contains(msg, "connection refused"):
-		return fieldURL, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
+		return []string{fieldURL}, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
 
 	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
-		return fieldURL, "No route to that address from the AutoThrottle container. Check the address, and that the container can reach that network."
+		return []string{fieldURL}, "No route to that address from the AutoThrottle container. Check the address, and that the container can reach that network."
 
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
-		return fieldURL, "No reply in 8s. Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
+		return []string{fieldURL}, "No reply in 8s. Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
 
 	case strings.Contains(msg, "x509"), strings.Contains(msg, "certificate"), strings.Contains(msg, "tls:"):
-		return fieldURL, "TLS handshake failed. Use http:// on a LAN address, or install the certificate."
+		return []string{fieldURL}, "TLS handshake failed. Use http:// on a LAN address, or install the certificate."
 
 	case strings.Contains(msg, "no such host"), strings.Contains(msg, "server misbehaving"):
-		return fieldURL, "That hostname did not resolve. Check the spelling, or use an IP address."
+		return []string{fieldURL}, "That hostname did not resolve. Check the spelling, or use an IP address."
 
 	case strings.Contains(msg, "401"), strings.Contains(msg, "403"),
 		strings.Contains(msg, "unauthorized"), strings.Contains(msg, "forbidden"),
 		strings.Contains(msg, "credential"), strings.Contains(msg, "invalid token"):
 		if kind == probeDownloader {
-			return fieldCredential, "Reached the WebUI, but the username or password was rejected."
+			return []string{fieldCredential}, "Reached the WebUI, but the username or password was rejected."
 		}
-		return fieldCredential, "Reached the server, but the credential was rejected. Check the token."
+		return []string{fieldCredential}, "Reached the server, but the credential was rejected. Check the token."
 
 	case strings.Contains(msg, "unsupported protocol scheme"), strings.Contains(msg, "missing protocol scheme"),
 		strings.Contains(msg, "invalid url"), strings.Contains(msg, "first path segment"):
-		return fieldURL, "That is not a complete URL. Include the scheme, as in http://192.168.1.12:32400."
+		return []string{fieldURL}, "That is not a complete URL. Include the scheme, as in http://192.168.1.12:32400."
 	}
-	return "", ""
+	return nil, ""
+}
+
+// missingRequired lists every field the form left blank, so the card can
+// name all of them at once. Testing an empty form used to complain about
+// the URL alone, which meant fixing it only to be told about the next
+// blank on the next attempt.
+//
+// A credential counts as present when one is stored already, or when a
+// Plex sign-in has just supplied one — neither is typed into a field the
+// user can see.
+func missingRequired(name, rawURL, credential string, needCredential bool) (fields []string, hint string) {
+	var missing []string
+	if name == "" {
+		fields = append(fields, fieldName)
+		missing = append(missing, "a name")
+	}
+	if rawURL == "" {
+		fields = append(fields, fieldURL)
+		missing = append(missing, "a URL")
+	}
+	if needCredential && credential == "" {
+		fields = append(fields, fieldCredential)
+		missing = append(missing, "a credential")
+	}
+	switch len(missing) {
+	case 0:
+		return nil, ""
+	case 1:
+		return fields, "Enter " + missing[0] + " before testing — nothing was sent."
+	case 2:
+		return fields, "Enter " + missing[0] + " and " + missing[1] + " before testing — nothing was sent."
+	default:
+		return fields, "Enter " + strings.Join(missing[:len(missing)-1], ", ") +
+			", and " + missing[len(missing)-1] + " before testing — nothing was sent."
+	}
 }

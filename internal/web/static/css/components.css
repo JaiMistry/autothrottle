@@ -353,7 +353,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
               color var(--dur-fast) var(--ease-standard),
               border-color var(--dur-fast) var(--ease-standard);
 }
-.at-btn:hover { background: var(--border); }
+/* Every variant pins its own hover colour. A button rendered as an <a>
+   otherwise inherits the global `a:hover { color: var(--accent-dim) }`,
+   which on a primary button is the same colour as its background — the
+   label simply disappears. Any new variant must set one too. */
+.at-btn:hover { background: var(--border); color: var(--text); }
 .at-btn:active { transition-duration: var(--dur-instant); }
 .at-btn[disabled], .at-btn[aria-disabled="true"] { opacity: .45; pointer-events: none; }
 .at-btn--xs { font-size: var(--text-caption); padding: 4px 8px; }
@@ -361,13 +365,13 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-btn--block { width: 100%; }
 
 .at-btn--primary { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
-.at-btn--primary:hover { background: var(--accent-dim); }
+.at-btn--primary:hover { background: var(--accent-dim); color: var(--accent-contrast); }
 .at-btn--ghost { background: transparent; color: var(--text-dim); border-color: transparent; }
 .at-btn--ghost:hover { background: var(--fill-neutral); color: var(--text); }
 .at-btn--warning { background: var(--warn); color: var(--at-ink); border-color: transparent; }
-.at-btn--warning:hover { background: color-mix(in srgb, var(--warn) 86%, #000); }
+.at-btn--warning:hover { background: color-mix(in srgb, var(--warn) 86%, #000); color: var(--at-ink); }
 .at-btn--danger { background: transparent; color: var(--critical); border-color: var(--critical); }
-.at-btn--danger:hover { background: var(--fill-critical); }
+.at-btn--danger:hover { background: var(--fill-critical); color: var(--critical); }
 
 /* Touch targets, keyed to the pointer rather than to viewport width —
    a mouse on a small window still gets the dense control. */
@@ -641,7 +645,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-empty--accent { border-color: var(--accent); }
 .at-empty-title { margin: 0; font-size: var(--text-ui); font-weight: var(--weight-bold); color: var(--text); }
-.at-empty-body { margin: 0; font-size: var(--text-caption); color: var(--text-dim); max-width: 46ch; text-wrap: pretty; }
+/* balance, not pretty: pretty only shortens the last line, which is
+   what stranded "anything." on a line of its own. balance evens every
+   line instead, so no single word is left behind. */
+.at-empty-body { margin: 0; font-size: var(--text-caption); color: var(--text-dim); max-width: 52ch; text-wrap: balance; }
 .at-empty-action { margin-top: var(--space-2); }
 
 /* The swap target for a connection test. Four states, one bounded box,
@@ -661,6 +668,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-testresult-head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 .at-testresult-target { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-dim); }
 .at-testresult-elapsed { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); margin-left: auto; }
+.at-testresult-elapsed + .at-testresult-close { margin-left: var(--space-2); }
 .at-testresult-detail {
   font-size: var(--text-caption);
   font-family: var(--font-mono);
@@ -676,8 +684,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-btn-busy { display: none; }
 .at-btn.htmx-request .at-btn-idle { display: none; }
 .at-btn.htmx-request .at-btn-busy { display: inline; }
+/* Pushed right on its own; only when an elapsed time is already holding
+   that edge does it sit beside it instead. A validation failure has no
+   elapsed time, and without this the button landed mid-row. */
 .at-testresult-close {
-  margin-left: var(--space-2);
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -851,13 +862,23 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   line-height: 1;
   cursor: help;
 }
-.at-hint-bubble {
+/* The positioner carries the gap as padding, so hovering from the dot to
+   the link never crosses dead space. Sizing lives here; the bubble
+   inside only paints. */
+.at-hint-anchor {
   position: absolute;
   left: -6px;
-  bottom: calc(100% + 6px);
+  bottom: 100%;
+  padding-bottom: 6px;
   z-index: 3;
   width: max-content;
-  max-width: min(280px, 70vw);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.at-hint-bubble {
+  display: block;
   padding: 6px 9px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -868,13 +889,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   font-weight: var(--weight-regular);
   letter-spacing: 0;
   text-transform: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 120ms ease;
-  pointer-events: none;
+  white-space: nowrap;
 }
-.at-hint:hover .at-hint-bubble,
-.at-hint:focus-within .at-hint-bubble { opacity: 1; visibility: visible; pointer-events: auto; }
+.at-hint:hover .at-hint-anchor,
+.at-hint:focus-within .at-hint-anchor { opacity: 1; visibility: visible; pointer-events: auto; }
 .at-hint-link { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .at-hint-link:hover { color: var(--accent); }
 .at-ratepair-grid {
@@ -955,7 +973,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-tab {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   flex-shrink: 0;
   white-space: nowrap;
   gap: var(--space-3);
@@ -981,7 +999,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-.at-tab-count { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); }
+.at-tab-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-label); line-height: 1; color: var(--text-faint); }
 .at-tabs--sm { gap: 2px; }
 .at-tabs--sm .at-tab { font-size: var(--text-caption); padding: 4px 10px; }
 

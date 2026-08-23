@@ -28,9 +28,9 @@ func (s *Server) aboutView() aboutView {
 	if commit == "" {
 		commit = "unknown"
 	}
-	built := "build date not recorded"
+	built := "Build date not recorded"
 	if !b.Built.IsZero() {
-		built = "built " + b.Built.Local().Format("2 Jan 2006")
+		built = "Built: " + b.Built.Local().Format("2 Jan 2006")
 	}
 
 	rt := fmt.Sprintf("%s · %s/%s", b.Go, b.OS, b.Arch)
@@ -43,7 +43,7 @@ func (s *Server) aboutView() aboutView {
 		BuiltNote: built,
 		Runtime:   rt,
 		BootUnix:  s.startedAt.UnixMilli(),
-		BootNote:  "last restart: " + s.startedAt.Local().Format("2 Jan 2006, 15:04"),
+		BootNote:  "Last restarted: " + s.startedAt.Local().Format("2 Jan 2006, 15:04"),
 		Auth:      s.authSummary(),
 	}
 }
