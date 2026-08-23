@@ -133,6 +133,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /configuration/update-check", s.updateCheck)
 	protected.HandleFunc("POST /configuration/plex-signin", s.startPlexSignIn)
 	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
+	protected.HandleFunc("POST /configuration/plex-signin/cancel", s.cancelPlexSignIn)
 
 	mux.Handle("/", auth.RequireAuth(s.authCfg, s.sessions)(
 		auth.RequireCSRF(s.authCfg, s.csrf)(protected),

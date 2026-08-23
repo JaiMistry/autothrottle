@@ -103,12 +103,26 @@ type plexPanel struct {
 	Code    string
 	PinID   int
 	Token   string
-	Title   string
-	Detail  string
 }
 
-func (s *Server) plexSignInError(w http.ResponseWriter, title, detail string) {
-	s.renderPlexPanel(w, plexPanel{State: "error", Title: title, Detail: detail})
+// plexSignInError reports the one failure the panel shows. The specific
+// cause goes to the log rather than the page: every one of them ends in
+// the same two options, so naming them only adds noise to the form.
+func (s *Server) plexSignInError(w http.ResponseWriter, reason, detail string) {
+	slog.Info("plex sign-in did not complete", "reason", reason, "detail", detail)
+	s.renderPlexPanel(w, plexPanel{State: "error"})
+}
+
+// cancelPlexSignIn ends an attempt the user walked away from.
+//
+// Closing the Plex window leaves the PIN unclaimed, and the poll would
+// otherwise sit on "waiting" until the ten-minute TTL ran out with no
+// sign that anything was wrong.
+func (s *Server) cancelPlexSignIn(w http.ResponseWriter, r *http.Request) {
+	s.plex.mu.Lock()
+	s.plex.pin = clients.PlexPin{}
+	s.plex.mu.Unlock()
+	s.plexSignInError(w, "window closed before approval", "")
 }
 
 func (s *Server) renderPlexPanel(w http.ResponseWriter, panel plexPanel) {

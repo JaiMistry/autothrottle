@@ -92,6 +92,7 @@
   document.addEventListener("DOMContentLoaded", function () { bindCaps(document); });
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
+    syncPlexPanel();
     // A swapped-in pane brings its own inputs; re-apply which of them
     // are live before anything can submit a stale blank.
     document.querySelectorAll("form").forEach(syncCredentialUI);
@@ -169,6 +170,58 @@
       pane.hidden = pane.dataset.credpane !== name;
     });
     syncDisabled(form);
+  }
+
+  // Plex sign-in runs in a popup the browser will only allow if it is
+  // opened inside the click itself. The auth URL is not known until the
+  // server answers, so the window is opened blank and pointed at Plex
+  // once the panel comes back carrying the URL.
+  var plexWindow = null;
+  var plexWatch = null;
+
+  function stopPlexWatch() {
+    if (plexWatch) { clearInterval(plexWatch); plexWatch = null; }
+  }
+
+  function watchPlexWindow() {
+    stopPlexWatch();
+    plexWatch = setInterval(function () {
+      if (plexWindow && !plexWindow.closed) return;
+      stopPlexWatch();
+      // One poll cycle of grace: approving can close the window a moment
+      // before the poll that collects the token comes back, and calling
+      // that a failure would throw away a sign-in that worked.
+      setTimeout(function () {
+        var panel = document.querySelector('.at-plexsignin[data-state="waiting"]');
+        if (!panel) return;
+        var form = panel.closest("form");
+        var csrf = form && form.querySelector('[name="csrf_token"]');
+        window.htmx.ajax("POST", "/configuration/plex-signin/cancel", {
+          target: "#plex-signin",
+          swap: "innerHTML",
+          values: csrf ? { csrf_token: csrf.value } : {},
+        });
+      }, 3000);
+    }, 700);
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("[data-plexstart]")) return;
+    plexWindow = window.open("", "at-plex-signin", "width=620,height=760,noopener=no");
+  });
+
+  function syncPlexPanel() {
+    var panel = document.querySelector(".at-plexsignin");
+    if (!panel) return;
+    var url = panel.dataset.authurl;
+    if (url && plexWindow && !plexWindow.closed) {
+      plexWindow.location = url;
+      watchPlexWindow();
+    }
+    if (panel.dataset.state !== "waiting") {
+      stopPlexWatch();
+      if (panel.dataset.state === "done" && plexWindow && !plexWindow.closed) plexWindow.close();
+    }
   }
 
   // A connection test shows its pending state the instant it starts.
