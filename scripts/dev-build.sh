@@ -16,4 +16,12 @@ COMMIT="$commit" \
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   docker compose build --memory 1500m "$@"
 COMMIT="$commit" docker compose up -d
+
+# Every rebuild leaves the previous image untagged, and they accumulate
+# fast on a box that also runs 34 production containers. Dangling only:
+# `prune -a` would also take the toolchain images this repo builds and
+# tests with (golang, node, puppeteer), costing gigabytes of re-download
+# on the next run for no benefit.
+reclaimed=$(docker image prune -f 2>/dev/null | tail -1)
 echo "built and running: $commit"
+[ -n "$reclaimed" ] && echo "$reclaimed"
