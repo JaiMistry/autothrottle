@@ -262,6 +262,11 @@
 <template id="at-tpl-testing">
   {{template "testresult" dict "State" "testing" "Tone" "neutral" "Icon" "connecting" "Label" "Testing…"}}
 </template>
+{{/* Same idea for the update check: the request is what takes the time,
+     so the checking state has to be shown before it is sent. */}}
+<template id="at-tpl-checking">
+  {{template "updatecheck" dict "State" "checking" "Label" "Checking…" "NotePre" "Reading the latest release tag from GitHub."}}
+</template>
 {{end}}
 
 {{/* The matrix is its own template so toggling one cell can re-render
@@ -330,7 +335,7 @@
     </span>
   </span>
   <span class="at-update-actions">
-    <button class="at-btn at-btn--sm" hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML"
+    <button class="at-btn at-btn--sm" data-updatebtn hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML"
             {{if eq .State "checking"}}disabled{{end}}>{{if eq .State "failed"}}Try again{{else}}Check for updates{{end}}</button>
     <a class="at-btn at-btn--sm {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
        href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>

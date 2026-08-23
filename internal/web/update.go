@@ -64,6 +64,10 @@ func notComparable(note string) updateView {
 	return updateView{State: "idle", Label: installedLabel(version.Version), NotePre: note}
 }
 
+// minCheckDuration matches the connection test's floor in spirit: long
+// enough for the spinner to register as a thing that happened.
+const minCheckDuration = 700 * time.Millisecond
+
 const releasesAPI = "https://api.github.com/repos/JaiMistry/autothrottle/releases/latest"
 
 // updateCheck asks GitHub for the latest release tag, on request only.
@@ -71,7 +75,14 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
+	// The checking state is rendered client-side the moment the button is
+	// pressed, so a reply that arrives in 40ms would replace it before it
+	// could be read. Only a fast answer waits; a slow one is not delayed.
+	started := time.Now()
 	view := checkLatestRelease(ctx, version.Version)
+	if elapsed := time.Since(started); elapsed < minCheckDuration {
+		time.Sleep(minCheckDuration - elapsed)
+	}
 	if err := s.templates["configuration"].ExecuteTemplate(w, "updatecheck", view); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}

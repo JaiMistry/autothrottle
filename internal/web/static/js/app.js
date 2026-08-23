@@ -377,8 +377,19 @@
 
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var elt = e.detail.elt;
-    if (elt && elt.closest("[data-testtarget], form") && /\/test$/.test(e.detail.requestConfig.path || "")) {
+    if (!elt) return;
+    var path = (e.detail.requestConfig && e.detail.requestConfig.path) || "";
+    if (elt.closest("[data-testtarget], form") && /\/test$/.test(path)) {
       showTesting(elt);
+      return;
+    }
+    // The update check is the same shape of problem: the answer only
+    // comes back when GitHub has replied, so the checking state has to
+    // be put on screen before the request leaves.
+    if (elt.matches("[data-updatebtn]")) {
+      var box = document.querySelector("#update-check");
+      var tpl = document.getElementById("at-tpl-checking");
+      if (box && tpl) box.replaceChildren(tpl.content.firstElementChild.cloneNode(true));
     }
   });
 
