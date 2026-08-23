@@ -16,7 +16,7 @@ func TestClassifyProbeError(t *testing.T) {
 	}{
 		{"refused names the port", probeServer, errors.New("dial tcp 10.0.0.1:32400: connect: connection refused"), fieldURL, "Nothing is listening"},
 		{"refused on a downloader says WebUI", probeDownloader, errors.New("connect: connection refused"), fieldURL, "WebUI port"},
-		{"no route blames the address", probeServer, errors.New("dial tcp 192.168.1.99:32400: connect: no route to host"), fieldURL, "No route to that address"},
+		{"no route blames the address", probeServer, errors.New("dial tcp 192.168.1.99:32400: connect: no route to host"), fieldURL, "Nothing answered at that address"},
 		{"timeout blames reachability", probeServer, errors.New("dial tcp: i/o timeout"), fieldURL, "unreachable from the AutoThrottle container"},
 		{"401 blames the credential", probeServer, errors.New("unexpected status 401 Unauthorized"), fieldCredential, "credential was rejected"},
 		{"403 on a downloader names both fields", probeDownloader, errors.New("403 Forbidden"), fieldCredential, "username or password"},

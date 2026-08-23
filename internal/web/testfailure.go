@@ -45,7 +45,12 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 		return []string{fieldURL}, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
 
 	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
-		return []string{fieldURL}, "No route to that address from the AutoThrottle container. Check the address, and that the container can reach that network."
+		// On a directly-connected subnet this is an unanswered ARP: the
+		// address is routable in principle and simply has nothing on it.
+		// Blaming the container's networking sends people to the wrong
+		// place — the usual cause is a name pointing at an address that
+		// no longer exists.
+		return []string{fieldURL}, "Nothing answered at that address. Check the address is right and the machine is up — and, if it is on another network, that the container can reach it."
 
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
