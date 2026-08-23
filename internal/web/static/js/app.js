@@ -57,7 +57,11 @@
   }
   document.addEventListener("click", function (e) {
     if (e.target.closest("[data-drawer-open]")) { setDrawer(true); return; }
-    if (e.target.closest("[data-drawer-close]")) setDrawer(false);
+    if (e.target.closest("[data-drawer-close]")) { setDrawer(false); return; }
+    // Choosing a destination is the end of using the menu, so it closes
+    // with the choice rather than staying open over the page arriving
+    // behind it.
+    if (e.target.closest(".at-rail a")) setDrawer(false);
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") setDrawer(false);
@@ -97,6 +101,10 @@
   document.addEventListener("DOMContentLoaded", function () { bindCaps(document); });
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
+    // A boosted navigation swaps in a fresh scrim, which arrives with its
+    // `hidden` attribute back while <body> still says the drawer is open.
+    // Re-apply the state so the scrim cannot go deaf.
+    setDrawer(document.body.getAttribute("data-drawer") === "1");
     // Caps have to be re-measured: the swapped rows are new elements the
     // old observer is no longer watching.
     bindCaps(e.detail.target);

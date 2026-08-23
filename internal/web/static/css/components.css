@@ -16,6 +16,11 @@
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
+  /* Mobile browsers report 100vh as the viewport with the URL bar
+     retracted, so the shell is the wrong height whenever it is not —
+     which is what left the footer stranded mid-screen. dvh follows the
+     area actually on screen; the vh above stays for anything older. */
+  min-height: 100dvh;
   background: var(--bg);
   /* The design animates the nav's own width. Here the width comes from
      the grid track, so the track is what has to move — otherwise the
@@ -122,6 +127,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 /* The rail's lockup overrides the component's defaults, as AppShell
    does: a larger mark and body-size text. */
 .at-rail .at-brand, .at-topbar .at-brand { gap: var(--space-5); }
+.at-brand { color: inherit; text-decoration: none; }
+.at-brand:hover { color: inherit; }
 .at-brand img[width="20"], .at-brand img[width="16"] { border-radius: var(--radius-sm); }
 .at-brand img { display: block; flex-shrink: 0; }
 .at-rail-name { font-size: var(--text-body); }
@@ -227,6 +234,25 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   .at-theme-bar { display: none; }
   .at-main { padding: var(--space-8) 16px var(--space-9); }
   .at-foot { padding: 10px 16px 16px; }
+
+  /* An absolutely-positioned bubble still counts toward the document's
+     width even while hidden, and at 280px of nowrap text it pushed the
+     page wider than the screen — which is what made the browser zoom the
+     whole app out. Capping it is not enough, because how far it starts
+     across depends on how long the legend is. Instead it measures itself
+     against the whole rate group here: spanning a box that already fits
+     the card, it cannot stick out however wide the text is. */
+  .at-ratepair { position: relative; }
+  .at-ratepair .at-hint { position: static; }
+  .at-ratepair .at-hint-anchor { left: 0; right: 0; width: auto; max-width: none; }
+  .at-ratepair .at-hint-bubble { white-space: normal; }
+
+  /* Only where it is asked for: a tab bar told to fill does so edge to
+     edge here, and stays fit-content everywhere else. The compound
+     selector is deliberate — .at-tabs sets width later in this file and
+     would otherwise win on source order. */
+  .at-tabs.at-tabs--fill { width: 100%; }
+  .at-tabs.at-tabs--fill .at-tab { flex: 1 1 0; justify-content: center; }
 }
 
 .at-barbtn {
@@ -1183,7 +1209,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
    the Alert component's default. */
 .at-login .at-alert { justify-items: center; text-align: center; }
 
-.at-login { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: var(--space-10); }
+.at-login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; background: var(--bg); padding: var(--space-10); }
 .at-login-inner { width: min(360px, 100%); display: grid; gap: var(--space-10); justify-items: center; }
 .at-login-brand { display: grid; gap: var(--space-6); justify-items: center; }
 .at-login-brand img { display: block; border-radius: 22px; }
