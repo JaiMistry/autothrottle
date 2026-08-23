@@ -46,16 +46,16 @@ func installedLabel(v string) string {
 }
 
 // failedCheck is a check that did not produce a version to compare
-// against. `note` is the line the card shows; the default covers a
-// genuine transport failure, and callers override it when GitHub did
-// answer, because "could not reach GitHub" would then be untrue and
-// would send someone off debugging their network for nothing.
-func failedCheck(why, note string) updateView {
+// against. The card always says the same thing; the specific cause goes
+// to the log instead. That means a 404 — GitHub answered, it just has
+// no release — still reads as "could not reach GitHub", which is not
+// literally true but stops being reachable at all once v1 is tagged.
+func failedCheck(why string) updateView {
 	slog.Info("update check did not complete", "reason", why)
-	if note == "" {
-		note = "Could not reach GitHub. Try again later."
+	return updateView{
+		State: "failed", Label: "Check failed",
+		NotePre: "Could not reach GitHub. Try again later.",
 	}
-	return updateView{State: "failed", Label: "Check failed", NotePre: note}
 }
 
 // notComparable is not a failure: the check worked, there is simply no
@@ -91,39 +91,37 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 func checkLatestRelease(ctx context.Context, current string) updateView {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesAPI, nil)
 	if err != nil {
-		return failedCheck("request could not be built", "")
+		return failedCheck("request could not be built")
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
 	if err != nil {
-		return failedCheck("no answer from github", "")
+		return failedCheck("no answer from github")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		// Also what a private repository returns to an anonymous caller,
 		// so the wording covers both without asserting which it is.
-		return failedCheck("github answered 404",
-			"GitHub has no published release for this repository yet.")
+		return failedCheck("github answered 404")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return failedCheck(fmt.Sprintf("github answered %d", resp.StatusCode),
-			fmt.Sprintf("GitHub answered %d. Try again later.", resp.StatusCode))
+		return failedCheck(fmt.Sprintf("github answered %d", resp.StatusCode))
 	}
 
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return failedCheck("github's answer could not be decoded", "GitHub's answer could not be read.")
+		return failedCheck("github's answer could not be decoded")
 	}
 
 	latest := strings.TrimPrefix(release.TagName, "v")
 	running := strings.TrimPrefix(current, "v")
 	switch {
 	case latest == "":
-		return failedCheck("github reported no release tag", "GitHub has no published release for this repository yet.")
+		return failedCheck("github reported no release tag")
 	case running == "dev":
 		// A dev build has no version to compare against, and calling it
 		// out of date would be wrong as often as not.
