@@ -17,10 +17,15 @@
   grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
   background: var(--bg);
+  /* The design animates the nav's own width. Here the width comes from
+     the grid track, so the track is what has to move — otherwise the
+     rail snaps and only its padding eases. */
+  transition: grid-template-columns var(--dur-base) var(--ease-out);
 }
 html[data-rail="collapsed"] .at-shell { grid-template-columns: 58px 1fr; }
 
 .at-rail {
+  transition: padding var(--dur-base) var(--ease-out);
   background: var(--surface-2);
   border-right: 1px solid var(--border);
   padding: var(--pad-nav);
