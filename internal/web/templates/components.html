@@ -223,7 +223,7 @@
      Args: Label, Name, HasCredential, Placeholder */}}
 {{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
   <label class="at-field">
-    <span class="at-field-label">{{.Label}}</span>
+    <span class="at-field-label">{{.Label}}{{if .Help}}<a class="at-helplink" href="{{.Help}}" target="_blank" rel="noreferrer" title="{{.HelpLabel}}" aria-label="{{.HelpLabel}}">?</a>{{end}}</span>
     <input class="at-input at-input--mono" type="password" name="{{or .Name "token"}}" autocomplete="off"
            placeholder="{{if .HasCredential}}••••••••{{else}}{{.Placeholder}}{{end}}">
     {{if .HasCredential}}<span class="at-field-hint">Leave blank to keep the existing value.</span>{{end}}

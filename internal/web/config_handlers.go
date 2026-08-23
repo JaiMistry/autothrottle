@@ -299,6 +299,24 @@ func parseInt64Form(r *http.Request, name string) int64 {
 
 // --- media servers ---
 
+// mediaServerCredential picks the credential the user actually filled in.
+//
+// The form carries a field per credential style — a pasted Plex token, a
+// token handed over by Plex sign-in, an Emby or Jellyfin API key — and
+// the panes the user is not looking at stay in the DOM. Reading a single
+// shared name would let whichever blank field came first in the document
+// silently beat the one they filled in, which is exactly the bug that
+// made saving a Plex server after signing in do nothing at all.
+func mediaServerCredential(r *http.Request, msType string) string {
+	if msType != "plex" {
+		return r.FormValue("api_token")
+	}
+	if pasted := r.FormValue("token"); pasted != "" {
+		return pasted
+	}
+	return r.FormValue("plex_token")
+}
+
 func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
@@ -308,7 +326,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	msType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
-	token := r.FormValue("token")
+	token := mediaServerCredential(r, msType)
 	skipLocal := r.FormValue("skip_local_playback") == "on"
 	enabled := r.FormValue("enabled") == "on"
 

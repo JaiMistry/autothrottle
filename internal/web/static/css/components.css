@@ -700,7 +700,41 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   line-height: var(--leading-ui);
   text-align: left;
 }
-.at-select { appearance: auto; }
+/* The design leaves the native arrow in place, which sits hard against
+   the right edge. Drawing it ourselves is the only way to give it room,
+   so the chevron is redrawn to match and inset from the border. */
+.at-select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 10px 6px;
+}
+:root:not([data-theme="light"]) .at-select,
+:root[data-theme="dark"] .at-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%238b95a5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+}
+.at-select::-ms-expand { display: none; }
+/* Small "?" that links out to a vendor's own documentation. */
+.at-helplink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  text-decoration: none;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.at-helplink:hover { color: var(--accent); }
+
 .at-input::placeholder { color: var(--text-faint); }
 .at-input--mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .at-input--invalid { border-color: var(--critical); }
@@ -739,7 +773,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   font-weight: var(--weight-semibold);
   color: var(--warn);
 }
-.at-ratepair-legend--default { color: var(--text-faint); }
+.at-ratepair-legend--default { color: var(--accent); }
 .at-ratepair-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
@@ -835,6 +869,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
+/* These are anchors, so the global a:hover accent applies unless it is
+   answered here. The design gives a tab no hover colour at all. */
+.at-tab:hover, .at-tab:focus-visible { color: var(--text-dim); }
+.at-tab[aria-selected="true"]:hover { color: var(--text); }
 .at-tab[aria-selected="true"] {
   color: var(--text);
   background: var(--surface);

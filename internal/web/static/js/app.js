@@ -92,6 +92,9 @@
   document.addEventListener("DOMContentLoaded", function () { bindCaps(document); });
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
+    // A swapped-in pane brings its own inputs; re-apply which of them
+    // are live before anything can submit a stale blank.
+    document.querySelectorAll("form").forEach(syncCredentialUI);
     // Caps have to be re-measured: the swapped rows are new elements the
     // old observer is no longer watching.
     bindCaps(e.detail.target);
@@ -130,22 +133,42 @@
   function syncCredentialUI(form) {
     if (!form) return;
     var type = form.querySelector('select[name="type"]');
-    var isPlex = !type || type.value === "plex";
-    form.querySelectorAll("[data-plex-only]").forEach(function (el) { el.hidden = !isPlex; });
-    if (!isPlex) {
-      // Force the token pane back: the sign-in flow is Plex-only, and
-      // leaving it selected would show a dead control.
+    if (!type || !form.querySelector("[data-credgroup]")) return;
+    var isPlex = type.value === "plex";
+    form.querySelectorAll("[data-credgroup]").forEach(function (group) {
+      group.hidden = group.dataset.credgroup !== (isPlex ? "plex" : "apikey");
+    });
+    if (isPlex) {
+      var active = form.querySelector('[data-credtab][aria-selected="true"]');
+      showPane(form, active ? active.dataset.credtab : "token");
+    } else {
+      // Put the token pane back. The sign-in flow is Plex-only, so
+      // leaving it selected would show a control that cannot work.
       form.querySelectorAll("[data-credtab]").forEach(function (t) {
-        t.setAttribute("aria-selected", t.dataset.credtab === "token" ? "true" : "false");
+        t.setAttribute("aria-selected", String(t.dataset.credtab === "token"));
       });
       showPane(form, "token");
     }
+    syncDisabled(form);
+  }
+
+  // A hidden input still submits, so anything the user cannot see is
+  // disabled outright. Without this a blank field from the pane they are
+  // not using rides along with the one they filled in.
+  function syncDisabled(form) {
+    form.querySelectorAll("[data-credgroup], [data-credpane]").forEach(function (box) {
+      var off = box.hidden || !!box.closest("[data-credgroup][hidden]");
+      box.querySelectorAll("input, select, textarea").forEach(function (el) {
+        el.disabled = off;
+      });
+    });
   }
 
   function showPane(form, name) {
     form.querySelectorAll("[data-credpane]").forEach(function (pane) {
       pane.hidden = pane.dataset.credpane !== name;
     });
+    syncDisabled(form);
   }
 
   document.addEventListener("click", function (e) {

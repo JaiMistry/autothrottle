@@ -87,21 +87,28 @@
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.12:32400" required>
         <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      {{/* Plex offers two ways in; Emby and Jellyfin only take a key,
-           so the sub-tabs are hidden for them by the type select. */}}
-      <div data-plex-only>
-        <div class="at-tabs at-tabs--sm" role="tablist" style="margin-bottom:var(--space-5)">
+      {{/* Plex takes either a pasted token or its own sign-in; Emby and
+           Jellyfin only take an API key. Each input has its own name and
+           the server picks by type, so a hidden blank field can never
+           win over the value the user actually supplied. */}}
+      <div data-credgroup="plex" style="display:grid;gap:var(--space-6)">
+        <div class="at-tabs at-tabs--sm" role="tablist">
           <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>
           <button type="button" class="at-tab" role="tab" aria-selected="false" data-credtab="signin">Sign in with Plex</button>
         </div>
+        <div data-credpane="token">
+          {{template "credentialfield" dict "Label" "X-Plex-Token" "Name" "token"
+            "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"
+            "Help" "https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
+            "HelpLabel" "Finding an authentication token (X-Plex-Token) — Plex support"}}
+        </div>
+        <div data-credpane="signin" hidden>
+          <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
+        </div>
       </div>
-
-      <div data-credpane="token">
-        {{template "credentialfield" dict "Label" "Token" "Name" "token" "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"}}
-      </div>
-
-      <div data-credpane="signin" hidden>
-        <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
+      <div data-credgroup="apikey" hidden>
+        {{template "credentialfield" dict "Label" "API key" "Name" "api_token"
+          "HasCredential" .EditMediaServer.HasCredential "Placeholder" "API key"}}
       </div>
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
@@ -111,7 +118,7 @@
         </span>
       </label>
       <label class="at-check-label">
-        <input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditMediaServer.Enabled (not .EditMediaServerID)}}checked{{end}}>
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditMediaServer.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
       <div id="ms-form-test"><div class="at-testresult--idle"></div></div>
@@ -188,7 +195,7 @@
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required>
         <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      <div style="display:grid;gap:var(--space-4);grid-template-columns:1fr 1fr">
+      <div style="display:grid;gap:var(--space-6);grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
         <label class="at-field"><span class="at-field-label">Username</span>
           <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>
         {{template "credentialfield" dict "Label" "Password" "Name" "password" "HasCredential" .EditDownloader.HasCredential "Placeholder" ""}}
@@ -201,7 +208,7 @@
         "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
         "Note" "Rates are KB/s. 0 means unlimited — the field says so as you type."}}
       <label class="at-check-label">
-        <input class="at-checkbox" type="checkbox" name="enabled" {{if or .EditDownloader.Enabled (not .EditDownloaderID)}}checked{{end}}>
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
       <div id="dl-form-test"><div class="at-testresult--idle"></div></div>
@@ -364,7 +371,7 @@
        can bear without hammering plex.tv. */}}
   <div hx-get="/configuration/plex-signin/poll" hx-trigger="load delay:2s" hx-target="#plex-signin" hx-swap="innerHTML"></div>
 {{- else if eq .State "done"}}
-  <input type="hidden" name="token" value="{{.Token}}">
+  <input type="hidden" name="plex_token" value="{{.Token}}">
   <div class="at-testresult" data-state="connected">
     <div class="at-testresult-head">
       {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Signed in" "Size" "sm"}}
