@@ -221,6 +221,19 @@
      lives under the control rather than in the label, so the label
      stays one line and keeps aligning with a plain field beside it.
      Args: Label, Name, HasCredential, Placeholder */}}
+{{/* The swap target for a connection test. One bounded box, and it
+     holds still until dismissed by hand — a result that vanished on its
+     own would take the error text with it. */}}
+{{define "testresult"}}<div class="at-testresult" data-state="{{.State}}" role="status">
+  <div class="at-testresult-head">
+    {{template "statusflag" dict "Tone" .Tone "Icon" .Icon "Label" .Label "Size" "sm"}}
+    {{if .Target}}<span class="at-testresult-target">{{.Target}}</span>{{end}}
+    {{if .Elapsed}}<span class="at-testresult-elapsed">{{.Elapsed}}</span>{{end}}
+    {{if .Dismissable}}<button type="button" class="at-testresult-close" data-testdismiss aria-label="Dismiss test result" title="Dismiss">&#10005;</button>{{end}}
+  </div>
+  {{if .Detail}}<span class="at-testresult-detail">{{.Detail}}</span>{{end}}
+</div>{{end}}
+
 {{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
   <label class="at-field">
     <span class="at-field-label">{{.Label}}{{if .Help}}<a class="at-helplink" href="{{.Help}}" target="_blank" rel="noreferrer" title="{{.HelpLabel}}" aria-label="{{.HelpLabel}}">?</a>{{end}}</span>

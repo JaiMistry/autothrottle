@@ -654,7 +654,9 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 /* The idle state is an empty box of the same height, so running a test
    never nudges the row below it. */
-.at-testresult--idle { min-height: 34px; background: none; border: 0; padding: 0; }
+/* The result row spans the full table width, so it has to shed the
+   table cell's own padding or it stops short of the rule above it. */
+.at-table td.at-testcell { border-bottom: 0; padding: 0 0 10px; }
 
 .at-dialog { border: 0; padding: 0; background: transparent; }
 .at-dialog::backdrop { background: var(--scrim); }

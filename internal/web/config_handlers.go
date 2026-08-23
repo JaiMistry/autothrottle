@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -412,54 +411,54 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		writeTestResult(w, false, "", "bad form data", 0)
+		s.writeTestResult(w, false, "", "bad form data", 0)
 		return
 	}
 	msType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
-	token := r.FormValue("token")
+	token := mediaServerCredential(r, msType)
 	if rawURL == "" || token == "" {
-		writeTestResult(w, false, "", "enter a URL and token first", 0)
+		s.writeTestResult(w, false, "", "enter a URL and token first", 0)
 		return
 	}
 	if !clients.SupportedMediaServerType(msType) {
-		writeTestResult(w, false, "", "choose a supported media server type first", 0)
+		s.writeTestResult(w, false, "", "choose a supported media server type first", 0)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
-		writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
+		s.writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		writeTestResult(w, false, "", "bad id", 0)
+		s.writeTestResult(w, false, "", "bad id", 0)
 		return
 	}
 	ms, err := s.db.GetMediaServer(id)
 	if err != nil {
-		writeTestResult(w, false, "", "media server not found", 0)
+		s.writeTestResult(w, false, "", "media server not found", 0)
 		return
 	}
 	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
-		writeTestResult(w, false, "", "stored credential could not be decrypted", 0)
+		s.writeTestResult(w, false, "", "stored credential could not be decrypted", 0)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
-		writeTestResult(w, false, ms.URL, err.Error(), time.Since(started))
+		s.writeTestResult(w, false, ms.URL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, ms.URL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, true, ms.URL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 // --- downloaders ---
@@ -571,17 +570,17 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		writeTestResult(w, false, "", "bad form data", 0)
+		s.writeTestResult(w, false, "", "bad form data", 0)
 		return
 	}
 	dlType := r.FormValue("type")
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
-		writeTestResult(w, false, "", "enter a URL first", 0)
+		s.writeTestResult(w, false, "", "enter a URL first", 0)
 		return
 	}
 	if !clients.SupportedDownloaderType(dlType) {
-		writeTestResult(w, false, "", "choose a supported downloader type first", 0)
+		s.writeTestResult(w, false, "", "choose a supported downloader type first", 0)
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
@@ -591,27 +590,27 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
-		writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
+		s.writeTestResult(w, false, rawURL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, true, rawURL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		writeTestResult(w, false, "", "bad id", 0)
+		s.writeTestResult(w, false, "", "bad id", 0)
 		return
 	}
 	dl, err := s.db.GetDownloader(id)
 	if err != nil {
-		writeTestResult(w, false, "", "downloader not found", 0)
+		s.writeTestResult(w, false, "", "downloader not found", 0)
 		return
 	}
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
-		writeTestResult(w, false, "", "stored credential could not be read", 0)
+		s.writeTestResult(w, false, "", "stored credential could not be read", 0)
 		return
 	}
 
@@ -619,10 +618,10 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
-		writeTestResult(w, false, dl.URL, err.Error(), time.Since(started))
+		s.writeTestResult(w, false, dl.URL, err.Error(), time.Since(started))
 		return
 	}
-	writeTestResult(w, true, dl.URL, "Reachable, and the credential was accepted.", time.Since(started))
+	s.writeTestResult(w, true, dl.URL, "Reachable, and the credential was accepted.", time.Since(started))
 }
 
 // --- mappings ---
@@ -706,42 +705,40 @@ func (s *Server) applyConfigChange(mediaServersChanged bool) {
 	s.scheduler.ResolveAsync()
 }
 
+// testResultView is the shape the testresult template renders.
+type testResultView struct {
+	State       string
+	Tone        string
+	Icon        string
+	Label       string
+	Target      string
+	Elapsed     string
+	Detail      string
+	Dismissable bool
+}
+
 // writeTestResult renders a connection test into its bounded box.
 //
 // The backend's own error string is shown verbatim in mono, wrapped by
 // a plain-language headline rather than replaced by one — the machine's
 // words are usually the only thing that says what actually went wrong.
-func writeTestResult(w http.ResponseWriter, ok bool, target, message string, elapsed time.Duration) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	state, tone, icon, label := "failed", "critical", "unreachable", "Failed"
-	if ok {
-		state, tone, icon, label = "connected", "good", "normal", "Connected"
+func (s *Server) writeTestResult(w http.ResponseWriter, ok bool, target, message string, elapsed time.Duration) {
+	view := testResultView{
+		State: "failed", Tone: "critical", Icon: "unreachable", Label: "Failed",
+		Target: target, Detail: message, Dismissable: true,
 	}
-	esc := template.HTMLEscapeString
-	_, _ = fmt.Fprintf(w,
-		`<div class="at-testresult" data-state="%s" role="status">`+
-			`<div class="at-testresult-head">`+
-			`<span class="at-flag at-flag--sm" data-tone="%s"><span class="at-flag-icon">%s</span>%s</span>`+
-			`<span class="at-testresult-target">%s</span>`+
-			`<span class="at-testresult-elapsed">%.1fs</span>`+
-			`<button type="button" class="at-testresult-close" aria-label="Dismiss test result" title="Dismiss" `+
-			`onclick="this.closest('.at-testresult').outerHTML='&lt;div class=&quot;at-testresult--idle&quot;&gt;&lt;/div&gt;'">✕</button>`+
-			`</div>`+
-			`<span class="at-testresult-detail">%s</span></div>`,
-		state, tone, testFlagIcon(icon), label, esc(target), elapsed.Seconds(), esc(message))
+	if ok {
+		view.State, view.Tone, view.Icon, view.Label = "connected", "good", "normal", "Connected"
+	}
+	if elapsed > 0 {
+		view.Elapsed = fmt.Sprintf("%.1fs", elapsed.Seconds())
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates["configuration"].ExecuteTemplate(w, "testresult", view); err != nil {
+		slog.Error("rendering test result", "error", err)
+	}
 }
 
-// testFlagIcon inlines the two StatusFlag glyphs this box can show.
-// They are static — a finished test is not a live state, so neither
-// moves.
-func testFlagIcon(name string) string {
-	if name == "normal" {
-		return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/></svg>`
-	}
-	return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ` +
-		`stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
-		`<path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/></svg>`
-}
 
 // saveSettings writes the runtime knobs. Each is validated by the
 // settings package against its own declared bounds; an out-of-range

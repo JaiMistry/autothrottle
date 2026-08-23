@@ -171,6 +171,50 @@
     syncDisabled(form);
   }
 
+  // A connection test shows its pending state the instant it starts.
+  // The server only answers when the probe finishes, so without this the
+  // box would appear already-resolved and the test would look instant.
+  function showTesting(elt) {
+    var form = elt.closest("form");
+    var sel = elt.getAttribute("hx-target") || (form && form.getAttribute("hx-target"));
+    if (!sel) return;
+    var box = document.querySelector(sel);
+    var tpl = document.getElementById("at-tpl-testing");
+    if (!box || !tpl) return;
+    var node = tpl.content.firstElementChild.cloneNode(true);
+    var target = (form && form.dataset.testtarget) || "";
+    if (!target && form) {
+      var url = form.querySelector('[name="url"]');
+      target = url ? url.value : "";
+    }
+    if (target) {
+      var slot = node.querySelector(".at-testresult-target");
+      if (slot) slot.textContent = target;
+      else {
+        slot = document.createElement("span");
+        slot.className = "at-testresult-target";
+        slot.textContent = target;
+        node.querySelector(".at-testresult-head").appendChild(slot);
+      }
+    }
+    box.replaceChildren(node);
+  }
+
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var elt = e.detail.elt;
+    if (elt && elt.closest("[data-testtarget], form") && /\/test$/.test(e.detail.requestConfig.path || "")) {
+      showTesting(elt);
+    }
+  });
+
+  // Dismissing leaves nothing behind — no spacer, no residue.
+  document.addEventListener("click", function (e) {
+    var close = e.target.closest("[data-testdismiss]");
+    if (!close) return;
+    var box = close.closest(".at-testresult");
+    if (box) box.remove();
+  });
+
   document.addEventListener("click", function (e) {
     var tab = e.target.closest("[data-credtab]");
     if (!tab) return;

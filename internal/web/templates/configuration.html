@@ -36,7 +36,7 @@
             <td>
               <span class="at-rowactions" style="gap:6px">
                 <a class="at-btn at-btn--xs" href="/configuration?tab=media-servers&edit={{.ID}}">Edit</a>
-                <form method="post" action="/configuration/media-servers/{{.ID}}/test"
+                <form method="post" action="/configuration/media-servers/{{.ID}}/test" data-testtarget="{{.URL}}"
                       hx-post="/configuration/media-servers/{{.ID}}/test" hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">
                   <input type="hidden" name="csrf_token" value="{{$csrf}}">
                   <button class="at-btn at-btn--xs" type="submit">Test</button>
@@ -46,10 +46,10 @@
               </span>
             </td>
           </tr>
-          {{/* The result lands under the row it belongs to, never in
-               the form — and the idle placeholder holds the height so
-               running a test does not nudge the rows below it. */}}
-          <tr><td colspan="7" style="border-bottom:0;padding-top:0"><div id="ms-test-{{.ID}}"><div class="at-testresult--idle"></div></div></td></tr>
+          {{/* The result lands under the row it belongs to, never in the
+               form. Nothing is rendered until a test runs, so an untested
+               list carries no reserved gaps. */}}
+          <tr><td colspan="7" class="at-testcell"><div id="ms-test-{{.ID}}"></div></td></tr>
           <dialog class="at-dialog" id="del-ms-{{.ID}}">
             <div class="at-dialog-panel">
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
@@ -121,7 +121,7 @@
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditMediaServer.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
-      <div id="ms-form-test"><div class="at-testresult--idle"></div></div>
+      <div id="ms-form-test"></div>
       <div style="display:flex;gap:var(--space-4)">
         <button type="submit" class="at-btn at-btn--primary">{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
         <button type="button" class="at-btn" hx-post="/configuration/media-servers/test" hx-include="#ms-form" hx-target="#ms-form-test" hx-swap="innerHTML">Test connection</button>
@@ -148,7 +148,7 @@
             <td>
               <span class="at-rowactions" style="gap:6px">
                 <a class="at-btn at-btn--xs" href="/configuration?tab=downloaders&edit={{.ID}}">Edit</a>
-                <form method="post" action="/configuration/downloaders/{{.ID}}/test"
+                <form method="post" action="/configuration/downloaders/{{.ID}}/test" data-testtarget="{{.URL}}"
                       hx-post="/configuration/downloaders/{{.ID}}/test" hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">
                   <input type="hidden" name="csrf_token" value="{{$csrf}}">
                   <button class="at-btn at-btn--xs" type="submit">Test</button>
@@ -158,7 +158,7 @@
               </span>
             </td>
           </tr>
-          <tr><td colspan="6" style="border-bottom:0;padding-top:0"><div id="dl-test-{{.ID}}"><div class="at-testresult--idle"></div></div></td></tr>
+          <tr><td colspan="6" class="at-testcell"><div id="dl-test-{{.ID}}"></div></td></tr>
           <dialog class="at-dialog" id="del-dl-{{.ID}}">
             <div class="at-dialog-panel">
               <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
@@ -211,7 +211,7 @@
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
       </label>
-      <div id="dl-form-test"><div class="at-testresult--idle"></div></div>
+      <div id="dl-form-test"></div>
       <div style="display:flex;gap:var(--space-4)">
         <button type="submit" class="at-btn at-btn--primary">{{if .EditDownloaderID}}Save changes{{else}}Add download client{{end}}</button>
         <button type="button" class="at-btn" hx-post="/configuration/downloaders/test" hx-include="#dl-form" hx-target="#dl-form-test" hx-swap="innerHTML">Test connection</button>
@@ -301,6 +301,12 @@
   </section>
 </div>
 {{end}}
+{{/* The pending box is cloned client-side the moment a test starts, so
+     the spinner is the same markup the server would send rather than a
+     second copy of it written in JavaScript. */}}
+<template id="at-tpl-testing">
+  {{template "testresult" dict "State" "testing" "Tone" "neutral" "Icon" "connecting" "Label" "Testing…"}}
+</template>
 {{end}}
 
 {{define "readonly"}}<div class="at-readonly">
