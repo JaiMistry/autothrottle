@@ -90,14 +90,8 @@
 
   /* ── HTMX wiring ────────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () { bindCaps(document); });
-    startUptime();
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
-    startUptime();
-    syncPlexPanel();
-    // A swapped-in pane brings its own inputs; re-apply which of them
-    // are live before anything can submit a stale blank.
-    document.querySelectorAll("form").forEach(syncCredentialUI);
     // Caps have to be re-measured: the swapped rows are new elements the
     // old observer is no longer watching.
     bindCaps(e.detail.target);
@@ -304,7 +298,15 @@
     if (e.target.name === "type") syncCredentialUI(e.target.closest("form"));
   });
 
-  document.addEventListener("DOMContentLoaded", function () {
+  // Everything that has to be re-applied after the server replaces part
+  // of the page: the uptime counter, the sign-in panel's popup wiring,
+  // and which credential inputs are live.
+  function syncAfterRender() {
+    startUptime();
+    syncPlexPanel();
     document.querySelectorAll("form").forEach(syncCredentialUI);
-  });
+  }
+
+  document.body.addEventListener("htmx:afterSwap", syncAfterRender);
+  document.addEventListener("DOMContentLoaded", syncAfterRender);
 })();
