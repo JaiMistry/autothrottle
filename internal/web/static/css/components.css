@@ -683,7 +683,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
    table cell's own padding or it stops short of the rule above it. */
 .at-table td.at-testcell { border-bottom: 0; padding: 0 0 10px; }
 
-.at-dialog { border: 0; padding: 0; background: transparent; }
+/* A modal dialog centres itself with the UA's `margin: auto`, which the
+   Tailwind reset zeroes along with every other element's margin. Without
+   this it opens against the top-left corner. */
+.at-dialog { border: 0; padding: 0; background: transparent; margin: auto; }
 .at-dialog::backdrop { background: var(--scrim); }
 .at-dialog-panel {
   width: min(420px, 100%);

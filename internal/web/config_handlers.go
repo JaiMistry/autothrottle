@@ -380,7 +380,11 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if id == 0 {
-		_, err = s.db.CreateMediaServer(ms)
+		var newID int64
+		newID, err = s.db.CreateMediaServer(ms)
+		if err == nil {
+			err = s.db.EnableMappingsForMediaServer(newID)
+		}
 	} else {
 		err = s.db.UpdateMediaServer(ms)
 	}
@@ -539,7 +543,11 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if id == 0 {
-		_, err = s.db.CreateDownloader(dl)
+		var newID int64
+		newID, err = s.db.CreateDownloader(dl)
+		if err == nil {
+			err = s.db.EnableMappingsForDownloader(newID)
+		}
 	} else {
 		err = s.db.UpdateDownloader(dl)
 	}

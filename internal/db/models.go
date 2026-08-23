@@ -234,6 +234,42 @@ func (d *DB) InsertEvent(e Event) error {
 // by id, because an unticked cell has no row yet — and a user ticking
 // it back on expects the same mapping, not a duplicate. The UNIQUE
 // constraint on the pair is what makes the upsert safe.
+// EnableMappingsForMediaServer points a newly added server at every
+// downloader that already exists, and vice versa for a new downloader.
+//
+// An absent mapping means "do not throttle", so without this a fresh
+// pair starts switched off and the app quietly does nothing until
+// someone finds the matrix and turns it on. Throttling is the point, so
+// a new pair defaults to on. Rows that already exist are left alone —
+// this only fills in the pairs nobody has expressed an opinion about.
+func (d *DB) EnableMappingsForMediaServer(mediaServerID int64) error {
+	_, err := d.conn.Exec(
+		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
+		 SELECT ?, id, 1 FROM downloaders
+		 ON CONFLICT(media_server_id, downloader_id) DO NOTHING`,
+		mediaServerID,
+	)
+	if err != nil {
+		return fmt.Errorf("seeding mappings for media server: %w", err)
+	}
+	return nil
+}
+
+// EnableMappingsForDownloader is EnableMappingsForMediaServer the other
+// way round.
+func (d *DB) EnableMappingsForDownloader(downloaderID int64) error {
+	_, err := d.conn.Exec(
+		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
+		 SELECT id, ?, 1 FROM media_servers
+		 ON CONFLICT(media_server_id, downloader_id) DO NOTHING`,
+		downloaderID,
+	)
+	if err != nil {
+		return fmt.Errorf("seeding mappings for downloader: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) SetMappingForPair(mediaServerID, downloaderID int64, enabled bool) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
