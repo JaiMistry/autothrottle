@@ -45,7 +45,7 @@
       dataLabels: { enabled: false }
     };
   }
-  function axis(dark) { return { colors: dark ? "#5c6a80" : "#8593a5", fontSize: "11px" }; }
+  function axis(dark) { return { colors: dark ? "#5c6a80" : "#8593a5", fontSize: "12px" }; }
 
   /* Sentinel fill: these rects are recoloured to a diagonal hatch after
      render, so absence of data never reads as a muted variant of the
@@ -203,7 +203,7 @@
         labels: { datetimeUTC: false, format: series.range === "24h" ? "HH:mm" : "d MMM", style: axis(dark) },
         axisBorder: { show: false }, axisTicks: { show: false }
       },
-      yaxis: { labels: { style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "12px" } } },
+      yaxis: { labels: { style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "13px" } } },
       tooltip: Object.assign({}, t.tooltip, { x: { format: "d MMM HH:mm" } })
     }));
     chart.render();

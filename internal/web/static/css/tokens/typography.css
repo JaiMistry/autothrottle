@@ -11,15 +11,15 @@
   --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 
   /* Sizes — lifted from the identity page, not rounded to a scale */
-  --text-page-title:32px;   /* page h1 */
-  --text-display:30px;      /* hero state statement */
-  --text-metric:23px;       /* stat card value */
-  --text-section:19px;      /* view heading */
-  --text-body:16px;         /* prose, primary rows */
-  --text-ui:14px;           /* nav items, buttons, dense rows */
-  --text-caption:13px;      /* labels, pills, log lines */
-  --text-label:12px;        /* stat-card keys */
-  --text-badge:11px;        /* history level badge */
+  --text-page-title:33px;   /* page h1 */
+  --text-display:31px;      /* hero state statement */
+  --text-metric:24px;       /* stat card value */
+  --text-section:20px;      /* view heading */
+  --text-body:17px;         /* prose, primary rows */
+  --text-ui:15px;           /* nav items, buttons, dense rows */
+  --text-caption:14px;      /* labels, pills, log lines */
+  --text-label:13px;        /* stat-card keys */
+  --text-badge:12px;        /* history level badge */
 
   --leading-tight:1.15;
   --leading-ui:1.35;

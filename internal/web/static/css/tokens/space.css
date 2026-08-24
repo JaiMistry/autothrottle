@@ -33,5 +33,5 @@
   --border-width:1px;
   --stripe-size:7px;  /* pill status dot */
   --mark-size:20px;   /* sidebar brand mark; must read at 16px too */
-  --sidebar-width:216px;  /* brand lockup + collapse control, with air between them */
+  --sidebar-width:248px;  /* brand lockup + collapse control, with air between them */
 }
