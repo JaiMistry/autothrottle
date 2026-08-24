@@ -4,7 +4,8 @@ services:
     build:
       context: .
       args:
-        VERSION: ${VERSION:-dev}
+        # A release stamps this from the git tag; this is the local default.
+        VERSION: ${VERSION:-1.0.0}
         # Populate these for a local build that should identify itself:
         #   COMMIT=$(git rev-parse --short HEAD) \
         #   BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose build

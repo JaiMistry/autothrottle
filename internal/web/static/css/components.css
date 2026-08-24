@@ -167,7 +167,16 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   font-size: var(--text-caption);
   color: var(--text-faint);
 }
-.at-gh { display: inline-flex; color: var(--text-faint); opacity: .75; transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+/* The design pins this mark at #8593a5 in both themes — it bakes the
+   colour into the icon URL — and dims it to 75%. Using --text-faint
+   instead made it #5c6a80 on the dark ground and then dimmed that again,
+   so it came out muddy where the design reads as a clear grey. */
+.at-gh {
+  display: inline-flex;
+  color: #8593a5;
+  opacity: .75;
+  transition: opacity var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
 .at-gh:hover { opacity: 1; color: var(--accent); }
 
 /* Mobile top bar + drawer.
