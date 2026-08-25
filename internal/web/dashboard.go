@@ -69,6 +69,9 @@ type logRowView struct {
 }
 
 type dashboardData struct {
+	// Fragment marks a poll response, which also carries the header
+	// pill and pause control as out-of-band swaps.
+	Fragment bool
 	pageData
 	Hero            heroState
 	Overall         overallFlag
@@ -94,24 +97,37 @@ type overallFlag struct {
 	Icon  string
 }
 
-func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
-	mediaServers, err := s.db.ListMediaServers()
+// dashboardLive serves the part of the Dashboard that changes on its
+// own — throttle state, sessions, playback position — so the page keeps
+// up without a refresh.
+func (s *Server) dashboardLive(w http.ResponseWriter, r *http.Request) {
+	data, err := s.buildDashboardData(r)
 	if err != nil {
-		slog.Error("listing media servers", "error", err)
+		slog.Error("building dashboard fragment", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	data.Fragment = true
+	if err := s.templates["dashboard"].ExecuteTemplate(w, "dashlive", data); err != nil {
+		slog.Error("rendering dashboard fragment", "error", err)
+	}
+}
+
+// buildDashboardData assembles the whole page's state, shared by the
+// full render and the polled live fragment so the two can never
+// disagree about what is happening.
+func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
+	mediaServers, err := s.db.ListMediaServers()
+	if err != nil {
+		return dashboardData{}, err
 	}
 	downloaders, err := s.db.ListDownloaders()
 	if err != nil {
-		slog.Error("listing downloaders", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		return dashboardData{}, err
 	}
 	activity, err := s.buildActivity(r)
 	if err != nil {
-		slog.Error("building recent activity", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		return dashboardData{}, err
 	}
 
 	paused := s.scheduler.Paused()
@@ -260,6 +276,16 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 			strings.Join(unreachable, " / "))
 	}
 
+	return data, nil
+}
+
+func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
+	data, err := s.buildDashboardData(r)
+	if err != nil {
+		slog.Error("building dashboard", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	s.render(w, "dashboard", data)
 }
 
