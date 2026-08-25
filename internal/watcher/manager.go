@@ -40,6 +40,10 @@ type sink interface {
 	// ReplaceSessions overwrites a server's whole active set from a
 	// snapshot, correcting any drift the event stream accumulated.
 	ReplaceSessions(mediaServerID int64, sessions []clients.Session)
+	// UpdateSessionDetail refreshes what a still-running session looks
+	// like without touching the active set, so a position tick does not
+	// drag a downloader API call along with it.
+	UpdateSessionDetail(mediaServerID int64, session clients.Session)
 }
 
 // handle tracks one running watcher. fingerprint captures the config
@@ -208,6 +212,10 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 		case event, ok := <-events:
 			if !ok {
 				return
+			}
+			if event.DetailOnly {
+				m.sched.UpdateSessionDetail(mediaServerID, event.Session)
+				continue
 			}
 			m.sched.HandleSessionEvent(mediaServerID, event.Session, event.Active)
 		}

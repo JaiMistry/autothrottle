@@ -270,8 +270,14 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 	w.mu.Unlock()
 
 	for key, session := range next {
-		if _, had := previous[key]; !had {
+		if prev, had := previous[key]; !had {
 			emit(ctx, w.events, session, true)
+		} else if session.Position != prev.Position || session.Title != prev.Title {
+			// Still playing, but it has moved. The socket pushes a fresh
+			// list every second or so; without this the position only
+			// ever reached the app on the much slower reconcile poll and
+			// the timecode on screen sat still.
+			emitDetail(ctx, w.events, session)
 		}
 	}
 	for key, session := range previous {

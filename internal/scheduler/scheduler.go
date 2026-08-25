@@ -125,6 +125,23 @@ func (s *Scheduler) ActiveSessionCount(mediaServerID int64) int {
 	return len(s.active[mediaServerID])
 }
 
+// UpdateSessionDetail refreshes a running session's description — its
+// position, its title — without disturbing the active set and without
+// re-resolving throttle state. Live sockets send these every second or
+// so, and re-resolving on each would mean an API call per tick to every
+// mapped downloader for an outcome that cannot have changed.
+func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, active := s.active[mediaServerID][session.Key]; !active {
+		return
+	}
+	if s.live[mediaServerID] == nil {
+		s.live[mediaServerID] = map[string]clients.Session{}
+	}
+	s.live[mediaServerID][session.Key] = session
+}
+
 // ActiveSessions describes what is currently playing on one media
 // server, in a stable order so the Dashboard's rows do not shuffle
 // between refreshes. Sessions the event stream started but no snapshot

@@ -84,6 +84,12 @@ type SessionWatcher interface {
 type SessionEvent struct {
 	Session
 	Active bool
+	// DetailOnly marks an update that changes what a session looks like
+	// — how far in it is, whether it is paused — without changing
+	// whether it exists. These arrive every second or so from a live
+	// socket, so they must not re-resolve throttle state: that would
+	// mean a downloader API call per tick for no change in outcome.
+	DetailOnly bool
 }
 
 // Session identifies one playback session and what it is.

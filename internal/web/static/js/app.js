@@ -383,6 +383,36 @@
     box.replaceChildren(node);
   }
 
+  // A test that never answers must not leave the spinner turning. htmx
+  // reports a transport failure and a non-2xx separately, and neither
+  // swaps anything in — so without this the box says "Testing…" for as
+  // long as the page stays open. Restarting the server mid-test is the
+  // easy way to see it.
+  function testRequestFailed(e, why) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches("[data-testbtn]")) return;
+    var sel = elt.getAttribute("hx-target");
+    var box = sel && document.querySelector(sel);
+    if (!box) return;
+    box.innerHTML =
+      '<div class="at-testresult" data-state="failed" role="status">' +
+      '<div class="at-testresult-head">' +
+      '<span class="at-flag at-flag--sm" data-tone="critical">Failed</span>' +
+      '<button type="button" class="at-testresult-close" data-testdismiss ' +
+      'aria-label="Dismiss test result" title="Dismiss">\u2715</button></div>' +
+      '<span class="at-testresult-hint">' + why + "</span></div>";
+  }
+  document.body.addEventListener("htmx:sendError", function (e) {
+    testRequestFailed(e, "Could not reach AutoThrottle to run the test. It may be restarting — reload the page and try again.");
+  });
+  document.body.addEventListener("htmx:responseError", function (e) {
+    var s = (e.detail && e.detail.xhr && e.detail.xhr.status) || 0;
+    testRequestFailed(e, "AutoThrottle answered " + s + " when asked to run the test. Reload the page and try again.");
+  });
+  document.body.addEventListener("htmx:timeout", function (e) {
+    testRequestFailed(e, "The test did not finish in time. Reload the page and try again.");
+  });
+
   document.body.addEventListener("htmx:beforeRequest", function (e) {
     var elt = e.detail.elt;
     if (!elt) return;

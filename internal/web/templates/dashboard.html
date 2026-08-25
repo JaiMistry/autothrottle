@@ -27,21 +27,27 @@
     "ActionHref" "/configuration"
     "ActionLabel" "Go to Configuration"}}
 {{else}}
-{{template "dashlive" .}}
+<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)">
+
+  {{template "dashlive" .}}
+
   {{template "pagedlog" .Activity}}
 </div>
 {{end}}
 {{end}}
 
-{{/* The live half of the Dashboard. Polled, so throttle state, sessions
-     and playback position keep up on their own — the page's whole job is
-     saying what is happening now, and it should not need a refresh to do
-     it. The activity log is deliberately left out: re-rendering it every
-     few seconds would throw away whatever page you were reading. */}}
-{{define "dashlive"}}<div id="dash-live"
+{{/* The live half of the Dashboard, polled so throttle state, sessions
+     and playback position keep up without a refresh.
+
+     It is its own complete subtree on purpose. An earlier attempt split
+     mid-element, leaving an unclosed <div> in the fragment — every swap
+     then re-parsed a broken tree and orphaned the activity log below it.
+
+     The activity log stays outside: re-rendering it every few seconds
+     would throw away whatever page of it you were reading. */}}
+{{define "dashlive"}}<div id="dash-live" style="display:grid;gap:var(--space-8)"
      hx-get="/dashboard/live" hx-trigger="every 5s [document.visibilityState === 'visible']"
      hx-swap="outerHTML" hx-target="this">
-<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)">
 
   {{/* The hero card's border turns warn while anything is throttled —
        the one place a card borrows a state colour. */}}
@@ -106,9 +112,8 @@
       </div>
     </section>
   </div>
-
 </div>
-{{if .Fragment}}
+{{- if .Fragment}}
 <span id="dash-pill" hx-swap-oob="true" style="display:inline-flex;align-items:center;transform:translateY(1px)">
   {{template "statusflag" dict "Tone" .Overall.Tone "Icon" .Overall.Icon "Label" .Overall.Label}}
 </span>
@@ -118,5 +123,5 @@
     <button type="submit" class="at-btn{{if .Paused}} at-btn--warning{{end}}">{{if .Paused}}Resume throttling{{else}}Disable throttling{{end}}</button>
   </form>
 </div>{{end}}
-{{end}}
+{{- end}}
 {{end}}

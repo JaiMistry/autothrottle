@@ -85,6 +85,17 @@ func emit(ctx context.Context, events chan<- SessionEvent, session Session, acti
 	}
 }
 
+// emitDetail reports that a session already known to be playing has
+// moved — a new position, or a title that arrived late. It never
+// changes whether the session exists, so it must not cause throttle
+// state to be re-resolved.
+func emitDetail(ctx context.Context, events chan<- SessionEvent, session Session) {
+	select {
+	case events <- SessionEvent{Session: session, Active: true, DetailOnly: true}:
+	case <-ctx.Done():
+	}
+}
+
 // getJSON performs an authenticated GET and decodes a JSON body into
 // out. Every media server client needs exactly this shape — build,
 // authenticate, send, check the status, decode, close — and writing it

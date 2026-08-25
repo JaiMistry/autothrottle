@@ -15,6 +15,7 @@ import (
 // fakeSink stands in for the scheduler. Watchers started here dial a
 // .invalid host, so they never reach any real media server.
 type fakeSink struct {
+	detail   []clients.Session
 	mu       sync.Mutex
 	cleared  []int64
 	replaced []replacement
@@ -31,6 +32,12 @@ func (f *fakeSink) ReplaceSessions(mediaServerID int64, sessions []clients.Sessi
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.replaced = append(f.replaced, replacement{mediaServerID: mediaServerID, sessionKeys: keysOf(sessions)})
+}
+
+func (f *fakeSink) UpdateSessionDetail(mediaServerID int64, session clients.Session) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.detail = append(f.detail, session)
 }
 
 func (f *fakeSink) replacements() []replacement {
