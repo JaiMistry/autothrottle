@@ -138,17 +138,30 @@ func qbittorrentLogin(ctx context.Context, baseURL, username, password string) (
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	// qBittorrent has answered this two different ways. Through 4.x a
+	// success is 200 with the body "Ok." and a rejection is 200 with
+	// "Fails."; 5.x replies 204 with no body at all and still sets the
+	// session cookie. Accepting only the older shape meant AutoThrottle
+	// could not log in to any qBittorrent 5 install — found against
+	// 5.2.3.
+	switch {
+	case resp.StatusCode == http.StatusNoContent:
+		return client, nil
+	case resp.StatusCode == http.StatusForbidden:
+		return nil, fmt.Errorf("login refused: too many failed attempts, this address is banned for a while")
+	case resp.StatusCode != http.StatusOK:
 		return nil, fmt.Errorf("server responded with unexpected status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-	if strings.TrimSpace(string(body)) != "Ok." {
+	switch strings.TrimSpace(string(body)) {
+	case "Ok.", "":
+		return client, nil
+	default:
 		return nil, fmt.Errorf("login rejected: username or password is incorrect")
 	}
-	return client, nil
 }
 
 func qbittorrentSetLimit(ctx context.Context, client *http.Client, baseURL, path string, limitKBps int64) error {
