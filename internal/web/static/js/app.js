@@ -74,11 +74,43 @@
      has to be measured rather than set as a CSS max-height. */
   function capList(list) {
     var rows = list.querySelectorAll(":scope > *");
-    if (rows.length <= 2) { list.style.maxHeight = ""; list.style.overflowY = ""; return; }
+    if (rows.length <= 2) {
+      list.style.maxHeight = "";
+      list.style.overflowY = "";
+      delete list.dataset.capFor;
+      return;
+    }
+
+    // Measuring is only redone when the shape that determines the answer
+    // changes. offsetWidth rather than clientWidth because clientWidth
+    // shrinks by the width of the scrollbar this very function causes to
+    // appear — which would make the signature flip between the capped
+    // and uncapped states forever.
+    var signature = rows.length + ":" + Math.round(list.offsetWidth);
+    if (list.dataset.capFor === signature && list.style.maxHeight) return;
+
+    // Measure with the cap lifted. The list lays its rows out with
+    // grid-auto-rows: 1fr, so once a cap is applied the rows compress to
+    // share it, and measuring them in that state feeds the previous
+    // answer back in.
+    //
+    // This must not run on every observer callback: clearing the cap
+    // resizes the rows, which notifies the observer, which clears it
+    // again — a loop that repaints every frame and shows up as a
+    // flickering scrollbar. The signature check above is what keeps it
+    // to once per shape.
+    var prevMax = list.style.maxHeight, prevOverflow = list.style.overflowY;
+    list.style.maxHeight = "";
+    list.style.overflowY = "";
     var h = rows[0].offsetHeight + rows[1].offsetHeight;
-    if (!h) return;
+    if (!h) {
+      list.style.maxHeight = prevMax;
+      list.style.overflowY = prevOverflow;
+      return;
+    }
     list.style.maxHeight = h + "px";
     list.style.overflowY = "auto";
+    list.dataset.capFor = signature;
   }
 
   var observer = window.ResizeObserver ? new ResizeObserver(function (entries) {
