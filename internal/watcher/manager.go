@@ -172,18 +172,25 @@ func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWa
 		return m.settings.PausedSessionTimeout()
 	}
 
+	// The abandoned-pause clock outlives the process: see the
+	// paused_sessions table.
+	store := pauseStore{db: m.db, mediaServerID: ms.ID}
+
 	switch ms.Type {
 	case "plex":
 		w := clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
 		w.PausedSessionTimeout = pausedTimeout
+		w.SetPauseStore(store)
 		return w, nil
 	case "emby":
 		w := clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback)
 		w.PausedSessionTimeout = pausedTimeout
+		w.SetPauseStore(store)
 		return w, nil
 	case "jellyfin":
 		w := clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback)
 		w.PausedSessionTimeout = pausedTimeout
+		w.SetPauseStore(store)
 		return w, nil
 	default:
 		return nil, fmt.Errorf("no watcher implementation for type %q", ms.Type)

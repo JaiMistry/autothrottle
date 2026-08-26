@@ -62,6 +62,11 @@ func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher 
 	return w
 }
 
+// SetPauseStore makes this watcher's abandoned-pause clocks durable,
+// so a restart does not resurrect a stream that was already retired.
+// Must be called before Start; nil leaves the clocks in memory only.
+func (w *PlexWatcher) SetPauseStore(store PauseStore) { w.paused.store = store }
+
 func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 
 // Run connects and reconnects with backoff until ctx is cancelled. This

@@ -128,3 +128,21 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+
+-- How long each session has been continuously paused. Held here rather
+-- than in memory because the abandoned-pause timeout is measured in
+-- tens of minutes and an update or a host reboot takes seconds: a
+-- purely in-memory clock restarts on every one of them, so a stream
+-- that had already been retired as abandoned comes back and throttles
+-- for another full timeout with nobody watching it.
+--
+-- position_ms is stored alongside so a resumed stream can be told from
+-- one that is merely still listed: if the position has moved since it
+-- was recorded, the viewer came back and the clock no longer applies.
+CREATE TABLE IF NOT EXISTS paused_sessions (
+    media_server_id INTEGER NOT NULL REFERENCES media_servers(id) ON DELETE CASCADE,
+    session_key TEXT NOT NULL,
+    paused_since TEXT NOT NULL,
+    position_ms INTEGER NOT NULL,
+    PRIMARY KEY (media_server_id, session_key)
+);

@@ -90,6 +90,11 @@ func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool
 	return w
 }
 
+// SetPauseStore makes this watcher's abandoned-pause clocks durable,
+// so a restart does not resurrect a stream that was already retired.
+// Must be called before Start; nil leaves the clocks in memory only.
+func (w *EmbyWatcher) SetPauseStore(store PauseStore) { w.paused.store = store }
+
 func (w *EmbyWatcher) Events() <-chan SessionEvent { return w.events }
 
 func (w *EmbyWatcher) Run(ctx context.Context) {
