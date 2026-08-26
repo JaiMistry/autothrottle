@@ -26,6 +26,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/sampler"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 	"github.com/JaiMistry/autothrottle/internal/settings"
+	"github.com/JaiMistry/autothrottle/internal/version"
 	"github.com/JaiMistry/autothrottle/internal/watcher"
 	"github.com/JaiMistry/autothrottle/internal/web"
 )
@@ -69,6 +70,19 @@ func main() {
 		logger.Info("closed sessions left open by the previous run", "sessions", closed)
 	}
 
+	// The banner comes after the database is open so it can report what
+	// was actually found, and before the watchers start so the log reads
+	// in the order things happened.
+	addr := envOr("LISTEN_ADDR", ":8080")
+	printBanner(os.Stdout, version.Current(), startupInfo{
+		DatabasePath: dbPath,
+		Address:      addr,
+		AuthDisabled: authCfg.Disabled,
+		MediaServers: countRows(database.ListMediaServers()),
+		Downloaders:  countRows(database.ListDownloaders()),
+		Mappings:     countRows(database.ListMappings()),
+	})
+
 	store := settings.New(database)
 	sched := scheduler.New(database, encryptionKey, store)
 	watchers := watcher.NewManager(database, encryptionKey, sched, store)
@@ -81,7 +95,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	addr := envOr("LISTEN_ADDR", ":8080")
 	httpServer := &http.Server{
 		Addr:         addr,
 		Handler:      srv.Router(),
@@ -127,4 +140,15 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// countRows is for the banner only: a count that cannot be read is
+// reported as zero rather than stopping startup, because a decorative
+// line is never worth failing a boot over. Anything genuinely wrong
+// with the database has already failed louder than this.
+func countRows[T any](rows []T, err error) int {
+	if err != nil {
+		return 0
+	}
+	return len(rows)
 }
