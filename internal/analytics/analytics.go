@@ -224,7 +224,37 @@ func Build(store Store, ids []int64, rng Range, sampleInterval time.Duration, no
 		transferred += summary.DownloadBytes + summary.UploadBytes
 	}
 
-	view.Gaps = gapsFrom(order, ms(since), ms(until), rng.Bucket)
+	sessions, err := buildSessions(store, ids, since, until, now)
+	if err != nil {
+		return View{}, err
+	}
+	view.Sess = sessions
+
+	// Fit the axis to the history that actually exists. The range is a
+	// ceiling, not a promise: on an install younger than the range —
+	// or in the first hours of one — pinning the axis to now-Span
+	// crushes every real sample into a sliver at the right edge and
+	// draws the empty run before the first sample as an outage, which
+	// it was not. Starting at the first datum spreads what exists
+	// across the full width and makes 7d and 30d readable long before
+	// there is 7 or 30 days of it.
+	//
+	// The floor stops a minutes-old install rendering a chart so narrow
+	// it reads as broken: four buckets is enough to draw a shape, and
+	// stays proportional to the range rather than fixed — 20 minutes at
+	// 24h, four hours at 30d.
+	axisSince := since
+	if first, ok := firstDatum(order, sessions); ok {
+		if floor := until.Add(-4 * rng.Bucket); first.After(floor) {
+			first = floor
+		}
+		if first.After(axisSince) {
+			axisSince = first.Truncate(rng.Bucket)
+		}
+	}
+	view.From = ms(axisSince)
+
+	view.Gaps = gapsFrom(order, ms(axisSince), ms(until), rng.Bucket)
 
 	// Throttle spans: union across clients, so overlapping throttling
 	// counts once.
@@ -243,12 +273,6 @@ func Build(store Store, ids []int64, rng Range, sampleInterval time.Duration, no
 		view.Bands = union
 	}
 
-	sessions, err := buildSessions(store, ids, since, until, now)
-	if err != nil {
-		return View{}, err
-	}
-	view.Sess = sessions
-
 	var sessionCount, serverCount int64
 	if len(ids) == 1 {
 		sessionCount, serverCount, err = store.SessionSummary(ids[0], since, until)
@@ -266,7 +290,10 @@ func Build(store Store, ids []int64, rng Range, sampleInterval time.Duration, no
 	// Percentages are shares of time actually observed: an outage comes
 	// out of the denominator rather than counting as time spent not
 	// throttling.
-	observed := rng.Span - gapDuration(view.Gaps)
+	// Shares are of time actually on the chart. Using the nominal span
+	// here once the axis has been fitted would divide by hours that are
+	// not drawn and were never observed, understating every percentage.
+	observed := until.Sub(axisSince) - gapDuration(view.Gaps)
 	var throttled time.Duration
 	for _, s := range union {
 		throttled += time.Duration(s.To-s.From) * time.Millisecond
@@ -418,4 +445,27 @@ func sortSessions(v []Session) {
 			v[j], v[j-1] = v[j-1], v[j]
 		}
 	}
+}
+
+// firstDatum reports the earliest moment the view has anything to draw:
+// the first bandwidth bucket, or the first session if playback was
+// recorded before sampling produced a point. Reports false when there
+// is nothing at all, in which case the caller keeps the full range so
+// an empty chart still shows the window it is empty for.
+func firstDatum(buckets []int64, sessions []Session) (time.Time, bool) {
+	var earliest int64
+	for _, key := range buckets {
+		if earliest == 0 || key < earliest {
+			earliest = key
+		}
+	}
+	for _, s := range sessions {
+		if earliest == 0 || s.Start < earliest {
+			earliest = s.Start
+		}
+	}
+	if earliest == 0 {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(earliest), true
 }

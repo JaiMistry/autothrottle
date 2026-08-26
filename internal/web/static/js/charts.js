@@ -30,6 +30,18 @@
       : Math.round(b / 1024).toLocaleString() + " KB/s";
   }
 
+  // Axis labels follow the span actually drawn, not the range that was
+  // asked for. Now that a range only sets a ceiling and the axis fits
+  // the history that exists, a 30d view of an install four hours old
+  // draws four hours — and labelling that "26 Aug, 26 Aug, 26 Aug" says
+  // nothing. Under two days the clock is the useful part; past that the
+  // date is.
+  function axisFormat(withTime) {
+    var span = series.to - series.from;
+    if (span <= 48 * 3600 * 1000) return "HH:mm";
+    return withTime ? "d MMM HH:mm" : "d MMM";
+  }
+
   function theme(dark) {
     return {
       chart: {
@@ -100,13 +112,13 @@
       annotations: { xaxis: bands.concat(gaps).concat([nowLine]) },
       xaxis: {
         type: "datetime", min: series.from, max: series.to, tickAmount: 6,
-        labels: { datetimeUTC: false, format: series.range === "24h" ? "HH:mm" : "d MMM", style: axis(dark) },
+        labels: { datetimeUTC: false, format: axisFormat(false), style: axis(dark) },
         axisBorder: { show: false }, axisTicks: { show: false }
       },
       yaxis: { min: 0, labels: { formatter: rate, style: axis(dark) } },
       tooltip: Object.assign({}, t.tooltip, {
         shared: true,
-        x: { format: series.range === "24h" ? "HH:mm" : "d MMM HH:mm" },
+        x: { format: axisFormat(true) },
         y: {
           formatter: function (v, o) {
             if (v != null) return rate(v);
@@ -183,12 +195,35 @@
     rows.forEach(function (s) { if (names.indexOf(s.server) < 0) names.push(s.server); });
 
     var t = theme(dark);
+
+    // A short session inside a long window is sub-pixel — a ten-minute
+    // episode across 30 days is about a thousandth of the width, which
+    // draws as nothing at all. Bars are widened to a visible floor so
+    // the shape stays readable.
+    //
+    // The widening is a drawing decision, not a claim about time, so
+    // the real start and end travel with each point and the tooltip
+    // reads from those. Nothing the reader can see a number for is ever
+    // the padded value.
+    var minVisible = (series.to - series.from) * 0.004;
+
     var chart = new ApexCharts(el, Object.assign({}, t, {
       series: [{
         data: rows.map(function (s) {
+          var start = s.start, end = s.end;
+          if (end - start < minVisible) {
+            end = start + minVisible;
+            if (end > series.to) {           // ran up against the right edge
+              end = series.to;
+              start = Math.max(series.from, end - minVisible);
+            }
+          }
           return {
             x: s.server,
-            y: [s.start, s.end],
+            y: [start, end],
+            trueStart: s.start,
+            trueEnd: s.end,
+            ongoing: s.ongoing,
             // The ongoing session runs to the right edge in full accent
             // so it reads as still happening, not as merely recent.
             fillColor: s.ongoing ? "#38bdf8" : (dark ? "#2b6c8a" : "#8fd3f2")
@@ -200,14 +235,46 @@
       annotations: { xaxis: [{ x: series.to, strokeDashArray: 3, borderColor: dark ? "#5c6a80" : "#8593a5" }] },
       xaxis: {
         type: "datetime", min: series.from, max: series.to, tickAmount: 6,
-        labels: { datetimeUTC: false, format: series.range === "24h" ? "HH:mm" : "d MMM", style: axis(dark) },
+        labels: { datetimeUTC: false, format: axisFormat(false), style: axis(dark) },
         axisBorder: { show: false }, axisTicks: { show: false }
       },
       yaxis: { labels: { style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "13px" } } },
-      tooltip: Object.assign({}, t.tooltip, { x: { format: "d MMM HH:mm" } })
+      tooltip: Object.assign({}, t.tooltip, {
+        // Built by hand because the default reads the drawn y values,
+        // which are padded. The markup reuses ApexCharts' own title
+        // class so the themed box, border and shadow still apply.
+        custom: function (o) {
+          var d = o.w.config.series[o.seriesIndex].data[o.dataPointIndex];
+          var body = clockTime(d.trueStart) + " – " + (d.ongoing ? "now" : clockTime(d.trueEnd));
+          return '<div class="apexcharts-tooltip-title">' + escapeHTML(d.x) + "</div>" +
+            '<div class="at-charttip">' + body +
+            '<span class="at-charttip-dur">' + humanDuration(d.trueEnd - d.trueStart) + "</span></div>";
+        }
+      })
     }));
     chart.render();
     return chart;
+  }
+
+  function clockTime(ms) {
+    var d = new Date(ms);
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + " " +
+      d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Reads as "1h 05m" / "8m" — the length of the session, which is the
+  // thing a padded bar can no longer be measured for by eye.
+  function humanDuration(ms) {
+    var mins = Math.max(0, Math.round(ms / 60000));
+    if (mins < 60) return mins + "m";
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return h + "h " + (m < 10 ? "0" : "") + m + "m";
+  }
+
+  function escapeHTML(v) {
+    return String(v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
   }
 
   function build() {

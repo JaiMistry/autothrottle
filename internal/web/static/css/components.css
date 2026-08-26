@@ -1348,3 +1348,15 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 /* A bounded block so switching between the two credential methods, or
    moving through the sign-in, never shifts the form around it. */
 .at-plexsignin { min-height: 96px; }
+
+/* Session tooltip body. The title above it is ApexCharts' own class, so
+   only the lines under it need styling to match the themed box. */
+.at-charttip {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: 6px 10px 7px;
+  font-size: var(--text-caption);
+  color: var(--text);
+}
+.at-charttip-dur { color: var(--text-faint); font-variant-numeric: tabular-nums; }
