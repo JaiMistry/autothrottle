@@ -111,7 +111,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			continue
 		}
 		// A pause keeps counting, but not forever — see pausedTracker.
-		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Now()) {
+		if !w.paused.counts(n.SessionKey, n.State == "paused", 0, time.Now()) {
 			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
@@ -179,7 +179,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 		// The snapshot is also where an abandoned pause is noticed:
 		// the event stream sends one "paused" notification and then
 		// nothing, so this poll is the only thing that re-evaluates it.
-		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", now) {
+		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", time.Duration(s.ViewOffset)*time.Millisecond, now) {
 			continue
 		}
 		active = append(active, Session{

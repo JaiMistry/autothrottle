@@ -311,7 +311,7 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 		if w.SkipLocalPlayback && embySessionIsLocal(s.RemoteEndPoint) {
 			continue
 		}
-		if !w.paused.counts(s.ID, s.PlayState.IsPaused, now) {
+		if !w.paused.counts(s.ID, s.PlayState.IsPaused, s.position(), now) {
 			continue
 		}
 		active[s.ID] = Session{
