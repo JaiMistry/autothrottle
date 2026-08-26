@@ -244,9 +244,18 @@
         target.setAttribute(attr.name, attr.value);
       }
     }
+    // A cap list carries state the server knows nothing about: the
+    // measured max-height and the signature it was measured for. The
+    // incoming copy has neither, so removing what the source lacks
+    // would strip the cap on every refresh and force a remeasure five
+    // times a minute — which is visible as the scrollbar coming and
+    // going.
+    var keepsOwnState = target.hasAttribute("data-cap-rows");
     for (var j = target.attributes.length - 1; j >= 0; j--) {
       var own = target.attributes[j];
-      if (!source.hasAttribute(own.name)) target.removeAttribute(own.name);
+      if (source.hasAttribute(own.name)) continue;
+      if (keepsOwnState && (own.name === "style" || own.name === "data-cap-for")) continue;
+      target.removeAttribute(own.name);
     }
   }
 
@@ -272,7 +281,44 @@
     liveScrollers = [];
   }
 
-  document.body.addEventListener("htmx:beforeSwap", stashScrollers);
+  /* The Dashboard's live block is merged rather than swapped.
+
+     Keeping the scroll container alive was not enough on its own: the
+     card around it is rebuilt by every swap, and moving the surviving
+     list into that new card re-parents it. Firefox rebuilds the layout
+     frame of anything re-parented, and a scrollable element with a new
+     frame gets a new scrollbar — which animates in. That is a flash
+     every five seconds that no amount of preserving the list itself
+     could stop.
+
+     Cancelling the swap and merging in place means nothing on the
+     Dashboard is ever detached, re-parented or recreated. Only the text
+     and attributes that actually differ change. */
+  function mergeLiveBlock(e) {
+    var target = e.detail.target;
+    if (!target || target.id !== "dash-live") return false;
+    var body = e.detail.serverResponse;
+    if (typeof body !== "string" || !body) return false;
+
+    var parsed = document.createElement("div");
+    parsed.innerHTML = body;
+    var incoming = parsed.firstElementChild;
+    if (!incoming || incoming.id !== "dash-live") return false;
+
+    mergeAttributes(target, incoming);
+    mergeChildren(target, incoming);
+    return true;
+  }
+
+  document.body.addEventListener("htmx:beforeSwap", function (e) {
+    if (mergeLiveBlock(e)) {
+      // Handled here; htmx must not then replace the element we just
+      // updated, or every gain above is undone.
+      e.detail.shouldSwap = false;
+      return;
+    }
+    stashScrollers();
+  });
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
     restoreScrollers();
