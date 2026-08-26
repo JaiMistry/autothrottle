@@ -16,6 +16,7 @@ package watcher
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -261,11 +262,18 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			if failures == 0 || failures%10 == 0 {
 				slog.Warn("watcher: session reconciliation failed", "media_server", name, "consecutive_failures", failures+1, "error", err)
 			}
+			// Only the first one reaches the Logs page. A server that is
+			// down stays down, and one line per interval would bury
+			// everything else on the page.
+			if failures == 0 {
+				m.note("warn", fmt.Sprintf("Lost contact with %s — playback there will not be noticed until it answers again", name), mediaServerID)
+			}
 			failures++
 			continue
 		}
 		if failures > 0 {
 			slog.Info("watcher: session reconciliation recovered", "media_server", name, "after_failures", failures)
+			m.note("info", fmt.Sprintf("Back in contact with %s", name), mediaServerID)
 			failures = 0
 		}
 	}
@@ -283,6 +291,21 @@ func (m *Manager) reconcileOnce(ctx context.Context, mediaServerID int64, w clie
 	}
 	m.sched.ReplaceSessions(mediaServerID, sessions)
 	return nil
+}
+
+// note records a line on the Logs page. Most warnings are for whoever
+// is reading stdout and stay in slog; this is for the ones a user has
+// to know about, because they change whether AutoThrottle can do its
+// job at all — a media server that stopped answering cannot report
+// playback, and nothing else on the page would say so.
+func (m *Manager) note(level, message string, mediaServerID int64) {
+	if err := m.db.InsertEvent(db.Event{
+		Level:         level,
+		Message:       message,
+		MediaServerID: sql.NullInt64{Int64: mediaServerID, Valid: mediaServerID != 0},
+	}); err != nil {
+		slog.Error("watcher: recording event", "error", err)
+	}
 }
 
 // Running reports which media servers currently have a live watcher —
