@@ -31,6 +31,11 @@ type PlexWatcher struct {
 
 	mu         sync.Mutex
 	localCache map[string]bool // sessionKey -> is-local, cached while active
+	// lastPos records the position most recently reported for a session,
+	// which is also how the watcher knows it has already announced that
+	// session at all. Cleared when the session ends, so the next
+	// notification for that key announces it afresh.
+	lastPos map[string]time.Duration
 }
 
 func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher {
@@ -40,6 +45,7 @@ func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher 
 		SkipLocalPlayback: skipLocalPlayback,
 		events:            make(chan SessionEvent, 16),
 		localCache:        make(map[string]bool),
+		lastPos:           make(map[string]time.Duration),
 	}
 	w.paused = newPausedTracker(func() time.Duration {
 		if w.PausedSessionTimeout == nil {
@@ -85,6 +91,10 @@ type plexNotificationEnvelope struct {
 		PlaySessionStateNotification []struct {
 			SessionKey string `json:"sessionKey"`
 			State      string `json:"state"`
+			// ViewOffset is how far into the item the player is, in
+			// milliseconds. Plex sends it on every playing notification,
+			// which is what lets the timecode move between snapshots.
+			ViewOffset int64 `json:"viewOffset"`
 		} `json:"PlaySessionStateNotification"`
 	} `json:"NotificationContainer"`
 }
@@ -105,13 +115,23 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		if !plexStateCounts(n.State) {
 			w.mu.Lock()
 			delete(w.localCache, n.SessionKey)
+			delete(w.lastPos, n.SessionKey)
 			w.mu.Unlock()
 			w.paused.forget(n.SessionKey)
 			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
 		// A pause keeps counting, but not forever — see pausedTracker.
-		if !w.paused.counts(n.SessionKey, n.State == "paused", 0, time.Now()) {
+		//
+		// The position matters here: the tracker treats a position of 0
+		// as "moving" and resets its clock, so passing a literal 0 (as
+		// this did before the notification's viewOffset was read) meant
+		// the socket path could never retire a stalled session at all —
+		// only the once-a-minute snapshot could.
+		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Duration(n.ViewOffset)*time.Millisecond, time.Now()) {
+			w.mu.Lock()
+			delete(w.lastPos, n.SessionKey)
+			w.mu.Unlock()
 			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
@@ -138,10 +158,32 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			}
 		}
 
-		// The notification carries no title or device, so this is the
-		// key alone; the reconciliation snapshot fills the detail in on
-		// its next pass.
-		emit(ctx, w.events, Session{Key: n.SessionKey}, true)
+		// The notification carries no title or device — the snapshot
+		// supplies those — but it does carry the position, and that is
+		// the part that has to keep up.
+		//
+		// Only the first notification for a session is a full event:
+		// those re-resolve throttle state for every downloader, which is
+		// an API call per client and must not fire on every tick of a
+		// timecode. Movement afterwards goes out as detail, which
+		// updates what the Dashboard draws without touching throttling.
+		// A stop clears lastPos, so a session that ends and restarts
+		// announces itself properly again.
+		update := Session{
+			Key:      n.SessionKey,
+			Position: time.Duration(n.ViewOffset) * time.Millisecond,
+			Paused:   n.State == "paused",
+		}
+		w.mu.Lock()
+		_, announced := w.lastPos[n.SessionKey]
+		w.lastPos[n.SessionKey] = update.Position
+		w.mu.Unlock()
+
+		if announced {
+			emitDetail(ctx, w.events, update)
+			continue
+		}
+		emit(ctx, w.events, update, true)
 	}
 }
 
@@ -197,6 +239,11 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	// have since ended — otherwise a long-lived watcher accumulates
 	// them for every session it has ever seen.
 	w.mu.Lock()
+	for key := range w.lastPos {
+		if !present[key] {
+			delete(w.lastPos, key)
+		}
+	}
 	for key := range w.localCache {
 		if !present[key] {
 			delete(w.localCache, key)

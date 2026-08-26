@@ -139,6 +139,26 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 	if s.live[mediaServerID] == nil {
 		s.live[mediaServerID] = map[string]clients.Session{}
 	}
+	// Merge rather than replace. A detail update carries whatever its
+	// source could tell us, and that is not always everything: Plex's
+	// socket notification has a position and a state but no title,
+	// device or duration. Overwriting wholesale would blank the row's
+	// identity every time its timecode moved. Emby and Jellyfin send
+	// full sessions, so for them this is a no-op.
+	if prev, known := s.live[mediaServerID][session.Key]; known {
+		if session.Title == "" {
+			session.Title = prev.Title
+		}
+		if session.Device == "" {
+			session.Device = prev.Device
+		}
+		if session.Duration == 0 {
+			session.Duration = prev.Duration
+		}
+		if !session.Local {
+			session.Local = prev.Local
+		}
+	}
 	s.live[mediaServerID][session.Key] = session
 }
 
