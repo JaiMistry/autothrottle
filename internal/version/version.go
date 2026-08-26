@@ -37,11 +37,20 @@ func Label() string {
 }
 
 // isReleaseNumber reports whether a stamp looks like a version rather
-// than a commit description: a leading digit is the whole test, since
-// tags here are numeric and describe-style stamps are not.
+// than a commit description. A leading digit is not enough on its own:
+// plenty of commit shas start with one, and "5812252-dirty" would then
+// be printed as "v5812252-dirty". Requiring digit-dot-digit is what
+// separates a release number from a sha, since every tag here is
+// semver-shaped.
 func isReleaseNumber(v string) bool {
-	return v != "" && v[0] >= '0' && v[0] <= '9'
+	dot := strings.IndexByte(v, '.')
+	if dot <= 0 || dot == len(v)-1 {
+		return false
+	}
+	return isDigit(v[0]) && isDigit(v[dot+1])
 }
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // Number is the release number with no leading "v" and no decoration,
 // for comparing against a release tag. Empty for an unstamped build.

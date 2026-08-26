@@ -15,6 +15,9 @@ func TestLabel(t *testing.T) {
 		// An untagged local build is stamped with what git describe
 		// managed; it must not be printed as a release.
 		{"f3d60f3-dirty", "f3d60f3-dirty"},
+		// A sha that happens to start with a digit is still a sha.
+		{"5812252-dirty", "5812252-dirty"},
+		{"5812252", "5812252"},
 		{"v1.0.0-3-gabc1234", "v1.0.0-3-gabc1234"},
 	}
 	for _, c := range cases {
@@ -34,6 +37,8 @@ func TestNumber(t *testing.T) {
 		"1.2.3":         "1.2.3",
 		"dev":           "",
 		"f3d60f3-dirty": "",
+		"5812252-dirty": "",
+		"5812252":       "",
 	} {
 		Version = stamp
 		if got := Number(); got != want {

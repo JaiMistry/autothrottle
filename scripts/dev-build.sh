@@ -16,9 +16,10 @@ git diff --quiet && git diff --cached --quiet || commit="${commit}-dirty"
 # somewhere. On a tagged commit that is exactly the release number; off
 # one it is "v1.0.0-3-gabc1234", which says plainly that this is three
 # commits past v1.0.0 rather than claiming to be the release itself.
-# An untagged repo falls back to "dev". Nothing here has to be
-# remembered or bumped by hand at release time.
-version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+# An untagged repo falls back to "dev" — deliberately without
+# --always, which would hand back a bare commit sha that looks enough
+# like a version to be mistaken for one.
+version=$(git describe --tags --dirty 2>/dev/null || echo dev)
 
 # The commit's own date, not the wall clock. Rebuilding the same commit
 # has to give the same answer, or the field says more about the machine
