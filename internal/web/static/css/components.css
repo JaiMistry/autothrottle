@@ -1229,15 +1229,34 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
    the last one for absent data, which is a different category from a
    value being present and must not read as a paler version of it. */
 .at-legenditem { display: inline-flex; align-items: center; gap: var(--space-3); }
-.at-swatch { width: 16px; flex-shrink: 0; }
-.at-swatch--line { height: 0; border-top: 2px solid var(--accent); }
-.at-swatch--dashed { height: 0; border-top: 2px dashed var(--accent); }
-.at-swatch--area { height: 8px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* The colour comes from a class, never from an inline style. Go's
+   html/template refuses to write a var() reference into a style
+   attribute — it substitutes ZgotmplZ, the browser drops the whole
+   declaration, and every swatch falls back to the default below. That
+   is why the legend once drew upload, the limit and the throttle band
+   in the accent colour while the chart drew them green and amber. */
+.at-swatch { width: 16px; flex-shrink: 0; --swatch: var(--accent); }
+/* These mirror the exact values charts.js draws with. The chart darkens
+   green and amber on a light ground for legibility, so a legend naming
+   the raw token would advertise a shade the chart never uses. Change
+   one and change the other. */
+.at-swatch--good { --swatch: #1f9d55; }
+.at-swatch--warn { --swatch: #c98410; }
+.at-swatch--faint { --swatch: var(--text-faint); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .at-swatch--good { --swatch: #4ade80; }
+  :root:not([data-theme="light"]) .at-swatch--warn { --swatch: #f0b132; }
+}
+:root[data-theme="dark"] .at-swatch--good { --swatch: #4ade80; }
+:root[data-theme="dark"] .at-swatch--warn { --swatch: #f0b132; }
+.at-swatch--line { height: 0; border-top: 2px solid var(--swatch); }
+.at-swatch--dashed { height: 0; border-top: 2px dashed var(--swatch); }
+.at-swatch--area { height: 8px; border-radius: 2px; background: color-mix(in srgb, var(--swatch) 35%, transparent); }
 .at-swatch--hatch {
   height: 8px;
-  outline: 1px dashed var(--text-faint);
+  outline: 1px dashed var(--swatch);
   outline-offset: -1px;
-  background: repeating-linear-gradient(45deg, var(--text-faint) 0 1.4px, transparent 1.4px 5px);
+  background: repeating-linear-gradient(45deg, var(--swatch) 0 1.4px, transparent 1.4px 5px);
 }
 
 /* ── Login ───────────────────────────────────────────────────────── */

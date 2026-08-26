@@ -191,8 +191,12 @@
 {{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates" "Size" "sm"}}{{end}}{{end}}
 
 {{/* Args: Shape (line|dashed|area|hatch), Color, Label */}}
+{{/* Tone names a palette colour and is applied as a class, because a
+     var() reference cannot survive a style attribute — see .at-swatch.
+     Color stays for the literal hexes the charts use, which the
+     escaper is happy to write. */}}
 {{define "legenditem"}}<span class="at-legenditem">
-  <span class="at-swatch at-swatch--{{.Shape}}"{{if .Color}} style="{{if eq .Shape "line"}}border-top-color:{{.Color}}{{else if eq .Shape "dashed"}}border-top-color:{{.Color}}{{else if eq .Shape "area"}}background:color-mix(in srgb,{{.Color}} 35%,transparent){{else}}outline-color:{{.Color}};background:repeating-linear-gradient(45deg,{{.Color}} 0 1.4px,transparent 1.4px 5px){{end}}"{{end}}></span>
+  <span class="at-swatch at-swatch--{{.Shape}}{{if .Tone}} at-swatch--{{.Tone}}{{end}}"{{if .Color}} style="{{if eq .Shape "line"}}border-top-color:{{.Color}}{{else if eq .Shape "dashed"}}border-top-color:{{.Color}}{{else if eq .Shape "area"}}background:color-mix(in srgb,{{.Color}} 35%,transparent){{else}}outline-color:{{.Color}};background:repeating-linear-gradient(45deg,{{.Color}} 0 1.4px,transparent 1.4px 5px){{end}}"{{end}}></span>
   {{.Label}}
 </span>{{end}}
 

@@ -71,10 +71,10 @@
     <div class="at-chartcard-body" style="height:250px"><div id="at-chart-throughput"></div></div>
     <footer class="at-chartcard-legend">
       {{template "legenditem" dict "Shape" "line" "Color" "#38bdf8" "Label" "Download"}}
-      {{template "legenditem" dict "Shape" "line" "Color" "var(--good)" "Label" "Upload"}}
-      {{template "legenditem" dict "Shape" "dashed" "Color" (cond .HasLimit "var(--warn)" "var(--text-faint)") "Label" .LimitLegend}}
-      {{if .HasBands}}{{template "legenditem" dict "Shape" "area" "Color" "var(--warn)" "Label" "Throttling active"}}{{end}}
-      {{template "legenditem" dict "Shape" "hatch" "Color" "var(--text-faint)" "Label" "No samples — app was down"}}
+      {{template "legenditem" dict "Shape" "line" "Tone" "good" "Label" "Upload"}}
+      {{template "legenditem" dict "Shape" "dashed" "Tone" (cond .HasLimit "warn" "faint") "Label" .LimitLegend}}
+      {{if .HasBands}}{{template "legenditem" dict "Shape" "area" "Tone" "warn" "Label" "Throttling active"}}{{end}}
+      {{template "legenditem" dict "Shape" "hatch" "Tone" "faint" "Label" "No samples — app was down"}}
     </footer>
   </section>
 
