@@ -110,6 +110,24 @@ func main() {
 	// reconcile this set live, from the web handlers — no restart.
 	watchers.Start(ctx)
 
+	// Resolve once at startup, after a first snapshot has said what is
+	// actually playing.
+	//
+	// Without this the app sits in "state not resolved yet" until some
+	// session event happens to arrive, which on a quiet evening can be
+	// hours: every downloader reads Unknown, and — worse than the
+	// display — a client left throttled by the previous run stays
+	// throttled, because nothing re-asserts the default rate. Snapshot
+	// first so a stream that is already playing is seen before rates are
+	// applied, rather than being briefly released and then re-throttled.
+	go func() {
+		watchers.SnapshotAll(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		sched.ResolveAsync()
+	}()
+
 	// Bandwidth sampling and housekeeping are independent of playback,
 	// so they run on their own timers rather than off session events.
 	go samples.Run(ctx)

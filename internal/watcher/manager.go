@@ -245,12 +245,20 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 // without restarting the watcher.
 func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, name string, w clients.SessionWatcher) {
 	failures := 0
+	// The first pass runs immediately. Waiting a full interval for it
+	// left the app with no idea what was playing for the first minute
+	// after every start, which is when someone is most likely to be
+	// looking at it.
+	first := true
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(m.settings.SessionReconcileInterval()):
+		if !first {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.settings.SessionReconcileInterval()):
+			}
 		}
+		first = false
 
 		if err := m.reconcileOnce(ctx, mediaServerID, w); err != nil {
 			if ctx.Err() != nil {
@@ -306,6 +314,36 @@ func (m *Manager) note(level, message string, mediaServerID int64) {
 	}); err != nil {
 		slog.Error("watcher: recording event", "error", err)
 	}
+}
+
+// SnapshotAll takes one session snapshot from every running watcher
+// and waits for them all. Used once at startup so throttle state is
+// resolved against what is actually playing, rather than against an
+// empty set that a snapshot contradicts a moment later.
+func (m *Manager) SnapshotAll(ctx context.Context) {
+	m.mu.Lock()
+	ids := make([]int64, 0, len(m.running))
+	watchers := make([]clients.SessionWatcher, 0, len(m.running))
+	for id, h := range m.running {
+		if h.watcher == nil {
+			continue
+		}
+		ids = append(ids, id)
+		watchers = append(watchers, h.watcher)
+	}
+	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for i := range ids {
+		wg.Add(1)
+		go func(id int64, w clients.SessionWatcher) {
+			defer wg.Done()
+			if err := m.reconcileOnce(ctx, id, w); err != nil && ctx.Err() == nil {
+				slog.Warn("watcher: first session snapshot failed", "media_server_id", id, "error", err)
+			}
+		}(ids[i], watchers[i])
+	}
+	wg.Wait()
 }
 
 // Running reports which media servers currently have a live watcher —
