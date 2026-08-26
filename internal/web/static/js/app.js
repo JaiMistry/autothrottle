@@ -483,7 +483,12 @@
       var el = form.querySelector('[name="' + name + '"]');
       return el && !el.disabled && !el.closest("[hidden]") ? el.value.trim() : "";
     };
-    var ok = true;
+    // A passing connection test is required before anything can be
+    // saved. Filling the fields in only proves they are not empty; it
+    // says nothing about whether the address answers or the credential
+    // works, and a server saved on a bad token fails silently later —
+    // the feed connects and then reports nothing.
+    var ok = !!form.querySelector('.at-testresult[data-state="connected"]');
     require.split(",").forEach(function (need) {
       if (need === "credential") {
         // A stored credential counts, and so does a token Plex just
@@ -501,14 +506,25 @@
     document.querySelectorAll("form[data-require]").forEach(gateSubmit);
   }
 
-  document.addEventListener("input", function (e) {
+  /* A pass describes the values that were tested, so editing any of them
+     retires it. Without this you could test a good address, change it to
+     a bad one, and still save — which is the hole the gate exists to
+     close. Only a passing card is cleared: a failure is left alone,
+     because its text is what explains the field being outlined. */
+  function retireTestResult(form) {
+    var passed = form.querySelector('.at-testresult[data-state="connected"]');
+    if (passed) passed.remove();
+  }
+
+  function fieldEdited(e) {
     var form = e.target.closest("form[data-require]");
-    if (form) gateSubmit(form);
-  });
-  document.addEventListener("change", function (e) {
-    var form = e.target.closest("form[data-require]");
-    if (form) gateSubmit(form);
-  });
+    if (!form) return;
+    retireTestResult(form);
+    gateSubmit(form);
+  }
+
+  document.addEventListener("input", fieldEdited);
+  document.addEventListener("change", fieldEdited);
 
   // A failed test names the field that caused it, so the card can outline
   // it. The names differ per form, and a downloader's credential is two
