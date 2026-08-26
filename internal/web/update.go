@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,7 +80,7 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	// pressed, so a reply that arrives in 40ms would replace it before it
 	// could be read. Only a fast answer waits; a slow one is not delayed.
 	started := time.Now()
-	view := checkLatestRelease(ctx, version.Version)
+	view := checkLatestRelease(ctx, version.Number())
 	if elapsed := time.Since(started); elapsed < minCheckDuration {
 		time.Sleep(minCheckDuration - elapsed)
 	}
@@ -88,6 +89,10 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// checkLatestRelease compares a release number — not a raw stamp — with
+// the newest published tag. current is empty for any build that has no
+// release number, which includes both `go build` and a local image made
+// off an untagged commit.
 func checkLatestRelease(ctx context.Context, current string) updateView {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesAPI, nil)
 	if err != nil {
@@ -118,15 +123,20 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 	}
 
 	latest := strings.TrimPrefix(release.TagName, "v")
-	running := strings.TrimPrefix(current, "v")
+	running := current
 	switch {
 	case latest == "":
 		return failedCheck("github reported no release tag")
-	case running == "dev":
+	case running == "" || running == "dev":
 		// A dev build has no version to compare against, and calling it
 		// out of date would be wrong as often as not.
 		return notComparable(fmt.Sprintf("This is a development build. v%s is the latest release.", latest))
-	case latest == running:
+	case compareVersions(running, latest) >= 0:
+		// Equal, or ahead of the newest published release — a build made
+		// from an unreleased commit. Both mean there is nothing to fetch,
+		// so neither should be nagged about. Comparing rather than
+		// testing for equality is what keeps a locally-built v1.1.0 from
+		// being told to "upgrade" to the v1.0.0 on GitHub.
 		return updateView{
 			State: "current", Label: "Up to date",
 			NoteStrong: "v" + latest, NotePost: " is the latest release.",
@@ -136,5 +146,70 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 			State: "available", Label: fmt.Sprintf("v%s available", latest),
 			NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". Pull the new image and restart.",
 		}
+	}
+}
+
+// compareVersions orders two dot-separated release numbers, returning
+// -1, 0 or 1. It is deliberately small rather than a full semver
+// implementation: these are this project's own tags, which are numeric
+// and occasionally carry a pre-release suffix.
+//
+// Numeric segments compare as numbers, so 1.0.10 correctly sorts above
+// 1.0.9 where a string comparison would not. A pre-release suffix
+// ("1.1.0-rc1") sorts below the release it leads to, per semver. Two
+// versions that differ only in ways this cannot parse compare equal,
+// which errs toward staying quiet rather than announcing an update
+// that may not exist.
+func compareVersions(a, b string) int {
+	aNum, aPre := splitPreRelease(a)
+	bNum, bPre := splitPreRelease(b)
+
+	aParts, bParts := strings.Split(aNum, "."), strings.Split(bNum, ".")
+	for i := 0; i < len(aParts) || i < len(bParts); i++ {
+		if c := compareSegment(segment(aParts, i), segment(bParts, i)); c != 0 {
+			return c
+		}
+	}
+	switch {
+	case aPre == bPre:
+		return 0
+	case aPre == "": // a release outranks any pre-release of itself
+		return 1
+	case bPre == "":
+		return -1
+	case aPre < bPre:
+		return -1
+	default:
+		return 1
+	}
+}
+
+func splitPreRelease(v string) (string, string) {
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		return v[:i], v[i+1:]
+	}
+	return v, ""
+}
+
+func segment(parts []string, i int) string {
+	if i < len(parts) {
+		return parts[i]
+	}
+	return "0" // 1.0 and 1.0.0 are the same release
+}
+
+func compareSegment(a, b string) int {
+	an, aErr := strconv.Atoi(a)
+	bn, bErr := strconv.Atoi(b)
+	if aErr != nil || bErr != nil {
+		return 0 // unparseable: treat as equal rather than guess
+	}
+	switch {
+	case an < bn:
+		return -1
+	case an > bn:
+		return 1
+	default:
+		return 0
 	}
 }

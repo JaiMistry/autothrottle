@@ -7,11 +7,51 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
 // Version is overridden with -ldflags "-X .../internal/version.Version=1.2.3".
 var Version = "dev"
+
+// Label renders the running version for display: "v1.0.0" for a
+// release, "dev" for a build with no release number.
+//
+// The stamp comes straight from the git tag, so it may or may not
+// already carry a leading "v" — release.yml passes the ref name
+// verbatim, which is "v1.0.0". Trimming before re-adding is what stops
+// a real tagged release rendering as "vv1.0.0".
+func Label() string {
+	v := strings.TrimPrefix(Version, "v")
+	if v == "" || v == "dev" {
+		return "dev"
+	}
+	// Only a release number gets dressed up with the "v". A local build
+	// off an untagged repo is stamped with what `git describe` could
+	// manage — "f3d60f3-dirty" — and printing that as "vf3d60f3-dirty"
+	// would assert a release that does not exist.
+	if !isReleaseNumber(v) {
+		return v
+	}
+	return "v" + v
+}
+
+// isReleaseNumber reports whether a stamp looks like a version rather
+// than a commit description: a leading digit is the whole test, since
+// tags here are numeric and describe-style stamps are not.
+func isReleaseNumber(v string) bool {
+	return v != "" && v[0] >= '0' && v[0] <= '9'
+}
+
+// Number is the release number with no leading "v" and no decoration,
+// for comparing against a release tag. Empty for an unstamped build.
+func Number() string {
+	v := strings.TrimPrefix(Version, "v")
+	if !isReleaseNumber(v) {
+		return ""
+	}
+	return v
+}
 
 // Commit is the short revision the binary was built from, when known.
 var Commit = ""

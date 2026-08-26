@@ -26,14 +26,14 @@ type pageData struct {
 // rejected attempt looks like the app rather than like a server error.
 func (s *Server) loginFailed(w http.ResponseWriter, r *http.Request, status int, message string) {
 	w.WriteHeader(status)
-	data := pageData{Title: "Log in", Version: version.Version, Error: message, Asset: s.assets.URL}
+	data := pageData{Title: "Log in", Version: version.Label(), Error: message, Asset: s.assets.URL}
 	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
 		slog.Error("rendering login failure", "error", err)
 	}
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	data := pageData{Title: "Log in", Version: version.Version, Asset: s.assets.URL}
+	data := pageData{Title: "Log in", Version: version.Label(), Asset: s.assets.URL}
 	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
 		slog.Error("rendering login page", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

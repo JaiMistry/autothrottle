@@ -555,7 +555,7 @@ func (s *Server) page(r *http.Request, title, active string) pageData {
 		Active:        active,
 		Authenticated: true,
 		CSRFToken:     s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context())),
-		Version:       version.Version,
+		Version:       version.Label(),
 	}
 }
 

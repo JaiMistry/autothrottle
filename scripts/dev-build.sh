@@ -12,12 +12,21 @@ cd "$(dirname "$0")/.."
 commit=$(git rev-parse --short HEAD)
 git diff --quiet && git diff --cached --quiet || commit="${commit}-dirty"
 
+# The version comes from the tags, never from a literal written down
+# somewhere. On a tagged commit that is exactly the release number; off
+# one it is "v1.0.0-3-gabc1234", which says plainly that this is three
+# commits past v1.0.0 rather than claiming to be the release itself.
+# An untagged repo falls back to "dev". Nothing here has to be
+# remembered or bumped by hand at release time.
+version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 # The commit's own date, not the wall clock. Rebuilding the same commit
 # has to give the same answer, or the field says more about the machine
 # that compiled it than about the code — and two identical binaries
 # would disagree about their age. It also keeps the build reproducible,
 # which -trimpath in the Dockerfile is already reaching for.
 COMMIT="$commit" \
+VERSION="${VERSION:-$version}" \
 BUILD_DATE="$(git log -1 --format=%cI)" \
   docker compose build --memory 1500m "$@"
 COMMIT="$commit" docker compose up -d
@@ -28,5 +37,5 @@ COMMIT="$commit" docker compose up -d
 # tests with (golang, node, puppeteer), costing gigabytes of re-download
 # on the next run for no benefit.
 reclaimed=$(docker image prune -f 2>/dev/null | tail -1)
-echo "built and running: $commit"
+echo "built and running: $commit (version ${VERSION:-$version})"
 [ -n "$reclaimed" ] && echo "$reclaimed"
