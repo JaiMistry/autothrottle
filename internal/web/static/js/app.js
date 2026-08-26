@@ -142,7 +142,49 @@
   /* ── HTMX wiring ────────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () { bindCaps(); });
 
+  /* ── Keeping the scroll containers alive ───────────────────────────
+     The Dashboard's live fragment is replaced wholesale every few
+     seconds, which recreates the list cards' scroll containers along
+     with it. Two things go wrong when that happens: a list you had
+     scrolled snaps back to the top on the next refresh, and a browser
+     that draws overlay scrollbars flashes one every time a scrollable
+     element is newly created.
+
+     So the rows move into the element that is already there, and that
+     element is put back where the new one would have gone. Nothing the
+     user is interacting with is recreated — only the contents change,
+     which is all that actually differs. It also means the measured cap
+     survives, so capList finds its signature unchanged and does no work. */
+  var liveScrollers = [];
+
+  function stashScrollers() {
+    // The offset has to be read now, while these are still in the
+    // document. Once the swap detaches them they all report zero.
+    liveScrollers = [].slice.call(document.querySelectorAll("[data-cap-rows]"))
+      .map(function (el) { return { el: el, offset: el.scrollTop }; });
+  }
+
+  function restoreScrollers() {
+    var incoming = [].slice.call(document.querySelectorAll("[data-cap-rows]"));
+    // Positional matching, so only attempt it when the shape is identical.
+    if (!liveScrollers.length || incoming.length !== liveScrollers.length) return;
+    incoming.forEach(function (fresh, i) {
+      var entry = liveScrollers[i];
+      var kept = entry && entry.el;
+      if (!kept || kept === fresh || !fresh.parentNode) return;
+      kept.replaceChildren.apply(kept, [].slice.call(fresh.childNodes));
+      fresh.replaceWith(kept);
+      // Replacing the contents drops the scroll offset even though the
+      // element itself is the same one, so put it back.
+      if (entry.offset) kept.scrollTop = entry.offset;
+    });
+    liveScrollers = [];
+  }
+
+  document.body.addEventListener("htmx:beforeSwap", stashScrollers);
+
   document.body.addEventListener("htmx:afterSwap", function (e) {
+    restoreScrollers();
     // A boosted navigation swaps in a fresh scrim, which arrives with its
     // `hidden` attribute back while <body> still says the drawer is open.
     // Re-apply the state so the scrim cannot go deaf.
