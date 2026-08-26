@@ -64,18 +64,29 @@ func printBanner(out io.Writer, build version.Build, info startupInfo) {
 	row("Configured", configuredDesc(info))
 	b.WriteString("\n")
 
-	// Assembled first and written once. A failed write to stdout is not
-	// something a banner can do anything about, and it is the only error
-	// here worth naming: everything above writes to a strings.Builder,
-	// which cannot fail.
-	_, _ = io.WriteString(out, b.String())
+	// Written one line at a time on purpose. A single multi-line write
+	// becomes one Docker log entry with newlines inside it, and a viewer
+	// that prefixes each entry then indents everything after the first
+	// line — which is what made the art look shifted. One line per entry
+	// renders the same everywhere.
+	//
+	// A failed write to stdout is not something a banner can do anything
+	// about, and everything above it wrote to a strings.Builder, which
+	// cannot fail.
+	for _, line := range strings.Split(strings.TrimRight(b.String(), "\n"), "\n") {
+		_, _ = io.WriteString(out, line+"\n")
+	}
 }
 
+// buildDate renders in the configured zone rather than UTC. TZ is set
+// on the image (America/Los_Angeles unless overridden) and the zone
+// database is compiled into the binary, so every other timestamp the
+// app shows is local — this one has no business being the exception.
 func buildDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format("2 Jan 2006 15:04 MST")
+	return t.Local().Format("2 Jan 2006 15:04 MST")
 }
 
 func authDesc(disabled bool) string {
