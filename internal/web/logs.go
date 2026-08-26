@@ -230,7 +230,8 @@ func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {
 	// nothing above or below it shifts while you are reading.
 	log.LiveEndpoint = fmt.Sprintf("/activity?per=%d", perPage)
 	log.LiveTarget = "#activity-card"
-	log.EmptyNote = "Nothing logged yet."
+	log.EmptyTitle = "No events yet"
+	log.EmptyNote = "Throttle state changes and connection failures land here, each with the media server that caused it."
 	log.ExtraHref = "/logs"
 	log.ExtraLabel = "All logs"
 	log.ClearEndpoint = "/activity/clear"

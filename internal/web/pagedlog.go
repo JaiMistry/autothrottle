@@ -45,6 +45,7 @@ type pagedLog struct {
 	// would be worse than a stale one.
 	LiveEndpoint string
 	LiveTarget   string
+	EmptyTitle   string
 	EmptyNote    string
 	ExtraHref    string
 	ExtraLabel   string

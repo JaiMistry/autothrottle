@@ -213,14 +213,19 @@
     <span class="at-card-action">
       <button class="at-btn at-btn--ghost at-btn--xs"
               hx-get="{{.Endpoint}}?per={{.PerPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">Refresh</button>
-      {{if .ClearEndpoint}}<button class="at-btn at-btn--ghost at-btn--xs" type="button" {{if eq .Total 0}}disabled{{end}}
-              onclick="document.getElementById('clear-{{.TargetID}}').showModal()">Clear</button>{{end}}
+      {{if .ClearEndpoint}}<form method="post" action="{{.ClearEndpoint}}" style="display:contents"
+            hx-post="{{.ClearEndpoint}}" hx-target="{{.ClearTarget}}" hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="at-btn at-btn--ghost at-btn--xs" type="submit" {{if eq .Total 0}}disabled{{end}}>Clear</button>
+      </form>{{end}}
       {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs">{{.ExtraLabel}}</a>{{end}}
     </span>
   </header>
   <div style="display:grid">
     {{if not .Events}}
-      <span class="at-listempty">{{or .EmptyNote "No events."}}</span>
+      {{/* Same treatment the Logs page gives an empty log, so clearing
+           one does not land on a different-looking page. */}}
+      {{template "emptystate" dict "Title" (or .EmptyTitle "No events yet") "Body" .EmptyNote}}
     {{else}}
       {{range .Events}}{{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}{{end}}
     {{end}}
@@ -241,24 +246,6 @@
       </div>
     </div>
   </div>
-  {{if .ClearEndpoint}}
-  {{/* Clear deletes; it does not hide. Worth a confirmation because
-       nothing brings the events back, and worth being blunt in the copy
-       about what is and is not affected. */}}
-  <dialog class="at-dialog" id="clear-{{.TargetID}}">
-    <div class="at-dialog-panel">
-      <h3 class="at-dialog-title">Delete every log entry?</h3>
-      <p class="at-dialog-body">All {{.Total}} entries go for good, on this page and the Dashboard both. Throttling, history and analytics are untouched — this is only the event log.</p>
-      <div class="at-dialog-actions">
-        <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('clear-{{.TargetID}}').close()">Cancel</button>
-        <form method="post" action="{{.ClearEndpoint}}" hx-post="{{.ClearEndpoint}}" hx-target="{{.ClearTarget}}" hx-swap="outerHTML">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <button class="at-btn at-btn--danger" type="submit">Delete all</button>
-        </form>
-      </div>
-    </div>
-  </dialog>
-  {{end}}
 </section>{{end}}
 
 {{/* CredentialField. Never echoes a stored secret — not even a hidden
