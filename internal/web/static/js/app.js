@@ -74,7 +74,7 @@
      has to be measured rather than set as a CSS max-height. */
   function capList(list) {
     var rows = list.querySelectorAll(":scope > *");
-    if (rows.length <= 2) {
+    if (rows.length < 3) {
       list.style.maxHeight = "";
       list.style.overflowY = "";
       delete list.dataset.capFor;
@@ -100,15 +100,50 @@
     // flickering scrollbar. The signature check above is what keeps it
     // to once per shape.
     var prevMax = list.style.maxHeight, prevOverflow = list.style.overflowY;
+    var prevRows = list.style.gridAutoRows, prevAlign = list.style.alignContent;
     list.style.maxHeight = "";
     list.style.overflowY = "";
-    var h = rows[0].offsetHeight + rows[1].offsetHeight;
-    if (!h) {
+    // Rows normally share the card's height evenly (grid-auto-rows: 1fr),
+    // which is right for display and wrong for measuring: uncapped, three
+    // rows of 96/73/96 all report 96, so the target comes out a whole row
+    // too tall and the cap then lands in the middle of the third row.
+    // Measure them at their natural heights instead.
+    list.style.gridAutoRows = "min-content";
+    list.style.alignContent = "start";
+
+    var heights = [].map.call(rows, function (row) { return row.getBoundingClientRect().height; });
+
+    list.style.gridAutoRows = prevRows;
+    list.style.alignContent = prevAlign;
+
+    if (!heights[0] || !heights[1]) {
       list.style.maxHeight = prevMax;
       list.style.overflowY = prevOverflow;
       return;
     }
-    list.style.maxHeight = h + "px";
+
+    // Two rows is the target, but the cap lands on a row boundary: a row
+    // is either fully visible or fully scrolled out, never sliced through
+    // the middle. Rows differ a lot in height — a server with three
+    // sessions is several times a quiet one — so cutting at exactly the
+    // height of the first two left the next row's name half-showing
+    // along the bottom edge.
+    var target = heights[0] + heights[1];
+    var total = 0, shown = 0;
+    for (var i = 0; i < heights.length; i++) {
+      if (shown && total + heights[i] > target) break;
+      total += heights[i];
+      shown++;
+    }
+    if (shown >= rows.length) {
+      // Everything fits inside two rows' worth: nothing to cap.
+      list.style.maxHeight = "";
+      list.style.overflowY = "";
+      list.dataset.capFor = signature;
+      return;
+    }
+
+    list.style.maxHeight = Math.ceil(total) + "px";
     list.style.overflowY = "auto";
     list.dataset.capFor = signature;
   }

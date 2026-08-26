@@ -562,6 +562,12 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-session-fill { position: absolute; inset: 0; background: var(--accent); opacity: .75; }
 .at-session-time {
+  flex-shrink: 0;
+  /* Fixed width, so the bar beside it keeps one length for the whole
+     stream. Sized to the longest timecode rather than the current one:
+     otherwise every tick that changes the text width resizes the bar. */
+  width: 17ch;
+  text-align: right;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-label);
@@ -635,6 +641,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   .at-dlrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "reason" "rates"; }
   .at-dlrow-side { justify-self: start; align-self: center; }
 }
+/* Below this the type token is dropped rather than allowed to take a
+   line of its own — the name and its status pill always stay together. */
+@container (max-width: 330px) {
+  .at-rowtype { display: none; }
+}
 
 .at-rowname { font-size: var(--text-body); font-weight: var(--weight-semibold); color: var(--text); }
 .at-rowname--muted { color: var(--text-faint); }
@@ -648,6 +659,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
    exempted by skip_local_playback never enter the count, so there is
    no "ignored" state to render. */
 .at-serverrow {
+  container-type: inline-size;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: var(--space-4);
