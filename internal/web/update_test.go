@@ -22,6 +22,13 @@ func TestCompareVersions(t *testing.T) {
 		{"1.1.0-rc1", "1.1.0-rc2", -1},
 		// Unparseable segments compare equal rather than guessing.
 		{"nightly", "1.0.0", 0},
+		// The release-candidate scheme this project tags with.
+		{"1.0.0-rc.1", "1.0.0-rc.2", -1},
+		{"1.0.0-rc.2", "1.0.0-rc.1", 1},
+		{"1.0.0-rc.1", "1.0.0-rc.1", 0},
+		{"1.0.0-rc.1", "1.0.0", -1},
+		{"1.0.0", "1.0.0-rc.9", 1},
+		{"1.0.0-rc.1", "1.0.1", -1},
 	}
 	for _, c := range cases {
 		if got := compareVersions(c.a, c.b); got != c.want {
@@ -41,6 +48,11 @@ func TestUpdateStateForRunningVersion(t *testing.T) {
 		{"1.0.1", "1.0.0", "current"}, // ahead of the release: nothing to fetch
 		{"1.0.0", "1.0.1", "available"},
 		{"1.0.9", "1.0.10", "available"},
+		// An rc must be told about the release it leads to, and must not
+		// be told to "upgrade" to an older candidate.
+		{"1.0.0-rc.1", "1.0.0", "available"},
+		{"1.0.0-rc.2", "1.0.0-rc.1", "current"},
+		{"1.0.0", "1.0.0-rc.3", "current"},
 	}
 	for _, c := range cases {
 		got := "available"
