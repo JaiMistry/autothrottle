@@ -86,7 +86,12 @@
     // shrinks by the width of the scrollbar this very function causes to
     // appear — which would make the signature flip between the capped
     // and uncapped states forever.
-    var signature = rows.length + ":" + Math.round(list.offsetWidth);
+    // Session lines are counted too: a server that starts playing grows
+    // its row without changing how many rows there are, and a signature
+    // blind to that would keep serving a cap measured for the quiet
+    // version. Timecodes ticking inside an existing line do not move it.
+    var signature = rows.length + ":" + Math.round(list.offsetWidth) +
+      ":" + list.querySelectorAll(".at-session").length;
     if (list.dataset.capFor === signature && list.style.maxHeight) return;
 
     // Measure with the cap lifted. The list lays its rows out with
