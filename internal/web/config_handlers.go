@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -442,6 +443,10 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
+		if errors.Is(err, clients.ErrPlexTokenUnverified) {
+			s.writeTestResult(w, unverifiedTokenResult(rawURL, time.Since(started)))
+			return
+		}
 		field, hint := classifyProbeError(probeServer, err)
 		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
@@ -469,6 +474,10 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
+		if errors.Is(err, clients.ErrPlexTokenUnverified) {
+			s.writeTestResult(w, unverifiedTokenResult(ms.URL, time.Since(started)))
+			return
+		}
 		field, hint := classifyProbeError(probeServer, err)
 		s.writeTestResult(w, testResult{Target: ms.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
@@ -769,6 +778,19 @@ func reachedMessage(hadCredential bool) string {
 		return "Reachable, and the credential was accepted."
 	}
 	return "Reachable. No credentials were sent, so none were checked."
+}
+
+// unverifiedTokenResult reports a server that answered without ever
+// checking the credential. It is a success — the server is reachable —
+// but saying the token was accepted would be untrue, and the failure it
+// hides is a confusing one: playback never appears, while the
+// connection test insists everything is fine.
+func unverifiedTokenResult(target string, elapsed time.Duration) testResult {
+	return testResult{
+		OK: true, Target: target, Elapsed: elapsed,
+		Message: "Reachable. This server answers the same without a token, so the credential could not be checked here.",
+		Hint:    "If the token is wrong, nothing fails now — playback simply never appears, because the live connection is where Plex actually checks it.",
+	}
 }
 
 // testResult is one probe's outcome, in the shape the card renders.
