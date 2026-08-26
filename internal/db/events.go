@@ -159,3 +159,15 @@ func (d *DB) CountEventsByLevel(f EventFilter) (map[string]int, error) {
 	}
 	return out, rows.Err()
 }
+
+// DeleteAllEvents removes every recorded event and reports how many
+// went. Used by the Logs page's Clear, which is a real delete rather
+// than a filter: the point of it is to empty the page so what happens
+// next can be watched on its own.
+func (d *DB) DeleteAllEvents() (int64, error) {
+	res, err := d.conn.Exec(`DELETE FROM events`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

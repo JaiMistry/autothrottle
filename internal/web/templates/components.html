@@ -205,30 +205,28 @@
      from the server and returns to page 1; Clear empties the view only
      — the events are still there, which is why it says so. */}}
 {{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}"
-  {{- if and .LiveEndpoint (eq .Page 1) (not .Cleared)}}
-  hx-get="{{.LiveEndpoint}}" hx-trigger="every 10s [document.visibilityState === 'visible']"
+  {{- if and .LiveEndpoint (eq .Page 1)}}
+  hx-get="{{.LiveEndpoint}}" hx-trigger="every 5s [document.visibilityState === 'visible']"
   hx-target="{{.LiveTarget}}" hx-swap="outerHTML"{{end}}>
   <header class="at-card-head">
     <h2 class="at-card-title">{{.Title}}</h2>
     <span class="at-card-action">
       <button class="at-btn at-btn--ghost at-btn--xs"
               hx-get="{{.Endpoint}}?per={{.PerPage}}{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">Refresh</button>
-      <button class="at-btn at-btn--ghost at-btn--xs" {{if or .Cleared (eq .Total 0)}}disabled{{end}}
-              hx-get="{{.Endpoint}}?per={{.PerPage}}&cleared=1{{.Query}}" hx-target="#{{.TargetID}}" hx-swap="outerHTML">Clear</button>
+      {{if .ClearEndpoint}}<button class="at-btn at-btn--ghost at-btn--xs" type="button" {{if eq .Total 0}}disabled{{end}}
+              onclick="document.getElementById('clear-{{.TargetID}}').showModal()">Clear</button>{{end}}
       {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs">{{.ExtraLabel}}</a>{{end}}
     </span>
   </header>
   <div style="display:grid">
-    {{if .Cleared}}
-      {{template "emptystate" dict "Title" "Log cleared" "Body" "Refresh to reload the events from the server."}}
-    {{else if not .Events}}
+    {{if not .Events}}
       <span class="at-listempty">{{or .EmptyNote "No events."}}</span>
     {{else}}
       {{range .Events}}{{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}{{end}}
     {{end}}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding-top:var(--space-6);flex-wrap:wrap">
       <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">
-        {{if and .Total (not .Cleared)}}{{.RangeFrom}}–{{.RangeTo}} of {{.Total}}{{else}}0 of 0{{end}}
+        {{if .Total}}{{.RangeFrom}}–{{.RangeTo}} of {{.Total}}{{else}}0 of 0{{end}}
       </span>
       <div style="display:flex;align-items:center;gap:var(--space-4)">
         <select class="at-select at-select--pager" name="per"
@@ -243,6 +241,24 @@
       </div>
     </div>
   </div>
+  {{if .ClearEndpoint}}
+  {{/* Clear deletes; it does not hide. Worth a confirmation because
+       nothing brings the events back, and worth being blunt in the copy
+       about what is and is not affected. */}}
+  <dialog class="at-dialog" id="clear-{{.TargetID}}">
+    <div class="at-dialog-panel">
+      <h3 class="at-dialog-title">Delete every log entry?</h3>
+      <p class="at-dialog-body">All {{.Total}} entries go for good, on this page and the Dashboard both. Throttling, history and analytics are untouched — this is only the event log.</p>
+      <div class="at-dialog-actions">
+        <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('clear-{{.TargetID}}').close()">Cancel</button>
+        <form method="post" action="{{.ClearEndpoint}}" hx-post="{{.ClearEndpoint}}" hx-target="{{.ClearTarget}}" hx-swap="outerHTML">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button class="at-btn at-btn--danger" type="submit">Delete all</button>
+        </form>
+      </div>
+    </div>
+  </dialog>
+  {{end}}
 </section>{{end}}
 
 {{/* CredentialField. Never echoes a stored secret — not even a hidden

@@ -22,7 +22,13 @@
      left them showing the old selection, and an empty result had no
      card to replace — which is why every filter but All looked dead. */}}
 {{define "logpanel"}}{{$q := .Search}}{{$per := .Log.PerPage}}
-<div id="log-panel">
+{{/* The refresh lives here, not on the card: an emptied log renders an
+     empty state with no card at all, and a trigger inside it would stop
+     the page updating the moment it was cleared. */}}
+<div id="log-panel"
+  {{- if and .LivePanel (eq .Log.Page 1)}}
+  hx-get="{{.LivePanel}}" hx-trigger="every 5s [document.visibilityState === 'visible']"
+  hx-target="#log-panel" hx-swap="outerHTML"{{end}}>
   <div class="at-tabs at-tabs--sm at-tabs--fill" role="tablist" style="margin-bottom:var(--space-8)">
     {{template "logtab" dict "Label" "All" "Level" "" "Count" .CountAll "Active" (eq .Level "") "Q" $q "Per" $per}}
     {{template "logtab" dict "Label" "Info" "Level" "info" "Count" (index .Counts "info") "Active" (eq .Level "info") "Q" $q "Per" $per}}

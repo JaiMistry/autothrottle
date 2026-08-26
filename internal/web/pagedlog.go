@@ -30,7 +30,15 @@ type pagedLog struct {
 	HasNext    bool
 	PrevPage   int
 	NextPage   int
-	Cleared    bool
+	// ClearEndpoint is where Clear posts to. Empty leaves the button
+	// out entirely, for a view that has no business deleting anything.
+	// ClearTarget is what that response replaces — the same element the
+	// live refresh swaps, never the card itself: the confirmation form
+	// lives inside the card, and a swap that removes the element the
+	// form sits in leaves htmx with nothing to re-arm the poll on.
+	ClearEndpoint string
+	ClearTarget   string
+	CSRFToken     string
 	// LiveEndpoint and LiveTarget, when set, make the card refresh
 	// itself. Only ever set for page one of an unfiltered view: a list
 	// that reordered under someone reading page three, or mid-search,

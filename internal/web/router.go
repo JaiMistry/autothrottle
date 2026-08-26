@@ -133,6 +133,8 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /logs/rows", s.logRowsFragment)
 	protected.HandleFunc("GET /logs/panel", s.logPanelFragment)
 	protected.HandleFunc("GET /activity", s.activityFragment)
+	protected.HandleFunc("POST /logs/clear", s.clearLogs)
+	protected.HandleFunc("POST /activity/clear", s.clearActivity)
 	protected.HandleFunc("GET /dashboard/live", s.dashboardLive)
 	protected.HandleFunc("GET /analytics", s.analyticsPage)
 	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)

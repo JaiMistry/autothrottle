@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
@@ -30,6 +31,12 @@ type logsData struct {
 	Matching int
 	NoEvents bool
 	Log      pagedLog
+	// LivePanel is the refresh endpoint, held on the panel rather than
+	// on the card inside it. The card is not rendered at all when there
+	// is nothing to show, so a trigger living there stops the page
+	// refreshing exactly when it is emptied — which is precisely when
+	// someone is watching for the next event to arrive.
+	LivePanel string
 }
 
 func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +99,14 @@ func logsLive(p pagedLog, level, search string, perPage int) pagedLog {
 	return p
 }
 
+// panelLive is logsLive's answer, moved onto the panel and cleared off
+// the card so the page does not poll twice for the same thing.
+func panelLive(data *logsData) {
+	data.LivePanel = data.Log.LiveEndpoint
+	data.Log.LiveEndpoint = ""
+	data.Log.LiveTarget = ""
+}
+
 func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	level := r.URL.Query().Get("level")
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -145,7 +160,10 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 		NoEvents: unfiltered == 0,
 		Log:      logsLive(newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra), level, search, perPage),
 	}
-	data.Log.Cleared = r.URL.Query().Get("cleared") == "1"
+	panelLive(&data)
+	data.Log.ClearEndpoint = "/logs/clear"
+	data.Log.ClearTarget = "#log-panel"
+	data.Log.CSRFToken = s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context()))
 	return data, nil
 }
 
@@ -215,7 +233,9 @@ func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {
 	log.EmptyNote = "Nothing logged yet."
 	log.ExtraHref = "/logs"
 	log.ExtraLabel = "All logs"
-	log.Cleared = r.URL.Query().Get("cleared") == "1"
+	log.ClearEndpoint = "/activity/clear"
+	log.ClearTarget = "#activity-card"
+	log.CSRFToken = s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context()))
 	return log, nil
 }
 
@@ -229,4 +249,35 @@ func intParam(r *http.Request, name string, fallback, min, max int) int {
 		return fallback
 	}
 	return n
+}
+
+// clearLogs empties the event log and re-renders the Logs page's card.
+// A real delete rather than a filter: the page is cleared so that
+// whatever happens next can be watched from a clean slate, which a
+// view-only "cleared" flag could not give — it also stopped the live
+// refresh, so nothing new appeared at all.
+func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
+	if !s.clearEvents(w) {
+		return
+	}
+	s.logPanelFragment(w, r)
+}
+
+// clearActivity is the same for the Dashboard's copy of the card.
+func (s *Server) clearActivity(w http.ResponseWriter, r *http.Request) {
+	if !s.clearEvents(w) {
+		return
+	}
+	s.activityFragment(w, r)
+}
+
+func (s *Server) clearEvents(w http.ResponseWriter) bool {
+	deleted, err := s.db.DeleteAllEvents()
+	if err != nil {
+		slog.Error("clearing the event log", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return false
+	}
+	slog.Info("event log cleared", "deleted", deleted)
+	return true
 }
