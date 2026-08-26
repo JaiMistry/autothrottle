@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -202,6 +203,20 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 		}
 		data.Servers = append(data.Servers, row)
 	}
+
+	// Anything playing goes to the top, so the server that matters is
+	// the one you can see: with several configured, the list caps at two
+	// rows, and the one that just started playing could otherwise be
+	// scrolled out of sight.
+	//
+	// Stable, and keyed only on whether a server is playing — so the
+	// configured order survives inside each group and a row moves only
+	// when playback actually starts or stops, never on a refresh that
+	// changed nothing. Sorting on session *count* instead would reshuffle
+	// the top of the list every time a second stream started somewhere.
+	sort.SliceStable(data.Servers, func(i, j int) bool {
+		return data.Servers[i].State == "playing" && data.Servers[j].State != "playing"
+	})
 
 	// Named for the paused reason line, which says what *would* be
 	// throttling if the override were off.
