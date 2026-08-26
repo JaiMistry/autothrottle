@@ -190,12 +190,65 @@
      that draws overlay scrollbars flashes one every time a scrollable
      element is newly created.
 
-     So the rows move into the element that is already there, and that
-     element is put back where the new one would have gone. Nothing the
-     user is interacting with is recreated — only the contents change,
-     which is all that actually differs. It also means the measured cap
-     survives, so capList finds its signature unchanged and does no work. */
+     So the element that is already there stays, and the incoming rows
+     are merged into it node by node rather than swapped in wholesale.
+     That distinction matters: replacing the children empties the
+     element and refills it, which drops scrollHeight to zero and back
+     on every refresh. Firefox reads that size change as a reason to
+     animate its overlay scrollbar in again, so the bar flashed every
+     five seconds. Chrome, and a headless Firefox drawing classic
+     always-visible scrollbars, show nothing — which is why this took a
+     real browser to see.
+
+     Merging in place means scrollHeight only changes when the rows
+     genuinely change, the scroll offset is never lost, and the measured
+     cap survives so capList finds its signature unchanged. */
   var liveScrollers = [];
+
+  /* Makes target's children match source's, reusing every node it can.
+     Only what actually differs is touched, so a row whose timecode moved
+     keeps its element and changes one string. Attributes on target
+     itself are deliberately not synced — that is where the measured cap
+     lives, and the incoming copy has none. */
+  function mergeChildren(target, source) {
+    var t = target.firstChild, s = source.firstChild;
+    while (t && s) {
+      var nextT = t.nextSibling, nextS = s.nextSibling;
+      if (t.nodeType !== s.nodeType || t.nodeName !== s.nodeName) {
+        target.replaceChild(s, t);
+      } else if (t.nodeType === 3 || t.nodeType === 8) {
+        if (t.nodeValue !== s.nodeValue) t.nodeValue = s.nodeValue;
+      } else if (t.nodeType === 1) {
+        mergeAttributes(t, s);
+        mergeChildren(t, s);
+      }
+      t = nextT;
+      s = nextS;
+    }
+    while (s) {                       // rows the refresh added
+      var addS = s.nextSibling;
+      target.appendChild(s);
+      s = addS;
+    }
+    while (t) {                       // rows the refresh dropped
+      var dropT = t.nextSibling;
+      target.removeChild(t);
+      t = dropT;
+    }
+  }
+
+  function mergeAttributes(target, source) {
+    for (var i = source.attributes.length - 1; i >= 0; i--) {
+      var attr = source.attributes[i];
+      if (target.getAttribute(attr.name) !== attr.value) {
+        target.setAttribute(attr.name, attr.value);
+      }
+    }
+    for (var j = target.attributes.length - 1; j >= 0; j--) {
+      var own = target.attributes[j];
+      if (!source.hasAttribute(own.name)) target.removeAttribute(own.name);
+    }
+  }
 
   function stashScrollers() {
     // The offset has to be read now, while these are still in the
@@ -212,10 +265,8 @@
       var entry = liveScrollers[i];
       var kept = entry && entry.el;
       if (!kept || kept === fresh || !fresh.parentNode) return;
-      kept.replaceChildren.apply(kept, [].slice.call(fresh.childNodes));
+      mergeChildren(kept, fresh);
       fresh.replaceWith(kept);
-      // Replacing the contents drops the scroll offset even though the
-      // element itself is the same one, so put it back.
       if (entry.offset) kept.scrollTop = entry.offset;
     });
     liveScrollers = [];
