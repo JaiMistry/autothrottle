@@ -107,7 +107,14 @@ type Session struct {
 	// are zero when the server did not report them; the UI draws no
 	// progress bar in that case rather than guessing at one.
 	Position time.Duration
-	Duration time.Duration
+	// PositionAt is when Position was observed. Media servers report a
+	// position every few seconds at best — Plex in roughly ten-second
+	// steps — so a reading is usually already stale by the time anything
+	// renders it. Without knowing how stale, a consumer cannot tell a
+	// fresh reading from an old one and will step the clock backwards
+	// every time it re-reads the same value.
+	PositionAt time.Time
+	Duration   time.Duration
 	// Paused is what the server last reported. A paused session still
 	// counts toward throttling — see pausedTracker — but the page needs
 	// to know, so it does not advance a timecode that is standing still.

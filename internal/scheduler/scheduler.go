@@ -155,6 +155,9 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 		if session.Duration == 0 {
 			session.Duration = prev.Duration
 		}
+		if session.PositionAt.IsZero() {
+			session.PositionAt = prev.PositionAt
+		}
 		if !session.Local {
 			session.Local = prev.Local
 		}

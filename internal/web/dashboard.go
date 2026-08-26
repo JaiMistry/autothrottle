@@ -342,6 +342,35 @@ func buildHero(paused bool, sessions int, throttled, causes []string, downloader
 	}
 }
 
+// livePosition carries a reported position forward to now.
+//
+// Media servers report position in steps — Plex in roughly ten-second
+// ones — so between reports the stored figure is stale by however long
+// it has been sitting there. Sending it raw makes every refresh hand
+// the browser the same number for several seconds running, and a page
+// that ticks a clock forward in between has no choice but to step
+// backwards when the stale figure arrives. Advancing it here means each
+// refresh returns a figure that has moved, and the two agree.
+//
+// A paused session is not advanced: its position genuinely is not
+// moving. Neither is one whose reading carries no timestamp, which is
+// any session the event stream announced before a snapshot described
+// it.
+func livePosition(session clients.Session, now time.Time) time.Duration {
+	if session.Paused || session.PositionAt.IsZero() {
+		return session.Position
+	}
+	elapsed := now.Sub(session.PositionAt)
+	if elapsed < 0 {
+		return session.Position
+	}
+	position := session.Position + elapsed
+	if session.Duration > 0 && position > session.Duration {
+		return session.Duration
+	}
+	return position
+}
+
 // overallStatus is the flag beside the page title.
 func overallStatus(paused bool, throttled int, empty, unresolved bool) overallFlag {
 	switch {
@@ -409,11 +438,12 @@ func sessionLines(sessions []clients.Session) []sessionLineView {
 			Percent: -1,
 		}
 		if session.Duration > 0 {
-			line.At = timecode(session.Position)
+			position := livePosition(session, time.Now())
+			line.At = timecode(position)
 			line.Of = timecode(session.Duration)
-			line.PositionMS = session.Position.Milliseconds()
+			line.PositionMS = position.Milliseconds()
 			line.DurationMS = session.Duration.Milliseconds()
-			pct := int(session.Position * 100 / session.Duration)
+			pct := int(position * 100 / session.Duration)
 			line.Percent = min(100, max(0, pct))
 		}
 		if line.Title == "" && line.Device == "" && line.Percent < 0 {

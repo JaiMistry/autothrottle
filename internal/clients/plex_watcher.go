@@ -14,6 +14,12 @@ import (
 	"github.com/coder/websocket"
 )
 
+// detailTimeout bounds the one REST call made when a session starts,
+// purely to learn what is playing. Short on purpose: if it does not
+// answer quickly the reconciliation poll will supply the same detail
+// anyway, and nothing about throttling is waiting on it.
+const detailTimeout = 5 * time.Second
+
 // PlexWatcher implements SessionWatcher against a Plex server's
 // session-notification endpoint (free, undocumented-but-stable, no
 // Plex Pass required), emitting SessionEvents on state changes.
@@ -170,9 +176,10 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		// A stop clears lastPos, so a session that ends and restarts
 		// announces itself properly again.
 		update := Session{
-			Key:      n.SessionKey,
-			Position: time.Duration(n.ViewOffset) * time.Millisecond,
-			Paused:   n.State == "paused",
+			Key:        n.SessionKey,
+			Position:   time.Duration(n.ViewOffset) * time.Millisecond,
+			PositionAt: time.Now(),
+			Paused:     n.State == "paused",
 		}
 		w.mu.Lock()
 		_, announced := w.lastPos[n.SessionKey]
@@ -184,6 +191,47 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			continue
 		}
 		emit(ctx, w.events, update, true)
+
+		// The notification says something started, but not what it is —
+		// identity lives only on the REST endpoint. Fetch it now instead
+		// of leaving the Dashboard reading "1 session counting towards
+		// throttling" with nothing beside it until the next
+		// reconciliation poll, which can be a full minute away.
+		go w.fillDetail(ctx, n.SessionKey)
+	}
+}
+
+// fillDetail looks up what one session actually is and reports it as a
+// detail update. Runs on its own goroutine: it makes a network call,
+// and the socket read loop that triggered it must not wait for that.
+//
+// Failure is not worth surfacing — the reconciliation poll fills the
+// same detail in shortly afterwards, so the cost of a miss is the
+// blank row this exists to avoid, not a wrong one.
+func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
+	ctx, cancel := context.WithTimeout(ctx, detailTimeout)
+	defer cancel()
+
+	sessions, err := w.fetchSessions(ctx)
+	if err != nil {
+		slog.Debug("plex: fetching session detail", "session", sessionKey, "error", err)
+		return
+	}
+	for _, s := range sessions {
+		if s.SessionKey != sessionKey {
+			continue
+		}
+		emitDetail(ctx, w.events, Session{
+			Key:        s.SessionKey,
+			Title:      s.label(),
+			Device:     s.device(),
+			Position:   time.Duration(s.ViewOffset) * time.Millisecond,
+			PositionAt: time.Now(),
+			Duration:   time.Duration(s.Duration) * time.Millisecond,
+			Paused:     s.Player.State == "paused",
+			Local:      s.Player.Local,
+		})
+		return
 	}
 }
 
@@ -226,10 +274,11 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 		}
 		active = append(active, Session{
 			Key: s.SessionKey, Title: s.label(), Device: s.device(),
-			Position: time.Duration(s.ViewOffset) * time.Millisecond,
-			Duration: time.Duration(s.Duration) * time.Millisecond,
-			Paused:   s.Player.State == "paused",
-			Local:    s.Player.Local,
+			Position:   time.Duration(s.ViewOffset) * time.Millisecond,
+			PositionAt: time.Now(),
+			Duration:   time.Duration(s.Duration) * time.Millisecond,
+			Paused:     s.Player.State == "paused",
+			Local:      s.Player.Local,
 		})
 	}
 	w.paused.retain(present)
