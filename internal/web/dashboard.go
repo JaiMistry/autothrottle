@@ -39,12 +39,20 @@ type serverRowView struct {
 // far in. Percent is -1 when the server reported no position, which is
 // the signal to draw no progress bar rather than an empty one.
 type sessionLineView struct {
-	Title   string
-	Device  string
-	Local   bool
-	At      string
-	Of      string
-	Percent int
+	Title  string
+	Device string
+	Local  bool
+	At     string
+	Of     string
+	// PositionMS and DurationMS let the page keep counting between
+	// updates. A player does not ask the server what time it is; it
+	// counts, and corrects when the server next speaks. Without this the
+	// timecode moves in whatever steps the upstream socket happens to
+	// push, which reads as a stutter rather than playback.
+	PositionMS int64
+	DurationMS int64
+	Paused     bool
+	Percent    int
 }
 
 type downloaderRowView struct {
@@ -397,11 +405,14 @@ func sessionLines(sessions []clients.Session) []sessionLineView {
 			Title:   session.Title,
 			Device:  session.Device,
 			Local:   session.Local,
+			Paused:  session.Paused,
 			Percent: -1,
 		}
 		if session.Duration > 0 {
 			line.At = timecode(session.Position)
 			line.Of = timecode(session.Duration)
+			line.PositionMS = session.Position.Milliseconds()
+			line.DurationMS = session.Duration.Milliseconds()
 			pct := int(session.Position * 100 / session.Duration)
 			line.Percent = min(100, max(0, pct))
 		}

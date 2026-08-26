@@ -186,6 +186,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 			Key: s.SessionKey, Title: s.label(), Device: s.device(),
 			Position: time.Duration(s.ViewOffset) * time.Millisecond,
 			Duration: time.Duration(s.Duration) * time.Millisecond,
+			Paused:   s.Player.State == "paused",
 			Local:    s.Player.Local,
 		})
 	}

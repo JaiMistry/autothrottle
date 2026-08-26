@@ -181,6 +181,56 @@
     syncDisabled(form);
   }
 
+  // Playback counts forward in the page, the way a player does. The
+  // server says where a session had reached and whether it is running;
+  // between updates the page advances it itself, and every server
+  // update re-syncs it. Without this the timecode moves in whatever
+  // steps the upstream socket happens to push, which reads as a stutter
+  // rather than as playback.
+  function startPlaybackTick() {
+    if (window.__atPlayTick) clearInterval(window.__atPlayTick);
+    var prior = window.__atPlayAt || {};
+    window.__atPlayAt = {};
+    var pad = function (n) { return String(n).padStart(2, "0"); };
+    var code = function (ms) {
+      var t = Math.max(0, Math.floor(ms / 1000));
+      var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+      return h > 0 ? h + ":" + pad(m) + ":" + pad(sec) : m + ":" + pad(sec);
+    };
+    var started = Date.now();
+    var rows = [].slice.call(document.querySelectorAll(".at-session-progress[data-position-ms]"))
+      .map(function (el, i) {
+        var server = Number(el.dataset.positionMs) || 0;
+        var from = server;
+        // Only take the server's figure when it disagrees by more than a
+        // couple of seconds. Snapping to every small difference makes the
+        // clock visibly step backwards, which reads as a bug rather than
+        // as the correction it is.
+        var shown = prior["s" + i];
+        if (typeof shown === "number" && Math.abs(shown - server) < 2500) from = shown;
+        return {
+          key: "s" + i,
+          el: el,
+          from: from,
+          total: Number(el.dataset.durationMs) || 0,
+          paused: el.dataset.paused === "1",
+          time: el.querySelector(".at-session-time"),
+          fill: el.querySelector(".at-session-fill"),
+        };
+      })
+      .filter(function (r) { return r.total > 0 && r.time && r.fill; });
+    if (!rows.length) return;
+    window.__atPlayTick = setInterval(function () {
+      if (!rows[0].el.isConnected) { clearInterval(window.__atPlayTick); return; }
+      rows.forEach(function (r) {
+        var at = r.paused ? r.from : Math.min(r.total, r.from + (Date.now() - started));
+        window.__atPlayAt[r.key] = at;
+        r.time.textContent = code(at) + " / " + code(r.total);
+        r.fill.style.width = Math.max(0, Math.min(100, Math.round((at / r.total) * 100))) + "%";
+      });
+    }, 1000);
+  }
+
   // Uptime counts forward in the page. The server sends the boot
   // timestamp and the first frame; recomputing from the timestamp keeps
   // it right across a tab that was asleep, which incrementing would not.
@@ -458,6 +508,7 @@
   // and which credential inputs are live.
   function syncAfterRender() {
     startUptime();
+    startPlaybackTick();
     syncTestFields();
     gateAllSubmits();
     syncPlexPanel();

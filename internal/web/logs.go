@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -73,6 +74,24 @@ func (s *Server) logRowsFragment(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// logsLive lets the Events card refresh itself, but only when it is
+// showing the newest page of an unfiltered view. It refreshes the whole
+// panel rather than the card alone, so the level counts and the "N of
+// the last M" line move with the rows instead of drifting out of step.
+func logsLive(p pagedLog, level, search string, perPage int) pagedLog {
+	if search != "" {
+		return p
+	}
+	q := url.Values{}
+	if level != "" {
+		q.Set("level", level)
+	}
+	q.Set("per", strconv.Itoa(perPage))
+	p.LiveEndpoint = "/logs/panel?" + q.Encode()
+	p.LiveTarget = "#log-panel"
+	return p
+}
+
 func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	level := r.URL.Query().Get("level")
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -124,7 +143,7 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 		CountAll: counts["info"] + counts["warn"] + counts["error"],
 		Matching: total,
 		NoEvents: unfiltered == 0,
-		Log:      newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra),
+		Log:      logsLive(newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra), level, search, perPage),
 	}
 	data.Log.Cleared = r.URL.Query().Get("cleared") == "1"
 	return data, nil
@@ -189,6 +208,10 @@ func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {
 	}
 
 	log := newPagedLog("Recent activity", "activity-card", "/activity", rows, total, perPage, page, url.Values{})
+	// The Dashboard's copy refreshes itself; only the card moves, so
+	// nothing above or below it shifts while you are reading.
+	log.LiveEndpoint = fmt.Sprintf("/activity?per=%d", perPage)
+	log.LiveTarget = "#activity-card"
 	log.EmptyNote = "Nothing logged yet."
 	log.ExtraHref = "/logs"
 	log.ExtraLabel = "All logs"

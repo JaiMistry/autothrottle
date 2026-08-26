@@ -31,9 +31,15 @@ type pagedLog struct {
 	PrevPage   int
 	NextPage   int
 	Cleared    bool
-	EmptyNote  string
-	ExtraHref  string
-	ExtraLabel string
+	// LiveEndpoint and LiveTarget, when set, make the card refresh
+	// itself. Only ever set for page one of an unfiltered view: a list
+	// that reordered under someone reading page three, or mid-search,
+	// would be worse than a stale one.
+	LiveEndpoint string
+	LiveTarget   string
+	EmptyNote    string
+	ExtraHref    string
+	ExtraLabel   string
 }
 
 // newPagedLog does the paging arithmetic once, so the two callers can

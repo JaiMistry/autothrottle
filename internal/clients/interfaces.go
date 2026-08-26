@@ -108,6 +108,10 @@ type Session struct {
 	// progress bar in that case rather than guessing at one.
 	Position time.Duration
 	Duration time.Duration
+	// Paused is what the server last reported. A paused session still
+	// counts toward throttling — see pausedTracker — but the page needs
+	// to know, so it does not advance a timecode that is standing still.
+	Paused bool
 	// Local reports playback from the same network as the server. It is
 	// informational here — whether a local session counts toward
 	// throttling is decided by the server's skip_local_playback setting,

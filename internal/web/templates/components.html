@@ -124,7 +124,8 @@
     {{if .Device}}<span class="at-session-device">{{.Device}}</span>{{end}}
     {{if .Local}}<span class="at-session-local" title="Playing from the local network">local</span>{{end}}
   </span>
-  {{if ge .Percent 0}}<span class="at-session-progress">
+  {{if ge .Percent 0}}<span class="at-session-progress"
+     data-position-ms="{{.PositionMS}}" data-duration-ms="{{.DurationMS}}"{{if .Paused}} data-paused="1"{{end}}>
     <span class="at-session-bar" aria-hidden="true"><span class="at-session-fill" style="width:{{.Percent}}%"></span></span>
     <span class="at-session-time">{{.At}} / {{.Of}}</span>
   </span>{{end}}
@@ -199,7 +200,10 @@
      choose how many rows, step through with arrows. Refresh re-reads
      from the server and returns to page 1; Clear empties the view only
      — the events are still there, which is why it says so. */}}
-{{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}">
+{{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}"
+  {{- if and .LiveEndpoint (eq .Page 1) (not .Cleared)}}
+  hx-get="{{.LiveEndpoint}}" hx-trigger="every 10s [document.visibilityState === 'visible']"
+  hx-target="{{.LiveTarget}}" hx-swap="outerHTML"{{end}}>
   <header class="at-card-head">
     <h2 class="at-card-title">{{.Title}}</h2>
     <span class="at-card-action">
