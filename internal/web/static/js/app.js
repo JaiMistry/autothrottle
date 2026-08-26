@@ -85,8 +85,18 @@
     entries.forEach(function (entry) { capList(entry.target); });
   }) : null;
 
-  function bindCaps(scope) {
-    (scope || document).querySelectorAll("[data-cap-rows]").forEach(function (list) {
+  // Always measured against the live document, never against a swap's
+  // target. The Dashboard's polled fragment swaps with outerHTML, so by
+  // the time htmx:afterSwap fires the target is the *old* element,
+  // already detached — every offsetHeight in it reads 0, capList bails
+  // on its !h guard, and the new list is left uncapped. That is why the
+  // card sat correct for one render and then expanded on the first poll.
+  //
+  // Disconnecting first also stops the observer accumulating references
+  // to the detached rows of every poll that has ever run.
+  function bindCaps() {
+    if (observer) observer.disconnect();
+    document.querySelectorAll("[data-cap-rows]").forEach(function (list) {
       capList(list);
       if (!observer) return;
       observer.observe(list);
@@ -98,7 +108,7 @@
   }
 
   /* ── HTMX wiring ────────────────────────────────────────────────── */
-  document.addEventListener("DOMContentLoaded", function () { bindCaps(document); });
+  document.addEventListener("DOMContentLoaded", function () { bindCaps(); });
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
     // A boosted navigation swaps in a fresh scrim, which arrives with its
@@ -107,7 +117,7 @@
     setDrawer(document.body.getAttribute("data-drawer") === "1");
     // Caps have to be re-measured: the swapped rows are new elements the
     // old observer is no longer watching.
-    bindCaps(e.detail.target);
+    bindCaps();
 
     // A swap that replaces the focused element drops focus to <body>,
     // which strands a keyboard user mid-page. Put it back on whatever
