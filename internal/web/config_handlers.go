@@ -317,6 +317,11 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		id = parsed
 	}
 
+	if clash := s.duplicateMediaServer(id, name, rawURL); clash != "" {
+		s.renderConfigError(w, r, "media-servers", clash)
+		return
+	}
+
 	credentialEncrypted := ""
 	if id != 0 {
 		existing, err := s.db.GetMediaServer(id)
@@ -508,6 +513,11 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id = parsed
+	}
+
+	if clash := s.duplicateDownloader(id, name, rawURL); clash != "" {
+		s.renderConfigError(w, r, "downloaders", clash)
+		return
 	}
 
 	credentialEncrypted := sql.NullString{}
