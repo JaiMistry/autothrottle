@@ -127,13 +127,31 @@
       return;
     }
 
-    // Two rows is the target, but the cap lands on a row boundary: a row
-    // is either fully visible or fully scrolled out, never sliced through
-    // the middle. Rows differ a lot in height — a server with three
-    // sessions is several times a quiet one — so cutting at exactly the
-    // height of the first two left the next row's name half-showing
-    // along the bottom edge.
-    var target = heights[0] + heights[1];
+    // How much room the card is actually giving this list. The two cards
+    // share a row height, so a list can be handed far more space than
+    // two of its rows need — which is the common case when the other
+    // card's rows wrap onto more lines.
+    var available = list.parentElement ? list.parentElement.clientHeight : 0;
+    var natural = heights.reduce(function (sum, h) { return sum + h; }, 0);
+
+    // Everything fits: no cap at all. The grid then stretches the rows to
+    // fill the card, so there is no scrollbar and — the point — no band
+    // of dead space under the last row, which is what capping at two
+    // rows regardless of available height produced.
+    if (available > 0 && natural <= available + 1) {
+      list.style.maxHeight = "";
+      list.style.overflowY = "";
+      list.dataset.capFor = signature;
+      return;
+    }
+
+    // Otherwise cap, on a row boundary: a row is either fully visible or
+    // fully scrolled out, never sliced through the middle. Rows differ a
+    // lot in height — a server with three sessions is several times a
+    // quiet one — so cutting at exactly the height of the first two left
+    // the next row's name half-showing along the bottom edge. Two rows is
+    // the floor; past that fill whatever the card gives.
+    var target = Math.max(heights[0] + heights[1], available);
     var total = 0, shown = 0;
     for (var i = 0; i < heights.length; i++) {
       if (shown && total + heights[i] > target) break;
