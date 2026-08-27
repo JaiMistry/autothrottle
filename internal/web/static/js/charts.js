@@ -205,7 +205,7 @@
     // the real start and end travel with each point and the tooltip
     // reads from those. Nothing the reader can see a number for is ever
     // the padded value.
-    var minVisible = (series.to - series.from) * 0.004;
+    var minVisible = (series.to - series.from) * 0.008;
 
     var chart = new ApexCharts(el, Object.assign({}, t, {
       series: [{
@@ -230,15 +230,21 @@
           };
         })
       }],
-      chart: Object.assign({}, t.chart, { type: "rangeBar", height: Math.max(96, names.length * 46 + 40) }),
-      plotOptions: { bar: { horizontal: true, barHeight: "44%", rangeBarGroupRows: true, borderRadius: 3 } },
+      // Taller rows and fatter bars. A session is the thing this chart
+      // exists to show, and at 46px a row with a 44% bar it was a
+      // hairline that could not be read or reliably pointed at.
+      chart: Object.assign({}, t.chart, { type: "rangeBar", height: Math.max(132, names.length * 68 + 44) }),
+      plotOptions: { bar: { horizontal: true, barHeight: "58%", rangeBarGroupRows: true, borderRadius: 3 } },
       annotations: { xaxis: [{ x: series.to, strokeDashArray: 3, borderColor: dark ? "#5c6a80" : "#8593a5" }] },
       xaxis: {
         type: "datetime", min: series.from, max: series.to, tickAmount: 6,
         labels: { datetimeUTC: false, format: axisFormat(false), style: axis(dark) },
         axisBorder: { show: false }, axisTicks: { show: false }
       },
-      yaxis: { labels: { style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "13px" } } },
+      // Wide enough for a real server name. ApexCharts truncates at 160px
+      // by default, which turned "Real Production Plex" into
+      // "Real Production P…".
+      yaxis: { labels: { maxWidth: 220, style: { colors: dark ? "#9aa8bc" : "#4a5768", fontSize: "13px" } } },
       tooltip: Object.assign({}, t.tooltip, {
         // Built by hand because the default reads the drawn y values,
         // which are padded. The markup reuses ApexCharts' own title
