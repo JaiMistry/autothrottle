@@ -315,6 +315,16 @@
       // Handled here; htmx must not then replace the element we just
       // updated, or every gain above is undone.
       e.detail.shouldSwap = false;
+      // Cancelling the swap also cancels htmx:afterSwap, so anything
+      // that normally runs after new content lands has to be run here.
+      // Missing this is what left the playback clock reading values
+      // captured before the refresh.
+      //
+      // Announced as an event rather than called directly: the rest of
+      // that work lives in the other IIFE in this file and is not in
+      // scope here.
+      bindCaps();
+      document.body.dispatchEvent(new CustomEvent("at:merged"));
       return;
     }
     stashScrollers();
@@ -408,48 +418,56 @@
   // update re-syncs it. Without this the timecode moves in whatever
   // steps the upstream socket happens to push, which reads as a stutter
   // rather than as playback.
-  function startPlaybackTick() {
-    if (window.__atPlayTick) clearInterval(window.__atPlayTick);
-    var prior = window.__atPlayAt || {};
-    window.__atPlayAt = {};
+  /* Playback clock.
+
+     Every tick reads the DOM rather than a cached copy of it. The
+     Dashboard's refresh now merges new values straight into the existing
+     elements without any swap event, so anything holding its own copy
+     keeps counting from a baseline that stopped being true — which is
+     what made a paused stream carry on advancing and then jump when it
+     was finally corrected.
+
+     State lives on the element, never in a list indexed by position:
+     rows reorder when a server starts playing, and an index would then
+     hand one session's progress to another. */
+  function timecode(ms) {
     var pad = function (n) { return String(n).padStart(2, "0"); };
-    var code = function (ms) {
-      var t = Math.max(0, Math.floor(ms / 1000));
-      var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
-      return h > 0 ? h + ":" + pad(m) + ":" + pad(sec) : m + ":" + pad(sec);
-    };
-    var started = Date.now();
-    var rows = [].slice.call(document.querySelectorAll(".at-session-progress[data-position-ms]"))
-      .map(function (el, i) {
-        var server = Number(el.dataset.positionMs) || 0;
-        var from = server;
-        // Only take the server's figure when it disagrees by more than a
-        // couple of seconds. Snapping to every small difference makes the
-        // clock visibly step backwards, which reads as a bug rather than
-        // as the correction it is.
-        var shown = prior["s" + i];
-        if (typeof shown === "number" && Math.abs(shown - server) < 2500) from = shown;
-        return {
-          key: "s" + i,
-          el: el,
-          from: from,
-          total: Number(el.dataset.durationMs) || 0,
-          paused: el.dataset.paused === "1",
-          time: el.querySelector(".at-session-time"),
-          fill: el.querySelector(".at-session-fill"),
-        };
-      })
-      .filter(function (r) { return r.total > 0 && r.time && r.fill; });
-    if (!rows.length) return;
-    window.__atPlayTick = setInterval(function () {
-      if (!rows[0].el.isConnected) { clearInterval(window.__atPlayTick); return; }
-      rows.forEach(function (r) {
-        var at = r.paused ? r.from : Math.min(r.total, r.from + (Date.now() - started));
-        window.__atPlayAt[r.key] = at;
-        r.time.textContent = code(at) + " / " + code(r.total);
-        r.fill.style.width = Math.max(0, Math.min(100, Math.round((at / r.total) * 100))) + "%";
-      });
-    }, 1000);
+    var t = Math.max(0, Math.floor(ms / 1000));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+    return h > 0 ? h + ":" + pad(m) + ":" + pad(sec) : m + ":" + pad(sec);
+  }
+
+  function paintPlayback() {
+    document.querySelectorAll(".at-session-progress[data-position-ms]").forEach(function (el) {
+      var total = Number(el.dataset.durationMs) || 0;
+      if (!total) return;
+      var server = Number(el.dataset.positionMs) || 0;
+      var paused = el.dataset.paused === "1";
+
+      // Re-baseline whenever the server reports something new, or the
+      // stream pauses or resumes. Between reports the clock runs on from
+      // the last figure, which is what makes a 5s refresh read as a
+      // per-second clock.
+      var state = el.__atPlay;
+      if (!state || state.server !== server || state.paused !== paused) {
+        state = el.__atPlay = { server: server, paused: paused, since: Date.now() };
+      }
+
+      var at = paused ? server : Math.min(total, server + (Date.now() - state.since));
+      var time = el.querySelector(".at-session-time");
+      var fill = el.querySelector(".at-session-fill");
+      if (time) time.textContent = timecode(at) + " / " + timecode(total);
+      if (fill) fill.style.width = Math.max(0, Math.min(100, Math.round((at / total) * 100))) + "%";
+    });
+  }
+
+  function startPlaybackTick() {
+    // One interval for the life of the page. It walks whatever is on
+    // screen at the time, so it needs no restarting when content changes.
+    if (!window.__atPlayTick) {
+      window.__atPlayTick = setInterval(paintPlayback, 1000);
+    }
+    paintPlayback();
   }
 
   // Uptime counts forward in the page. The server sends the boot
@@ -753,5 +771,8 @@
   }
 
   document.body.addEventListener("htmx:afterSwap", syncAfterRender);
+  // The Dashboard's refresh merges in place and cancels the swap, so it
+  // announces itself this way instead.
+  document.body.addEventListener("at:merged", syncAfterRender);
   document.addEventListener("DOMContentLoaded", syncAfterRender);
 })();
