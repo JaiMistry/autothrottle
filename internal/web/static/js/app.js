@@ -329,6 +329,15 @@
   }
 
   document.body.addEventListener("htmx:beforeSwap", function (e) {
+    // A rejected form comes back as 422 with the page re-rendered and the
+    // reason at the top. htmx drops non-2xx responses by default, so
+    // without this the button does nothing at all and the reason is
+    // never seen — which is worse than the mistake it is reporting.
+    if (e.detail.xhr && e.detail.xhr.status === 422) {
+      e.detail.shouldSwap = true;
+      e.detail.isError = false;
+      return;
+    }
     if (mergeLiveBlock(e)) {
       // Handled here; htmx must not then replace the element we just
       // updated, or every gain above is undone.
