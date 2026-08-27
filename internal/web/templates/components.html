@@ -71,7 +71,11 @@
 {{define "emptystate"}}<div class="at-empty{{if .Tone}} at-empty--{{.Tone}}{{end}}">
   <h3 class="at-empty-title">{{.Title}}</h3>
   {{if .Body}}<p class="at-empty-body">{{.Body}}</p>{{end}}
-  {{if .ActionLabel}}<div class="at-empty-action"><a href="{{.ActionHref}}" class="at-btn at-btn--primary">{{.ActionLabel}}</a></div>{{end}}
+  {{/* Same reason as the pagedlog's link: an empty state is rendered
+       inside containers that target themselves, and a boosted link
+       would inherit that and navigate into the container. */}}
+  {{if .ActionLabel}}<div class="at-empty-action"><a href="{{.ActionHref}}" class="at-btn at-btn--primary"
+     hx-target="body" hx-swap="innerHTML">{{.ActionLabel}}</a></div>{{end}}
 </div>{{end}}
 
 {{/* RateFigure. Chunky arrows on the same 24px grid as the status
@@ -218,7 +222,14 @@
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button class="at-btn at-btn--ghost at-btn--xs" type="submit" {{if eq .Total 0}}disabled{{end}}>Clear</button>
       </form>{{end}}
-      {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs">{{.ExtraLabel}}</a>{{end}}
+      {{/* The target and swap are spelled out because htmx inherits them
+           from ancestors, and this card sets both so it can refresh
+           itself. A boosted link inheriting them navigates *into the
+           card*: the whole Logs page — shell, sidebar and all — was
+           being swapped inside the Dashboard's activity card. These are
+           the defaults a boosted link would otherwise have. */}}
+      {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs"
+         hx-target="body" hx-swap="innerHTML">{{.ExtraLabel}}</a>{{end}}
     </span>
   </header>
   <div style="display:grid">
