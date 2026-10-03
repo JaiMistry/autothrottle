@@ -20,22 +20,15 @@ import (
 
 const keySize = 32 // AES-256
 
-// LoadOrGenerateKey returns the encryption key from AUTOTHROTTLE_ENCRYPTION_KEY
-// if set (base64-encoded, 32 bytes decoded), otherwise loads a
-// previously-generated key from keyPath, or generates and persists a new
-// one there (mode 0600) if neither exists.
-func LoadOrGenerateKey(envValue, keyPath string) ([]byte, error) {
-	if envValue != "" {
-		key, err := base64.StdEncoding.DecodeString(envValue)
-		if err != nil {
-			return nil, fmt.Errorf("decoding AUTOTHROTTLE_ENCRYPTION_KEY: %w", err)
-		}
-		if len(key) != keySize {
-			return nil, fmt.Errorf("AUTOTHROTTLE_ENCRYPTION_KEY must decode to %d bytes, got %d", keySize, len(key))
-		}
-		return key, nil
-	}
-
+// LoadOrGenerateKey loads the key stored at keyPath, or generates one
+// and saves it there (mode 0600) on first run.
+//
+// Deliberately not configurable. The key lives beside the database, so
+// it protects stored credentials from a copy of the database file taken
+// without it — a backup job that only grabs *.db files, a database
+// attached to a bug report — and it does that without anyone having to
+// know it exists.
+func LoadOrGenerateKey(keyPath string) ([]byte, error) {
 	if existing, err := os.ReadFile(keyPath); err == nil {
 		key, err := base64.StdEncoding.DecodeString(string(existing))
 		if err != nil {

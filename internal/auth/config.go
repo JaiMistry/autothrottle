@@ -26,20 +26,20 @@ type Config struct {
 	Password string // held in memory only, never persisted
 }
 
-// LoadConfig reads AUTOTHROTTLE_AUTH_DISABLED, AUTOTHROTTLE_AUTH_USERNAME,
-// and AUTOTHROTTLE_AUTH_PASSWORD. Unless disabled, both username and
+// LoadConfig reads AUTH_DISABLED, AUTH_USERNAME,
+// and AUTH_PASSWORD. Unless disabled, both username and
 // password are required.
 func LoadConfig() (Config, error) {
 	cfg := Config{
-		Disabled: os.Getenv("AUTOTHROTTLE_AUTH_DISABLED") == "true",
-		Username: os.Getenv("AUTOTHROTTLE_AUTH_USERNAME"),
-		Password: os.Getenv("AUTOTHROTTLE_AUTH_PASSWORD"),
+		Disabled: os.Getenv("AUTH_DISABLED") == "true",
+		Username: os.Getenv("AUTH_USERNAME"),
+		Password: os.Getenv("AUTH_PASSWORD"),
 	}
 	if cfg.Disabled {
 		return cfg, nil
 	}
 	if cfg.Username == "" || cfg.Password == "" {
-		return cfg, errors.New("AUTOTHROTTLE_AUTH_USERNAME and AUTOTHROTTLE_AUTH_PASSWORD are required unless AUTOTHROTTLE_AUTH_DISABLED=true")
+		return cfg, errors.New("AUTH_USERNAME and AUTH_PASSWORD are required unless AUTH_DISABLED=true")
 	}
 	return cfg, nil
 }

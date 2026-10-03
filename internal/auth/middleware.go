@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 )
 
@@ -28,32 +28,38 @@ func SessionTokenFromContext(ctx context.Context) string {
 	return token
 }
 
-// secureCookies defaults to true (the app is meant to sit behind a
-// TLS-terminating reverse proxy) but can be turned off for local
-// plain-HTTP development.
-func secureCookies() bool {
-	return os.Getenv("AUTOTHROTTLE_SECURE_COOKIES") != "false"
+// secureRequest reports whether this request reached us over HTTPS,
+// directly or through a TLS-terminating reverse proxy that says so.
+//
+// The session cookie is marked Secure exactly when it is: over HTTPS
+// that keeps the browser from ever sending it in the clear, and over
+// plain http://host:8080 on a LAN a Secure cookie would simply never be
+// sent back, so nobody could log in. Deciding per request means neither
+// setup needs a setting. A client forging the forwarded header only
+// makes its own cookie stricter.
+func secureRequest(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-func setSessionCookie(w http.ResponseWriter, token string) {
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secureCookies(),
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secureCookies(),
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
@@ -142,7 +148,7 @@ func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter, o
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		setSessionCookie(w, token)
+		setSessionCookie(w, r, token)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
@@ -153,7 +159,7 @@ func LogoutHandler(sessions *SessionManager) http.HandlerFunc {
 		if cookie, err := r.Cookie(cookieName); err == nil {
 			sessions.Revoke(cookie.Value)
 		}
-		clearSessionCookie(w)
+		clearSessionCookie(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
 }

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -40,7 +41,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbPath := envOr("AUTOTHROTTLE_DB_PATH", "/data/autothrottle.db")
+	// Everything AutoThrottle keeps lives in one directory: the database
+	// and the key that encrypts stored credentials. One setting, one
+	// mount.
+	dataDir := envOr("DATA_DIR", "/data")
+	if err := checkWritable(dataDir); err != nil {
+		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
+		os.Exit(1)
+	}
+	dbPath := filepath.Join(dataDir, "autothrottle.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
 		logger.Error("opening database", "error", err)
@@ -52,8 +61,7 @@ func main() {
 		}
 	}()
 
-	keyPath := envOr("AUTOTHROTTLE_ENCRYPTION_KEY_PATH", filepath.Join(filepath.Dir(dbPath), "encryption.key"))
-	encryptionKey, err := crypto.LoadOrGenerateKey(os.Getenv("AUTOTHROTTLE_ENCRYPTION_KEY"), keyPath)
+	encryptionKey, err := crypto.LoadOrGenerateKey(filepath.Join(dataDir, "encryption.key"))
 	if err != nil {
 		logger.Error("loading encryption key", "error", err)
 		os.Exit(1)
@@ -73,7 +81,7 @@ func main() {
 	// The banner comes after the database is open so it can report what
 	// was actually found, and before the watchers start so the log reads
 	// in the order things happened.
-	addr := envOr("LISTEN_ADDR", ":8080")
+	addr := ":" + envOr("PORT", "8080")
 	printBanner(os.Stdout, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
@@ -169,4 +177,21 @@ func countRows[T any](rows []T, err error) int {
 		return 0
 	}
 	return len(rows)
+}
+
+// checkWritable fails early, and plainly, when the data directory can't
+// be written. The usual cause is a bind mount the container's user does
+// not own — Docker creates a missing host directory as root — and left
+// to SQLite that surfaces as an opaque "unable to open database file".
+func checkWritable(dir string) error {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("%w — create it on the host and make sure the container's user can write to it (see PUID/PGID in the README)", err)
+	}
+	probe, err := os.CreateTemp(dir, ".write-test-*")
+	if err != nil {
+		return fmt.Errorf("cannot write to it (running as uid %d, gid %d) — on the host, chown the mounted directory to that user, or set PUID/PGID to its owner", os.Getuid(), os.Getgid())
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	return os.Remove(name)
 }

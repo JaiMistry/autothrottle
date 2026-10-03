@@ -7,9 +7,9 @@ import (
 
 func TestLoadConfig(t *testing.T) {
 	t.Run("disabled skips credential requirement", func(t *testing.T) {
-		t.Setenv("AUTOTHROTTLE_AUTH_DISABLED", "true")
-		t.Setenv("AUTOTHROTTLE_AUTH_USERNAME", "")
-		t.Setenv("AUTOTHROTTLE_AUTH_PASSWORD", "")
+		t.Setenv("AUTH_DISABLED", "true")
+		t.Setenv("AUTH_USERNAME", "")
+		t.Setenv("AUTH_PASSWORD", "")
 
 		cfg, err := LoadConfig()
 		if err != nil {
@@ -21,9 +21,9 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("enabled requires both credentials", func(t *testing.T) {
-		t.Setenv("AUTOTHROTTLE_AUTH_DISABLED", "false")
-		t.Setenv("AUTOTHROTTLE_AUTH_USERNAME", "")
-		t.Setenv("AUTOTHROTTLE_AUTH_PASSWORD", "")
+		t.Setenv("AUTH_DISABLED", "false")
+		t.Setenv("AUTH_USERNAME", "")
+		t.Setenv("AUTH_PASSWORD", "")
 
 		if _, err := LoadConfig(); err == nil {
 			t.Fatal("expected an error when credentials are missing and auth is enabled")
@@ -31,9 +31,9 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("enabled with credentials succeeds", func(t *testing.T) {
-		t.Setenv("AUTOTHROTTLE_AUTH_DISABLED", "false")
-		t.Setenv("AUTOTHROTTLE_AUTH_USERNAME", "admin")
-		t.Setenv("AUTOTHROTTLE_AUTH_PASSWORD", "hunter2")
+		t.Setenv("AUTH_DISABLED", "false")
+		t.Setenv("AUTH_USERNAME", "admin")
+		t.Setenv("AUTH_PASSWORD", "hunter2")
 
 		cfg, err := LoadConfig()
 		if err != nil {

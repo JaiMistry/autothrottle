@@ -47,7 +47,7 @@ func TestLoadOrGenerateKey_GeneratesAndPersists(t *testing.T) {
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "encryption.key")
 
-	key1, err := LoadOrGenerateKey("", keyPath)
+	key1, err := LoadOrGenerateKey(keyPath)
 	if err != nil {
 		t.Fatalf("first LoadOrGenerateKey: %v", err)
 	}
@@ -55,21 +55,11 @@ func TestLoadOrGenerateKey_GeneratesAndPersists(t *testing.T) {
 		t.Fatalf("got key of length %d, want %d", len(key1), keySize)
 	}
 
-	key2, err := LoadOrGenerateKey("", keyPath)
+	key2, err := LoadOrGenerateKey(keyPath)
 	if err != nil {
 		t.Fatalf("second LoadOrGenerateKey: %v", err)
 	}
 	if string(key1) != string(key2) {
 		t.Fatal("second call should load the persisted key, not generate a new one")
-	}
-}
-
-func TestLoadOrGenerateKey_FromEnv(t *testing.T) {
-	dir := t.TempDir()
-	keyPath := filepath.Join(dir, "encryption.key")
-
-	// A key that is NOT 32 bytes when decoded should be rejected.
-	if _, err := LoadOrGenerateKey("dG9vc2hvcnQ=", keyPath); err == nil {
-		t.Fatal("expected error for wrong-length env key")
 	}
 }
