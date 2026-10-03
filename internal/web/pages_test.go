@@ -164,7 +164,7 @@ func TestUpdateCheck(t *testing.T) {
 			gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(c.status)
 				if c.status == 200 {
-					fmt.Fprintf(w, `{"tag_name":%q}`, c.tag)
+					_, _ = fmt.Fprintf(w, `{"tag_name":%q}`, c.tag)
 				}
 			}))
 			defer gh.Close()
