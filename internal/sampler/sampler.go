@@ -56,8 +56,7 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store, throttle 
 	}
 }
 
-// Run samples until ctx is cancelled. The interval is re-read every
-// tick so a change takes effect without a restart.
+// Run samples until ctx is cancelled.
 func (s *Sampler) Run(ctx context.Context) {
 	for {
 		select {

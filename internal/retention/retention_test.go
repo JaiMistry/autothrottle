@@ -26,15 +26,6 @@ func TestRunOnceRollsUpAndPrunes(t *testing.T) {
 	}
 
 	store := settings.New(database)
-	if err := store.Set(settings.KeyBandwidthRawRetentionDays, "7"); err != nil {
-		t.Fatalf("configuring retention: %v", err)
-	}
-	if err := store.Set(settings.KeyBandwidthRollupRetention, "30"); err != nil {
-		t.Fatalf("configuring retention: %v", err)
-	}
-	if err := store.Set(settings.KeyEventRetentionDays, "30"); err != nil {
-		t.Fatalf("configuring retention: %v", err)
-	}
 
 	now := time.Now()
 	// Old enough to be rolled up, recent enough for the rollup to survive.
@@ -50,7 +41,7 @@ func TestRunOnceRollsUpAndPrunes(t *testing.T) {
 		t.Fatalf("inserting sample: %v", err)
 	}
 	if err := database.InsertEvent(db.Event{
-		OccurredAt: db.FormatTime(now.Add(-40 * 24 * time.Hour)), Level: "info", Message: "ancient",
+		OccurredAt: db.FormatTime(now.Add(-100 * 24 * time.Hour)), Level: "info", Message: "ancient",
 	}); err != nil {
 		t.Fatalf("inserting event: %v", err)
 	}
@@ -102,9 +93,6 @@ func TestRunOnceDropsExpiredRollups(t *testing.T) {
 	}
 
 	store := settings.New(database)
-	if err := store.Set(settings.KeyBandwidthRollupRetention, "30"); err != nil {
-		t.Fatalf("configuring retention: %v", err)
-	}
 
 	now := time.Now()
 	if err := database.InsertBandwidthSample(db.BandwidthSample{

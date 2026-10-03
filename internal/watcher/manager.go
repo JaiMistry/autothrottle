@@ -163,9 +163,8 @@ func (m *Manager) Reconcile() {
 // the scheduler, the web layer — sees only the interface, so a new
 // server type is a case here and a case in supportedType.
 func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
-	// Read at the point of use rather than captured, so changing the
-	// timeout takes effect without restarting a watcher — and so it
-	// stays out of the fingerprint that decides when one must restart.
+	// Passed as a function so it stays out of the fingerprint that
+	// decides when a watcher must restart.
 	pausedTimeout := func() time.Duration {
 		if m.settings == nil {
 			return 0
@@ -240,9 +239,6 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 // that session active forever and the downloader throttled forever.
 // Polling a full snapshot converges on truth regardless of which
 // individual notifications were missed.
-//
-// The interval is re-read every tick, so changing it takes effect
-// without restarting the watcher.
 func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, name string, w clients.SessionWatcher) {
 	failures := 0
 	// The first pass runs immediately. Waiting a full interval for it

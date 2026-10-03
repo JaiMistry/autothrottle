@@ -8,7 +8,7 @@ import (
 
 // MediaServerType names one supported media server, for a UI that
 // renders the set generically rather than hardcoding an option per
-// type — the same reason internal/settings exposes Definitions.
+// type.
 type MediaServerType struct {
 	Value string
 	Label string
