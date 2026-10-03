@@ -59,10 +59,10 @@ No schedules to maintain, no "slow mode" to remember to switch off.
 
 ## Quick start
 
-1. **Create a folder** for AutoThrottle and a `data` directory inside it:
+1. **Create a folder** for AutoThrottle:
 
    ```sh
-   mkdir -p autothrottle/data && cd autothrottle
+   mkdir autothrottle && cd autothrottle
    ```
 
 2. **Save this as `docker-compose.yml`:**
@@ -72,8 +72,9 @@ No schedules to maintain, no "slow mode" to remember to switch off.
      autothrottle:
        image: jaimistry/autothrottle:latest
        container_name: autothrottle
-       user: "${PUID:-1000}:${PGID:-1000}"
        environment:
+         - PUID=1000
+         - PGID=1000
          - TZ=America/Los_Angeles
        volumes:
          - ./data:/data
@@ -128,7 +129,7 @@ you want them:
 | Variable | Default | What it does |
 |---|---|---|
 | `TZ` | `America/Los_Angeles` | Time zone for every timestamp in the app and its log. Any [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), e.g. `Europe/London`. |
-| `PUID` / `PGID` | `1000` / `1000` | The user and group the container runs as. Use the owner of your `data` directory — `id -u` and `id -g` on the host. These are read by Docker Compose for the `user:` line, so set them in your shell or a `.env` file next to the compose file, not under `environment:`. |
+| `PUID` / `PGID` | `1000` / `1000` | The user and group AutoThrottle runs as, and that will own its data folder. Use your own — run `id -u` and `id -g` on the host. Ownership of the folder is fixed automatically on start. |
 | `AUTH_USERNAME` | — | Sign in with these credentials instead of creating an account in the browser. Set both or neither. |
 | `AUTH_PASSWORD` | — | |
 | `AUTH_DISABLED` | `false` | Set to `true` to turn login off entirely — only if AutoThrottle sits behind a reverse proxy that does its own authentication. |
@@ -176,9 +177,10 @@ Tested against real servers:
 ## Troubleshooting
 
 **The container exits saying the data directory is not usable.**
-The container's user can't write to `./data`. Docker creates a missing
-directory as root, so either `mkdir data` before the first start, or
-`sudo chown 1000:1000 data` (matching your `PUID`/`PGID`).
+Usually the mount is read-only, or the container was started with a
+`user:` line — in which case that user must own the folder, since
+AutoThrottle only fixes ownership itself when it starts as root. Remove
+`user:` and use `PUID`/`PGID` instead.
 
 **qBittorrent says "too many failed attempts".**
 qBittorrent temporarily bans an address after repeated wrong passwords.

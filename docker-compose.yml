@@ -2,10 +2,11 @@ services:
   autothrottle:
     image: jaimistry/autothrottle:latest
     container_name: autothrottle
-    # Runs as this user so it can write to ./data. Set them to the owner
-    # of that directory — `id -u` and `id -g` on the host.
-    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
+      # The user and group that own ./data on the host — `id -u` and
+      # `id -g`. AutoThrottle runs as them and fixes ownership itself.
+      - PUID=1000
+      - PGID=1000
       - TZ=America/Los_Angeles
       # Optional. Leave unset to create an account in the browser on
       # first run, using the setup code printed in the container log.

@@ -41,6 +41,10 @@ func main() {
 	// business, so a second setting for the same thing would only be a
 	// way for the two to disagree.
 	const dataDir = "/data"
+	if err := dropPrivileges(dataDir); err != nil {
+		logger.Error("switching to PUID/PGID", "error", err)
+		os.Exit(1)
+	}
 	if err := checkWritable(dataDir); err != nil {
 		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
 		os.Exit(1)
@@ -188,11 +192,11 @@ func countRows[T any](rows []T, err error) int {
 // to SQLite that surfaces as an opaque "unable to open database file".
 func checkWritable(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("%w — create it on the host and make sure the container's user can write to it (see PUID/PGID in the README)", err)
+		return fmt.Errorf("%w — check the bind mount for /data", err)
 	}
 	probe, err := os.CreateTemp(dir, ".write-test-*")
 	if err != nil {
-		return fmt.Errorf("cannot write to it (running as uid %d, gid %d) — on the host, chown the mounted directory to that user, or set PUID/PGID to its owner", os.Getuid(), os.Getgid())
+		return fmt.Errorf("cannot write to it as uid %d, gid %d — if the container is started with user:, that user must own the mounted directory; otherwise check the mount is not read-only", os.Getuid(), os.Getgid())
 	}
 	name := probe.Name()
 	_ = probe.Close()
