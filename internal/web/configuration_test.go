@@ -211,3 +211,24 @@ func TestConnectionTest(t *testing.T) {
 		})
 	}
 }
+
+// A new server or downloader must start switched on: unticked by
+// default, one saved without noticing was silently never used.
+func TestNewEntriesStartEnabled(t *testing.T) {
+	app := newApp(t)
+	for _, tab := range []string{"media-servers", "downloaders"} {
+		body := app.get("/configuration?tab=" + tab).Body.String()
+		if !strings.Contains(body, `name="enabled" checked`) {
+			t.Errorf("%s: the Enabled box starts unticked for a new entry", tab)
+		}
+	}
+	// Editing still shows the entry's real state.
+	id := app.mediaServer("Off", "jellyfin", "http://off.lan")
+	ms, _ := app.db.GetMediaServer(id)
+	ms.Enabled = false
+	_ = app.db.UpdateMediaServer(ms)
+	body := app.get(fmt.Sprintf("/configuration?tab=media-servers&edit=%d", id)).Body.String()
+	if strings.Contains(body, `name="enabled" checked`) {
+		t.Error("editing a disabled server shows it as enabled")
+	}
+}

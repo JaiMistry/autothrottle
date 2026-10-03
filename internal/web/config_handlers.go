@@ -238,6 +238,13 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A new server or downloader starts switched on. Left at the zero
+	// value, the box rendered unticked, so anyone who didn't notice it
+	// saved one that was never watched or throttled, with no error
+	// anywhere to say why nothing happened.
+	data.EditMediaServer.Enabled = true
+	data.EditDownloader.Enabled = true
+
 	if editID := r.URL.Query().Get("edit"); editID != "" {
 		if id, err := strconv.ParseInt(editID, 10, 64); err == nil {
 			switch tab {
