@@ -1,9 +1,9 @@
 # Development build, from source. For running AutoThrottle, use
 # docker-compose.yml instead — it pulls the published image.
 #
-# scripts/dev-build.sh drives this file. It keeps the named volume the
-# dev instance has always used, so switching compose files moved no data.
----
+# Deliberately the same shape as the public file — bind mount, PUID/PGID,
+# no credentials — so the dev instance exercises what a new user gets.
+# scripts/dev-build.sh drives it.
 services:
   autothrottle:
     build:
@@ -11,31 +11,22 @@ services:
       args:
         # A release stamps this from the git tag; this is the local default.
         VERSION: ${VERSION:-dev}
-        # Populate these for a local build that should identify itself:
-        #   COMMIT=$(git rev-parse --short HEAD) \
-        #   BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose build
         COMMIT: ${COMMIT:-}
         BUILD_DATE: ${BUILD_DATE:-}
     image: autothrottle-local:latest
     pull_policy: never
     container_name: autothrottle
     environment:
-      - AUTH_USERNAME=admin
-      - AUTH_PASSWORD=devpassword
+      - PUID=1000
+      - PGID=1000
       - TZ=America/Los_Angeles
     volumes:
-      - autothrottle_data:/data
+      - ./data:/data
     ports:
-      # Host side kept at 8080 so the dev instance's address never moved.
-      - "8080:7676"
+      - "7676:7676"
     restart: unless-stopped
-    # The app is a static Go binary over an embedded SQLite file and
-    # sits at ~22 MiB in practice. The cap is not about this container
-    # being greedy — it is about it being unable to become the reason
-    # something else on the host dies. Docker advertises the host's
-    # full RAM to every container, so nothing self-limits by default.
+    # The app sits around 10–25 MiB. The cap is about this container
+    # never being the reason something else on the host dies: Docker
+    # advertises the host's full RAM to every container by default.
     mem_limit: 256m
     memswap_limit: 256m
-
-volumes:
-  autothrottle_data:

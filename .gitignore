@@ -17,3 +17,6 @@ plan.md
 
 # UI design system
 handoff/
+
+# Local data for docker-compose.dev.yml
+/data/
