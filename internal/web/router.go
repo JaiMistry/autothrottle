@@ -27,7 +27,7 @@ var staticFS embed.FS
 // pages would collide, since every page defines a template named
 // "content" and html/template's named templates share one namespace
 // per *template.Template instance.
-var pages = []string{"login", "dashboard", "configuration", "logs", "analytics"}
+var pages = []string{"login", "setup", "dashboard", "configuration", "logs", "analytics"}
 
 // watcherManager is the watcher-lifecycle surface the web layer needs:
 // after any media-server change, reconcile the running watchers so the
@@ -40,7 +40,7 @@ type watcherManager interface {
 
 type Server struct {
 	db            *db.DB
-	authCfg       auth.Config
+	auth          *auth.Authenticator
 	sessions      *auth.SessionManager
 	limiter       *auth.LoginLimiter
 	csrf          *auth.CSRF
@@ -63,7 +63,7 @@ func parsePage(page string, funcs template.FuncMap) (*template.Template, error) 
 		templateFS, "templates/layout.html", "templates/components.html", "templates/"+page+".html")
 }
 
-func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager, store *settings.Store) (*Server, error) {
+func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager, store *settings.Store) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		t, err := parsePage(page, templateFuncs())
@@ -85,7 +85,7 @@ func New(database *db.DB, authCfg auth.Config, encryptionKey []byte, sched *sche
 
 	return &Server{
 		db:            database,
-		authCfg:       authCfg,
+		auth:          authenticator,
 		sessions:      auth.NewDefaultSessionManager().WithStore(database),
 		limiter:       auth.NewDefaultLoginLimiter(),
 		csrf:          csrf,
@@ -118,7 +118,9 @@ func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /login", noStoreHTML(http.HandlerFunc(s.loginPage)))
-	mux.HandleFunc("POST /login", auth.LoginHandler(s.authCfg, s.sessions, s.limiter, s.loginFailed))
+	mux.HandleFunc("POST /login", auth.LoginHandler(s.auth, s.sessions, s.limiter, s.loginFailed))
+	mux.Handle("GET /setup", noStoreHTML(http.HandlerFunc(s.setupPage)))
+	mux.HandleFunc("POST /setup", s.completeSetup)
 	mux.HandleFunc("POST /logout", auth.LogoutHandler(s.sessions))
 	mux.HandleFunc("GET /health", s.healthHandler)
 	mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
@@ -158,8 +160,8 @@ func (s *Server) Router() http.Handler {
 
 	// Wraps "/" only. "/static/" is a more specific pattern registered
 	// below, so hashed assets keep their immutable headers.
-	mux.Handle("/", noStoreHTML(auth.RequireAuth(s.authCfg, s.sessions)(
-		auth.RequireCSRF(s.authCfg, s.csrf)(protected),
+	mux.Handle("/", noStoreHTML(auth.RequireAuth(s.auth, s.sessions)(
+		auth.RequireCSRF(s.auth, s.csrf)(protected),
 	)))
 
 	if s.assets != nil {

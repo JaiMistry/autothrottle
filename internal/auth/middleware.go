@@ -66,13 +66,18 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 }
 
 // RequireAuth redirects to /login unless auth is disabled or the
-// request carries a valid session cookie. On success, the session
-// token is attached to the request context for RequireCSRF to use.
-func RequireAuth(cfg Config, sessions *SessionManager) func(http.Handler) http.Handler {
+// request carries a valid session cookie — or to /setup while there is
+// no account to log in to. On success, the session token is attached
+// to the request context for RequireCSRF to use.
+func RequireAuth(a *Authenticator, sessions *SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if cfg.Disabled {
+			if a.Disabled() {
 				next.ServeHTTP(w, r)
+				return
+			}
+			if a.NeedsSetup() {
+				http.Redirect(w, r, "/setup", http.StatusSeeOther)
 				return
 			}
 			cookie, err := r.Cookie(cookieName)
@@ -90,10 +95,10 @@ func RequireAuth(cfg Config, sessions *SessionManager) func(http.Handler) http.H
 // (anything other than GET/HEAD/OPTIONS). No-op when auth is disabled —
 // without a session there's no synchronizer token to check against,
 // and a disabled-auth deployment has already accepted that tradeoff.
-func RequireCSRF(cfg Config, csrf *CSRF) func(http.Handler) http.Handler {
+func RequireCSRF(a *Authenticator, csrf *CSRF) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if cfg.Disabled || r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			if a.Disabled() || r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -119,7 +124,7 @@ func RequireCSRF(cfg Config, csrf *CSRF) func(http.Handler) http.Handler {
 // login page rather than a plain-text error.
 type LoginFailure func(w http.ResponseWriter, r *http.Request, status int, message string)
 
-func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter, onFailure LoginFailure) http.HandlerFunc {
+func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimiter, onFailure LoginFailure) http.HandlerFunc {
 	fail := onFailure
 	if fail == nil {
 		fail = func(w http.ResponseWriter, _ *http.Request, status int, message string) {
@@ -137,7 +142,7 @@ func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter, o
 			fail(w, r, http.StatusUnauthorized, "Enter a username and password.")
 			return
 		}
-		if !cfg.Verify(username, password) {
+		if !a.Verify(username, password) {
 			// Deliberately generic: saying which half was wrong would
 			// confirm whether a username exists.
 			fail(w, r, http.StatusUnauthorized, "Invalid username or password.")
@@ -151,6 +156,18 @@ func LoginHandler(cfg Config, sessions *SessionManager, limiter *LoginLimiter, o
 		setSessionCookie(w, r, token)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
+}
+
+// StartSession signs the browser in, for a flow that has just proved
+// who someone is by other means — finishing setup, where asking for the
+// password a second time on the very next page would be pointless.
+func StartSession(w http.ResponseWriter, r *http.Request, sessions *SessionManager) error {
+	token, err := sessions.Create()
+	if err != nil {
+		return err
+	}
+	setSessionCookie(w, r, token)
+	return nil
 }
 
 // LogoutHandler revokes the session and clears the cookie.

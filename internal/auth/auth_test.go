@@ -5,60 +5,6 @@ import (
 	"time"
 )
 
-func TestLoadConfig(t *testing.T) {
-	t.Run("disabled skips credential requirement", func(t *testing.T) {
-		t.Setenv("AUTH_DISABLED", "true")
-		t.Setenv("AUTH_USERNAME", "")
-		t.Setenv("AUTH_PASSWORD", "")
-
-		cfg, err := LoadConfig()
-		if err != nil {
-			t.Fatalf("LoadConfig: %v", err)
-		}
-		if !cfg.Disabled {
-			t.Fatal("expected Disabled to be true")
-		}
-	})
-
-	t.Run("enabled requires both credentials", func(t *testing.T) {
-		t.Setenv("AUTH_DISABLED", "false")
-		t.Setenv("AUTH_USERNAME", "")
-		t.Setenv("AUTH_PASSWORD", "")
-
-		if _, err := LoadConfig(); err == nil {
-			t.Fatal("expected an error when credentials are missing and auth is enabled")
-		}
-	})
-
-	t.Run("enabled with credentials succeeds", func(t *testing.T) {
-		t.Setenv("AUTH_DISABLED", "false")
-		t.Setenv("AUTH_USERNAME", "admin")
-		t.Setenv("AUTH_PASSWORD", "hunter2")
-
-		cfg, err := LoadConfig()
-		if err != nil {
-			t.Fatalf("LoadConfig: %v", err)
-		}
-		if cfg.Username != "admin" || cfg.Password != "hunter2" {
-			t.Fatal("expected credentials to be loaded from env")
-		}
-	})
-}
-
-func TestConfigVerify(t *testing.T) {
-	cfg := Config{Username: "admin", Password: "correct-horse"}
-
-	if !cfg.Verify("admin", "correct-horse") {
-		t.Fatal("expected correct credentials to verify")
-	}
-	if cfg.Verify("admin", "wrong") {
-		t.Fatal("expected wrong password to fail")
-	}
-	if cfg.Verify("nope", "correct-horse") {
-		t.Fatal("expected wrong username to fail")
-	}
-}
-
 func TestSessionManager(t *testing.T) {
 	sm := NewSessionManager(50 * time.Millisecond)
 

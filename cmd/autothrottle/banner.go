@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
 
@@ -26,7 +27,9 @@ const bannerArt = `
 type startupInfo struct {
 	DatabasePath string
 	Address      string
-	AuthDisabled bool
+	AuthMode     auth.Mode
+	AuthUser     string
+	SetupCode    string
 	MediaServers int
 	Downloaders  int
 	Mappings     int
@@ -60,9 +63,18 @@ func printBanner(out io.Writer, build version.Build, info startupInfo) {
 	row("Runtime", runtimeDesc)
 	row("Database", info.DatabasePath)
 	row("Listening", info.Address)
-	row("Auth", authDesc(info.AuthDisabled))
+	row("Auth", authDesc(info))
 	row("Configured", configuredDesc(info))
 	b.WriteString("\n")
+	if info.SetupCode != "" {
+		fmt.Fprintf(&b, "  ┌──────────────────────────────────────────────────┐\n")
+		fmt.Fprintf(&b, "  │  First run. Open the web UI and enter this code: │\n")
+		fmt.Fprintf(&b, "  │                                                  │\n")
+		fmt.Fprintf(&b, "  │                     %s                    │\n", info.SetupCode)
+		fmt.Fprintf(&b, "  │                                                  │\n")
+		fmt.Fprintf(&b, "  │  It works once, until an account is created.     │\n")
+		fmt.Fprintf(&b, "  └──────────────────────────────────────────────────┘\n\n")
+	}
 
 	// Written one line at a time on purpose. A single multi-line write
 	// becomes one Docker log entry with newlines inside it, and a viewer
@@ -89,11 +101,17 @@ func buildDate(t time.Time) string {
 	return t.Local().Format("2 Jan 2006 15:04 MST")
 }
 
-func authDesc(disabled bool) string {
-	if disabled {
+func authDesc(info startupInfo) string {
+	switch info.AuthMode {
+	case auth.ModeDisabled:
 		return "disabled — anyone who can reach this port has full access"
+	case auth.ModeEnvironment:
+		return "account " + info.AuthUser + " (from AUTH_USERNAME / AUTH_PASSWORD)"
+	case auth.ModeAccount:
+		return "account " + info.AuthUser
+	default:
+		return "not set up yet — open the web UI to create an account"
 	}
-	return "enabled"
 }
 
 // configuredDesc reads "3 media servers · 2 downloaders · 5 mappings",

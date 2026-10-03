@@ -74,13 +74,17 @@ func (s *Server) downloaderState(dl db.Downloader) string {
 }
 
 // authSummary states how login is configured. Read-only on purpose:
-// credentials come from the environment at deploy time, and a field
-// here would imply they can be changed from the browser.
+// there is no password change in the browser, and a field here would
+// imply there is.
 func (s *Server) authSummary() string {
-	if s.authCfg.Disabled {
+	switch s.auth.Mode() {
+	case auth.ModeDisabled:
 		return "disabled — anyone who can reach this app is signed in"
+	case auth.ModeEnvironment:
+		return "signed in as " + s.auth.Username() + " · credentials from the environment"
+	default:
+		return "signed in as " + s.auth.Username()
 	}
-	return "enabled · signed in as " + s.authCfg.Username
 }
 
 func mappingKey(mediaServerID, downloaderID int64) string {

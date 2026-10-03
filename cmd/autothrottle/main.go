@@ -35,12 +35,6 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	authCfg, err := auth.LoadConfig()
-	if err != nil {
-		logger.Error("loading auth config", "error", err)
-		os.Exit(1)
-	}
-
 	// Everything AutoThrottle keeps lives in one directory: the database
 	// and the key that encrypts stored credentials. One setting, one
 	// mount.
@@ -60,6 +54,14 @@ func main() {
 			logger.Error("closing database", "error", err)
 		}
 	}()
+
+	// Auth reads the database for an account created on the setup
+	// screen, so it loads after the database rather than first.
+	authenticator, err := auth.Load(database)
+	if err != nil {
+		logger.Error("loading auth config", "error", err)
+		os.Exit(1)
+	}
 
 	encryptionKey, err := crypto.LoadOrGenerateKey(filepath.Join(dataDir, "encryption.key"))
 	if err != nil {
@@ -85,7 +87,9 @@ func main() {
 	printBanner(os.Stdout, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
-		AuthDisabled: authCfg.Disabled,
+		AuthMode:     authenticator.Mode(),
+		AuthUser:     authenticator.Username(),
+		SetupCode:    authenticator.SetupCode(),
 		MediaServers: countRows(database.ListMediaServers()),
 		Downloaders:  countRows(database.ListDownloaders()),
 		Mappings:     countRows(database.ListMappings()),
@@ -97,7 +101,7 @@ func main() {
 	samples := sampler.New(database, encryptionKey, store, sched)
 	maintenance := retention.New(database, store)
 
-	srv, err := web.New(database, authCfg, encryptionKey, sched, watchers, store)
+	srv, err := web.New(database, authenticator, encryptionKey, sched, watchers, store)
 	if err != nil {
 		logger.Error("initializing web server", "error", err)
 		os.Exit(1)
@@ -142,7 +146,7 @@ func main() {
 	go maintenance.Run(ctx)
 
 	go func() {
-		logger.Info("listening", "addr", addr, "auth_disabled", authCfg.Disabled)
+		logger.Info("listening", "addr", addr, "auth_disabled", authenticator.Disabled())
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "error", err)
 			os.Exit(1)

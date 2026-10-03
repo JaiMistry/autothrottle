@@ -146,3 +146,14 @@ CREATE TABLE IF NOT EXISTS paused_sessions (
     position_ms INTEGER NOT NULL,
     PRIMARY KEY (media_server_id, session_key)
 );
+
+-- The login account created on the first-run setup screen. There is only
+-- ever one, which the CHECK enforces at the database rather than trusting
+-- the handler: a second insert fails instead of quietly adding a user.
+-- Unused when credentials come from the environment, which always win.
+CREATE TABLE IF NOT EXISTS account (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);

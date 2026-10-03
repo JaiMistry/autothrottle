@@ -33,6 +33,14 @@ func (s *Server) loginFailed(w http.ResponseWriter, r *http.Request, status int,
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case s.auth.Disabled():
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	case s.auth.NeedsSetup():
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
 	data := pageData{Title: "Log in", Version: version.Label(), Asset: s.assets.URL}
 	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
 		slog.Error("rendering login page", "error", err)
