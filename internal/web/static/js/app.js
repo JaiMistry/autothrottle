@@ -556,9 +556,22 @@
      a bad one, and still save — which is the hole the gate exists to
      close. Only a passing card is cleared: a failure is left alone,
      because its text is what explains the field being outlined. */
+  //
+  // "Edited" means the values differ from the ones that passed — not that
+  // an event fired. Leaving a field fires `change` even when nothing new
+  // was typed, and retiring on that disabled the save button in the
+  // instant before a click on it landed, so the save silently did nothing.
+  function formValues(form) {
+    var pairs = [];
+    new FormData(form).forEach(function (value, name) {
+      if (name !== "csrf_token") pairs.push(name + "=" + value);
+    });
+    return pairs.join("&");
+  }
+
   function retireTestResult(form) {
     var passed = form.querySelector('.at-testresult[data-state="connected"]');
-    if (passed) passed.remove();
+    if (passed && form.__testedValues !== formValues(form)) passed.remove();
   }
 
   function fieldEdited(e) {
@@ -570,6 +583,14 @@
 
   document.addEventListener("input", fieldEdited);
   document.addEventListener("change", fieldEdited);
+
+  // Remember exactly what passed, at the moment it passes.
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var form = e.detail.target && e.detail.target.closest && e.detail.target.closest("form[data-require]");
+    if (form && form.querySelector('.at-testresult[data-state="connected"]')) {
+      form.__testedValues = formValues(form);
+    }
+  });
 
   // A failed test names the field that caused it, so the card can outline
   // it. The names differ per form, and a downloader's credential is two
