@@ -18,5 +18,8 @@ plan.md
 # UI design system
 handoff/
 
-# Local data for docker-compose.dev.yml
+# This machine's development setup: the dev compose file, the script
+# that drives it, and the data it writes. Kept out of the repository.
+/docker-compose.dev.yml
+/scripts/dev-build.sh
 /data/

@@ -210,8 +210,10 @@ isn't, and needs no login — so it plugs straight into an uptime monitor.
 ```sh
 git clone https://github.com/JaiMistry/autothrottle.git
 cd autothrottle
-docker compose -f docker-compose.dev.yml up --build
+docker build -t autothrottle .
 ```
+
+Then use the `docker-compose.yml` above with `image: autothrottle`.
 
 ## License
 

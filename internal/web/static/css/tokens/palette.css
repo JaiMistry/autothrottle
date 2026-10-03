@@ -1,4 +1,4 @@
-/* Raw palette — the fixed hexes from autothrottle_visual_identity.html.
+/* Raw palette — the fixed hexes of the AutoThrottle visual identity.
    Theme-independent. Never reference these directly in components;
    use the semantic aliases in theme.css. */
 :root{
