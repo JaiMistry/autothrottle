@@ -288,7 +288,8 @@ const transmission = {
 
     section('Navigation');
     await navigate('/');
-    check(!(await page.$('.at-nav-item[href="/analytics"]')) || true, 'nav renders');
+    await settle(() => page.click('.at-nav-item[href="/logs"]'));
+    check(at() === '/logs' && (await page.$$('.at-shell')).length === 1, 'moving between pages swaps cleanly', at());
     check(pageErrors.length === 0, 'no JavaScript errors on any page', pageErrors.join(' | '));
   } catch (e) {
     check(false, 'the scenario ran to the end', e.stack);
