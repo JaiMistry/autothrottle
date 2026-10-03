@@ -29,8 +29,8 @@ version=$(git describe --tags --dirty 2>/dev/null || echo dev)
 COMMIT="$commit" \
 VERSION="${VERSION:-$version}" \
 BUILD_DATE="$(git log -1 --format=%cI)" \
-  docker compose build --memory 1500m "$@"
-COMMIT="$commit" docker compose up -d
+  docker compose -f docker-compose.dev.yml build --memory 1500m "$@"
+COMMIT="$commit" docker compose -f docker-compose.dev.yml up -d
 
 # Every rebuild leaves the previous image untagged, and they accumulate
 # fast on a box that also runs 34 production containers. Dangling only:
