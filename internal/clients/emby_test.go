@@ -129,11 +129,11 @@ func TestEmbyPausedSessionKeepsCounting(t *testing.T) {
 	paused := playingSession("a", "8.8.8.8")
 	paused.PlayState.IsPaused = true
 	w.handleSessions(ctx, []embySession{paused})
-	assertNoEvent(t, w)
+	assertStillActive(t, w)
 
-	// Resuming is likewise not a change worth reporting.
+	// Resuming is likewise not a change in whether it counts.
 	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
-	assertNoEvent(t, w)
+	assertStillActive(t, w)
 
 	// Only the session actually ending stops it.
 	w.handleSessions(ctx, nil)
@@ -380,5 +380,54 @@ func TestEmbySubscribeMessageShape(t *testing.T) {
 	}
 	if string(b) != `{"MessageType":"KeepAlive"}` {
 		t.Errorf("keepalive message = %s", b)
+	}
+}
+
+// A pause stops the position, so "has it moved" alone never noticed the
+// one change that mattered: the Dashboard went on showing the stream as
+// playing, clock running, until the next reconcile poll.
+func TestEmbyPauseIsReportedAsItHappens(t *testing.T) {
+	w := newEmbyWatcher(flavorJellyfin, "http://x", "k", false)
+	ctx := context.Background()
+
+	s := playingSession("a", "8.8.8.8")
+	s.PlayState.PositionTicks = 600_000_000
+	w.handleSessions(ctx, []embySession{s})
+	assertEvent(t, w, "a", true)
+
+	s.PlayState.IsPaused = true // same position, now paused
+	w.handleSessions(ctx, []embySession{s})
+	select {
+	case ev := <-w.Events():
+		if !ev.DetailOnly || !ev.Paused {
+			t.Fatalf("pause reported as %+v, want a detail update marked paused", ev)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pausing produced no update at all")
+	}
+
+	s.PlayState.IsPaused = false // and resuming, still at the same spot
+	w.handleSessions(ctx, []embySession{s})
+	select {
+	case ev := <-w.Events():
+		if !ev.DetailOnly || ev.Paused {
+			t.Fatalf("resume reported as %+v", ev)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("resuming produced no update")
+	}
+}
+
+// assertStillActive allows a pause or resume to be reported — the
+// Dashboard needs to show it — but only as a detail update. Anything
+// that would re-resolve throttle state, or end the session, fails.
+func assertStillActive(t *testing.T, w *EmbyWatcher) {
+	t.Helper()
+	select {
+	case ev := <-w.Events():
+		if !ev.DetailOnly || !ev.Active {
+			t.Fatalf("a pause changed throttle state: %+v", ev)
+		}
+	case <-time.After(50 * time.Millisecond):
 	}
 }

@@ -277,16 +277,22 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 	for key, session := range next {
 		if prev, had := previous[key]; !had {
 			emit(ctx, w.events, session, true)
-		} else if session.Position != prev.Position {
-			// Still playing, but it has moved. The socket pushes a fresh
-			// list every second or so; without this the position only
-			// ever reached the app on the much slower reconcile poll and
-			// the timecode on screen sat still.
+		} else if session.Position != prev.Position || session.Paused != prev.Paused {
+			// Still playing, but it has moved — or it has paused or
+			// resumed. The socket pushes a fresh list every second or so;
+			// without this the position only ever reached the app on the
+			// much slower reconcile poll and the timecode on screen sat
+			// still.
 			//
-			// Position only. Keying on the title as well made a snapshot
-			// and a socket push disagree about the same session and
-			// re-announce it, which is exactly what the baseline exists
-			// to prevent.
+			// The pause needs its own test: pausing stops the position,
+			// so "has it moved" alone never fired for the very change
+			// that mattered, and the Dashboard went on showing the stream
+			// as playing — clock running — until the next poll.
+			//
+			// Not the title, though. Keying on the title as well made a
+			// snapshot and a socket push disagree about the same session
+			// and re-announce it, which is what the baseline exists to
+			// prevent.
 			emitDetail(ctx, w.events, session)
 		}
 	}
