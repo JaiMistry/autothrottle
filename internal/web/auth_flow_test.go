@@ -1,0 +1,136 @@
+package web
+
+import (
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+// Every page behind login, as a visitor without a session sees it.
+func TestProtectedPagesRedirectToLogin(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	for _, path := range []string{"/", "/configuration", "/logs", "/dashboard/live", "/activity"} {
+		expectRedirect(t, app.get(path), "/login")
+	}
+	// A state change without a session must not happen either.
+	expectRedirect(t, app.do("POST", "/pause-toggle", url.Values{}), "/login")
+	if app.sched.Paused() {
+		t.Error("an anonymous POST paused throttling")
+	}
+}
+
+func TestHealthNeedsNoLogin(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	rec := app.get("/health")
+	if rec.Code != http.StatusOK && rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/health without a session: %d", rec.Code)
+	}
+	expectBody(t, rec, `"status"`)
+}
+
+func TestLogin(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+
+	rec := app.do("POST", "/login", url.Values{"username": {testUser}, "password": {"wrong"}})
+	expectStatus(t, rec, http.StatusUnauthorized)
+	// Generic on purpose: naming the wrong half would confirm the username.
+	expectBody(t, rec, "Invalid username or password.")
+
+	app.login()
+	expectStatus(t, app.get("/"), http.StatusOK)
+
+	expectRedirect(t, app.post("/logout", nil), "/login")
+	expectRedirect(t, app.get("/"), "/login")
+}
+
+func TestLoginIsRateLimited(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	var last int
+	for i := 0; i < 8; i++ {
+		last = app.do("POST", "/login", url.Values{"username": {testUser}, "password": {"guess"}}).Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("after 8 rapid attempts: %d, want 429", last)
+	}
+	// Even the right password waits out the window.
+	rec := app.do("POST", "/login", url.Values{"username": {testUser}, "password": {testPass}})
+	expectStatus(t, rec, http.StatusTooManyRequests)
+}
+
+func TestStateChangesNeedTheCSRFToken(t *testing.T) {
+	app := newApp(t)
+	rec := app.do("POST", "/pause-toggle", url.Values{"csrf_token": {"forged"}})
+	expectStatus(t, rec, http.StatusForbidden)
+	if app.sched.Paused() {
+		t.Error("a forged request paused throttling")
+	}
+	app.post("/pause-toggle", nil)
+	if !app.sched.Paused() {
+		t.Error("a genuine request did not pause throttling")
+	}
+}
+
+func TestDisabledAuthLetsEveryoneIn(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_DISABLED": "true"})
+	expectStatus(t, app.get("/"), http.StatusOK)
+	// Nothing to log in to, so the login page steps aside.
+	expectRedirect(t, app.get("/login"), "/")
+}
+
+func TestFirstRunSetup(t *testing.T) {
+	app := newAppWith(t, nil)
+
+	// Nothing can log in yet, so every road leads to setup.
+	expectRedirect(t, app.get("/"), "/setup")
+	expectRedirect(t, app.get("/login"), "/setup")
+	expectStatus(t, app.get("/setup"), http.StatusOK)
+
+	submit := func(code, user, pass, confirm string) *httpResult {
+		rec := app.do("POST", "/setup", url.Values{"code": {code}, "username": {user}, "password": {pass}, "confirm": {confirm}})
+		return &httpResult{rec.Code, rec.Header().Get("Location"), rec.Body.String()}
+	}
+
+	r := submit("WRNG-CODE", "jai", "long-enough", "long-enough")
+	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "setup code is not right") {
+		t.Fatalf("wrong code: %d %.200s", r.code, r.body)
+	}
+	r = submit("WRNG-CODE", "jai", "long-enough", "different")
+	if !strings.Contains(r.body, "two passwords") {
+		t.Fatalf("mismatched passwords: %.200s", r.body)
+	}
+
+	code := app.setupCodeFromAuth()
+	r = submit(code, "jai", "long-enough", "long-enough")
+	if r.code != http.StatusSeeOther || r.location != "/" {
+		t.Fatalf("valid setup: %d → %q", r.code, r.location)
+	}
+	// Setup signs you straight in.
+	expectStatus(t, app.get("/"), http.StatusOK)
+	// And can never run again.
+	expectRedirect(t, app.get("/setup"), "/login")
+	r = submit(code, "intruder", "long-enough", "long-enough")
+	if r.location != "/login" {
+		t.Fatalf("second setup was not refused: %d → %q", r.code, r.location)
+	}
+}
+
+type httpResult struct {
+	code     int
+	location string
+	body     string
+}
+
+// setupCodeFromAuth reads the code the way a person would get it: it is
+// never in the page, only in the log, so the test asks the authenticator.
+func (a *testApp) setupCodeFromAuth() string {
+	a.t.Helper()
+	code := a.srv.auth.SetupCode()
+	if code == "" {
+		a.t.Fatal("no setup code while setup is pending")
+	}
+	if strings.Contains(a.get("/setup").Body.String(), code) {
+		a.t.Fatal("the setup page leaks the setup code")
+	}
+	return code
+}

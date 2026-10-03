@@ -69,7 +69,7 @@ func notComparable(note string) updateView {
 // enough for the spinner to register as a thing that happened.
 const minCheckDuration = 700 * time.Millisecond
 
-const releasesAPI = "https://api.github.com/repos/JaiMistry/autothrottle/releases/latest"
+var releasesAPI = "https://api.github.com/repos/JaiMistry/autothrottle/releases/latest"
 
 // updateCheck asks GitHub for the latest release tag, on request only.
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
