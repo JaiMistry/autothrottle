@@ -1,0 +1,59 @@
+# End-to-end test stack: AutoThrottle against real Jellyfin, qBittorrent
+# and Transmission. Driven by test/e2e/run.sh — see the README there.
+#
+# Everything is published on 1xxxx ports so the stack can run beside a
+# normal install without a clash.
+name: autothrottle-e2e
+
+services:
+  autothrottle:
+    image: ${AT_IMAGE:-autothrottle-e2e}
+    build:
+      context: ../..
+    container_name: e2e-autothrottle
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Los_Angeles
+    volumes:
+      - ./.state/autothrottle:/data
+    ports:
+      - "17676:7676"
+    mem_limit: 256m
+
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.11
+    container_name: e2e-jellyfin
+    volumes:
+      - ./.state/jellyfin:/config
+      - ./.state/media:/media:ro
+    ports:
+      - "18196:8096"
+    mem_limit: 1g
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:5.2.3
+    container_name: e2e-qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - WEBUI_PORT=8080
+    volumes:
+      - ./.state/qbittorrent:/config
+    ports:
+      - "18180:8080"
+    mem_limit: 512m
+
+  transmission:
+    image: lscr.io/linuxserver/transmission:4.1.3
+    container_name: e2e-transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - USER=e2e
+      - PASS=e2e-transmission
+    volumes:
+      - ./.state/transmission:/config
+    ports:
+      - "18191:9091"
+    mem_limit: 256m

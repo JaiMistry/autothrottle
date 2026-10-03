@@ -23,3 +23,6 @@ handoff/
 /docker-compose.dev.yml
 /scripts/dev-build.sh
 /data/
+
+# End-to-end test scratch: generated media, server state, keys
+/test/e2e/.state/
