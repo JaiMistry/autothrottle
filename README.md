@@ -78,7 +78,7 @@ No schedules to maintain, no "slow mode" to remember to switch off.
        volumes:
          - ./data:/data
        ports:
-         - "8080:8080"
+         - "7676:7676"
        restart: unless-stopped
    ```
 
@@ -94,10 +94,12 @@ No schedules to maintain, no "slow mode" to remember to switch off.
    docker logs autothrottle
    ```
 
-5. **Open `http://<your-server>:8080`**, enter the setup code, and create
+5. **Open `http://<your-server>:7676`**, enter the setup code, and create
    your account.
 
 The image is also published as `ghcr.io/jaimistry/autothrottle`.
+
+AutoThrottle listens on **7676**. If that's taken on your machine, change only the left side of the port mapping — `"9000:7676"` serves it on 9000.
 
 ## First-time setup
 
@@ -130,8 +132,6 @@ you want them:
 | `AUTH_USERNAME` | — | Sign in with these credentials instead of creating an account in the browser. Set both or neither. |
 | `AUTH_PASSWORD` | — | |
 | `AUTH_DISABLED` | `false` | Set to `true` to turn login off entirely — only if AutoThrottle sits behind a reverse proxy that does its own authentication. |
-| `PORT` | `8080` | Port to listen on inside the container. |
-| `DATA_DIR` | `/data` | Where the database and encryption key live. |
 
 ### Signing in
 
@@ -198,7 +198,7 @@ isn't, and needs no login — so it plugs straight into an uptime monitor.
 
 - Stored credentials (tokens, API keys, download-client passwords) are
   encrypted in the database with a key that is generated on first run and
-  kept in `DATA_DIR`. Back up the whole directory, not just the database.
+  kept alongside it in your data directory. Back up the whole directory, not just the database.
 - Account passwords are stored salted and hashed (PBKDF2-SHA256).
 - Logins and setup attempts are rate-limited, and every change made inside
   the app is protected against cross-site request forgery.

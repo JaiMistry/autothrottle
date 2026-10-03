@@ -57,5 +57,5 @@ ENV TZ=America/Los_Angeles
 COPY --from=build /out/autothrottle /autothrottle
 COPY --from=build --chown=65532:65532 /out/data /data
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 7676
 ENTRYPOINT ["/autothrottle"]

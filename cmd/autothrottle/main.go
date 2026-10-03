@@ -35,10 +35,12 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	// Everything AutoThrottle keeps lives in one directory: the database
-	// and the key that encrypts stored credentials. One setting, one
-	// mount.
-	dataDir := envOr("DATA_DIR", "/data")
+	// Everything AutoThrottle keeps lives in /data: the database and the
+	// key that encrypts stored credentials. Fixed rather than
+	// configurable — where it lives on the host is the bind mount's
+	// business, so a second setting for the same thing would only be a
+	// way for the two to disagree.
+	const dataDir = "/data"
 	if err := checkWritable(dataDir); err != nil {
 		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
 		os.Exit(1)
@@ -83,7 +85,11 @@ func main() {
 	// The banner comes after the database is open so it can report what
 	// was actually found, and before the watchers start so the log reads
 	// in the order things happened.
-	addr := ":" + envOr("PORT", "8080")
+	// Fixed, like the data path: which port to use on the host is the
+	// port mapping's business. 7676 rather than 8080 because 8080 is
+	// qBittorrent's default — the app most likely to be running beside
+	// this one.
+	const addr = ":7676"
 	printBanner(os.Stdout, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
@@ -163,13 +169,6 @@ func main() {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 // countRows is for the banner only: a count that cannot be read is

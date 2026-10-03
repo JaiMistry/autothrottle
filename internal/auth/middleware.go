@@ -33,7 +33,7 @@ func SessionTokenFromContext(ctx context.Context) string {
 //
 // The session cookie is marked Secure exactly when it is: over HTTPS
 // that keeps the browser from ever sending it in the clear, and over
-// plain http://host:8080 on a LAN a Secure cookie would simply never be
+// plain http://host:7676 on a LAN a Secure cookie would simply never be
 // sent back, so nobody could log in. Deciding per request means neither
 // setup needs a setting. A client forging the forwarded header only
 // makes its own cookie stricter.

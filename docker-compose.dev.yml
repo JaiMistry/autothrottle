@@ -26,7 +26,8 @@ services:
     volumes:
       - autothrottle_data:/data
     ports:
-      - "8080:8080"
+      # Host side kept at 8080 so the dev instance's address never moved.
+      - "8080:7676"
     restart: unless-stopped
     # The app is a static Go binary over an embedded SQLite file and
     # sits at ~22 MiB in practice. The cap is not about this container
