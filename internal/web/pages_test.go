@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -122,7 +121,9 @@ func TestDashboardThrottleStates(t *testing.T) {
 	waitFor(t, "throttling to apply", func() bool { return app.sched.State(dl).Throttled })
 
 	live = app.get("/dashboard/live").Body.String()
-	expectBody(t, &httptest.ResponseRecorder{Body: bytesBuffer(live)}, "qBit throttled")
+	if !strings.Contains(live, "qBit throttled") {
+		t.Errorf("the throttled downloader is not named: %.500s", live)
+	}
 	if !strings.Contains(live, "because Busy Server is playing") {
 		t.Errorf("the reason does not name the playing server: %.500s", live)
 	}
@@ -133,7 +134,9 @@ func TestDashboardThrottleStates(t *testing.T) {
 	if got := rowStates(live, "at-serverrow"); len(got) != 2 || got[0] != "playing" {
 		t.Errorf("server rows = %v, want the playing one first", got)
 	}
-	expectBody(t, &httptest.ResponseRecorder{Body: bytesBuffer(live)}, "Andor S1E4")
+	if !strings.Contains(live, "Andor S1E4") {
+		t.Error("the playing title is not shown")
+	}
 
 	// Pause throttling from the Dashboard: default rates even though
 	// something is still playing.
@@ -180,5 +183,3 @@ func TestUpdateCheck(t *testing.T) {
 		})
 	}
 }
-
-func bytesBuffer(s string) *bytes.Buffer { return bytes.NewBufferString(s) }

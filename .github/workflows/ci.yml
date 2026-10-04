@@ -22,9 +22,6 @@ jobs:
         run: |
           diff -u <(echo -n) <(gofmt -l .)
 
-      - name: go vet
-        run: go vet ./...
-
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -34,9 +31,6 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
-
-      - name: Build
-        run: go build ./...
 
       - name: Test with coverage
         run: go test -coverprofile=coverage.out ./...

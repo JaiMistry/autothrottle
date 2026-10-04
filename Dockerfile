@@ -1,12 +1,7 @@
 FROM node:22-slim AS tailwind
-# Build-time only -- Node never ships in the final image (see the last
-# stage below). daisyUI is a Tailwind plugin that needs real Node
-# module resolution; the standalone Tailwind CLI binary can't resolve
-# third-party npm plugins on its own.
+# Build-time only: Node never ships in the final image.
 WORKDIR /src
 COPY package.json package-lock.json ./
-# npm ci, not npm install: the lockfile is committed, so the CSS build
-# is reproducible rather than resolving fresh versions per build.
 RUN npm ci
 COPY internal/web/templates ./internal/web/templates
 COPY internal/web/static ./internal/web/static
@@ -31,12 +26,8 @@ ARG VERSION=dev
 # without them About falls back to what the binary can tell about itself.
 ARG COMMIT=""
 ARG BUILD_DATE=""
-# Compilation is the memory peak of this image, and modernc.org/sqlite
-# is a very large package to build. Unbounded, the toolchain starts one
-# compile per core and the peak scales with the build machine's core
-# count rather than its RAM — which is how a build on a busy host
-# becomes an out-of-memory kill. Two at a time keeps the peak flat and
-# costs a few seconds.
+# modernc.org/sqlite is huge to compile; capping parallelism keeps the
+# build's memory peak flat instead of scaling with the core count.
 ENV GOFLAGS=-p=2 GOMAXPROCS=2
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w \

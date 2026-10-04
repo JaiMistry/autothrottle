@@ -86,9 +86,13 @@ func TestFirstRunSetup(t *testing.T) {
 	expectRedirect(t, app.get("/login"), "/setup")
 	expectStatus(t, app.get("/setup"), http.StatusOK)
 
-	submit := func(user, pass, confirm string) *httpResult {
+	type result struct {
+		code           int
+		location, body string
+	}
+	submit := func(user, pass, confirm string) result {
 		rec := app.do("POST", "/setup", url.Values{"username": {user}, "password": {pass}, "confirm": {confirm}})
-		return &httpResult{rec.Code, rec.Header().Get("Location"), rec.Body.String()}
+		return result{rec.Code, rec.Header().Get("Location"), rec.Body.String()}
 	}
 
 	r := submit("jai", "long-enough", "different")
@@ -112,10 +116,4 @@ func TestFirstRunSetup(t *testing.T) {
 	if r.location != "/login" {
 		t.Fatalf("second setup was not refused: %d → %q", r.code, r.location)
 	}
-}
-
-type httpResult struct {
-	code     int
-	location string
-	body     string
 }

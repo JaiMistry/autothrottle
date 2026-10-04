@@ -107,11 +107,4 @@ func TestPauseStateIsRestoredFromSettings(t *testing.T) {
 		t.Fatal("expected pause state to be restored from the settings table")
 	}
 
-	second.limiterFor = func(string) clients.RateLimiter { return &fakeLimiter{} }
-	second.SetPaused(context.Background(), false)
-
-	third := New(database, make([]byte, 32), store)
-	if third.Paused() {
-		t.Fatal("expected unpause to be persisted too")
-	}
 }

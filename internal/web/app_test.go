@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -124,19 +125,9 @@ func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRec
 	rec := httptest.NewRecorder()
 	a.handler.ServeHTTP(rec, req)
 	for _, c := range rec.Result().Cookies() {
-		a.cookies = append(a.keepOthers(c.Name), c)
+		a.cookies = append(slices.DeleteFunc(a.cookies, func(old *http.Cookie) bool { return old.Name == c.Name }), c)
 	}
 	return rec
-}
-
-func (a *testApp) keepOthers(name string) []*http.Cookie {
-	kept := a.cookies[:0:0]
-	for _, c := range a.cookies {
-		if c.Name != name {
-			kept = append(kept, c)
-		}
-	}
-	return kept
 }
 
 func (a *testApp) get(path string) *httptest.ResponseRecorder { return a.do("GET", path, nil) }
@@ -159,11 +150,6 @@ func (a *testApp) login() {
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
 		a.t.Fatalf("login: %d → %q", rec.Code, rec.Header().Get("Location"))
 	}
-	a.refreshCSRF()
-}
-
-func (a *testApp) refreshCSRF() {
-	a.t.Helper()
 	m := csrfField.FindStringSubmatch(a.get("/configuration").Body.String())
 	if m == nil {
 		a.t.Fatal("no CSRF token on the configuration page")

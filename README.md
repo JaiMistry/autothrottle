@@ -43,9 +43,8 @@ No schedules to maintain, no "slow mode" to remember to switch off.
 - **Many to many.** Map any media server to any download client. Two
   servers playing at once? Each downloader knows exactly which one is
   holding it back.
-- **Handles real-world playback.** A pause keeps the throttle on — the
-  viewer is coming back. A stream left paused, or a player that crashed
-  mid-episode, is released after 30 minutes instead of throttling all night.
+- **Handles real-world playback.** Pauses keep the throttle on; abandoned
+  or crashed streams release it (see the table below).
 - **Local playback can be exempt.** Watching from the same network doesn't
   compete with your internet connection, so it needn't slow anything down.
 - **Survives restarts.** Rates are re-asserted the moment AutoThrottle
@@ -167,6 +166,12 @@ Tested against real servers:
 | qBittorrent | 5.2 (the 4.x login is handled too) |
 | Transmission | 4.1 |
 
+## Health check
+
+`GET /health` reports whether each media server and download client is
+reachable, as JSON: `200` when everything is, `503` when anything isn't. It
+needs no login, so it plugs straight into an uptime monitor.
+
 ## Troubleshooting
 
 **The container exits saying the data directory is not usable.**
@@ -183,11 +188,6 @@ Wait for the ban to expire (an hour by default), or restart qBittorrent.
 Check the address is reachable *from the container*: `localhost` inside
 the container means the container itself, not your server. Use the host's
 LAN address instead.
-
-**Health checks.**
-`GET /health` reports whether each media server and download client is
-reachable, as JSON. It answers `200` when everything is, `503` when anything
-isn't, and needs no login — so it plugs straight into an uptime monitor.
 
 ## Security
 

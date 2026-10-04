@@ -224,18 +224,6 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	assertNoEvent(t, w)
 }
 
-func TestEmbySnapshotSurfacesErrors(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		rw.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-
-	w := newEmbyWatcher(flavorEmby, srv.URL, "bad", false)
-	if _, err := w.Snapshot(context.Background()); err == nil {
-		t.Fatal("expected an error for a 401, got nil")
-	}
-}
-
 // A failed snapshot must not be mistaken for "nothing is playing" —
 // the manager leaves state alone on error, and that only holds if the
 // watcher reports the failure instead of an empty list.

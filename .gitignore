@@ -1,5 +1,3 @@
-/bin/
-/dist/
 *.db
 *.db-journal
 *.db-wal
@@ -7,7 +5,6 @@
 .env
 internal/web/static/css/tailwind.css
 internal/web/static/js/apexcharts.min.js
-tailwindcss
 node_modules/
 
 # Local working files
@@ -21,7 +18,7 @@ handoff/
 # This machine's development setup: the dev compose file, the script
 # that drives it, and the data it writes. Kept out of the repository.
 /docker-compose.dev.yml
-/scripts/dev-build.sh
+/scripts/
 /data/
 
 # End-to-end test scratch: generated media, server state, keys

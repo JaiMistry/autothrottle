@@ -42,8 +42,6 @@ func TestClassifyProbeError(t *testing.T) {
 	}
 }
 
-// An error nobody anticipated must not be given invented advice: the raw
-// text is still shown, and no field is outlined.
 // Every blank is named at once, so fixing one does not just surface the
 // next on the following attempt.
 func TestMissingRequiredNamesEveryBlank(t *testing.T) {
@@ -67,6 +65,8 @@ func TestMissingRequiredNamesEveryBlank(t *testing.T) {
 	}
 }
 
+// An error nobody anticipated must not be given invented advice: the raw
+// text is still shown, and no field is outlined.
 func TestClassifyProbeErrorStaysQuietWhenUnsure(t *testing.T) {
 	fields, hint := classifyProbeError(probeServer, errors.New("something nobody has seen before"))
 	if len(fields) != 0 || hint != "" {

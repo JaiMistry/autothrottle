@@ -18,7 +18,7 @@ makes a short test video; after that a run takes around two minutes.
 
 ## What it covers
 
-First-run setup and its code · adding a media server, with a wrong and a
+First-run setup · adding a media server, with a wrong and a
 right key · refusing a duplicate · adding both download clients · the
 mapping matrix · the idle Dashboard · playback starting, watched live with
 no reloads, and the real limits on both clients · the timecode advancing ·

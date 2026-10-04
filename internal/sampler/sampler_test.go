@@ -144,8 +144,7 @@ func TestSampleOnceRecordsNothingWhenTheClientIsUnreachable(t *testing.T) {
 }
 
 // A downloader type with no rate reporting is skipped silently, not
-// treated as an error — the state Transmission is in until its client
-// lands.
+// treated as an error.
 func TestSampleOnceSkipsTypesWithoutRateReporting(t *testing.T) {
 	s, database, _ := newTestSampler(t, fakeThrottle{})
 	id := addDownloader(t, database, true)
