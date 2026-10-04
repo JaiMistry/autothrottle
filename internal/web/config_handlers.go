@@ -45,13 +45,6 @@ type downloaderView struct {
 	State string
 }
 
-type mappingView struct {
-	ID                              int64
-	MediaServerID, DownloaderID     int64
-	MediaServerName, DownloaderName string
-	Enabled                         bool
-}
-
 // downloaderState collapses the scheduler's view into the one word the
 // tables and rows render. A failed apply reads Unreachable, never
 // Normal: the rates on the client are not the rates this app believes
@@ -96,7 +89,6 @@ type configPageData struct {
 	Tab               string
 	MediaServers      []mediaServerView
 	Downloaders       []downloaderView
-	Mappings          []mappingView
 	AuthSummary       string
 	Update            updateView
 	MappingOn         map[string]bool
@@ -157,37 +149,19 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		return configPageData{}, err
 	}
 
-	msByID := make(map[int64]db.MediaServer, len(mediaServers))
 	msViews := make([]mediaServerView, 0, len(mediaServers))
 	for _, ms := range mediaServers {
-		msByID[ms.ID] = ms
 		view := toMediaServerView(ms)
 		view.Sessions = s.scheduler.ActiveSessionCount(ms.ID)
 		msViews = append(msViews, view)
 	}
 
-	dlByID := make(map[int64]db.Downloader, len(downloaders))
 	dlViews := make([]downloaderView, 0, len(downloaders))
 	for _, dl := range downloaders {
-		dlByID[dl.ID] = dl
 		view := s.toDownloaderView(dl)
 		view.State = s.downloaderState(dl)
 		dlViews = append(dlViews, view)
 	}
-
-	mapViews := make([]mappingView, 0, len(mappings))
-	for _, m := range mappings {
-		mv := mappingView{ID: m.ID, MediaServerID: m.MediaServerID, DownloaderID: m.DownloaderID, Enabled: m.Enabled}
-		if ms, ok := msByID[m.MediaServerID]; ok {
-			mv.MediaServerName = ms.Name
-		}
-		if dl, ok := dlByID[m.DownloaderID]; ok {
-			mv.DownloaderName = dl.Name
-		}
-		mapViews = append(mapViews, mv)
-	}
-
-	sessionToken := auth.SessionTokenFromContext(r.Context())
 
 	// The matrix asks "is this pair on?" per cell, so the mappings are
 	// indexed by pair rather than scanned per cell.
@@ -196,13 +170,11 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		enabled[mappingKey(m.MediaServerID, m.DownloaderID)] = m.Enabled
 	}
 
-	_ = sessionToken
 	return configPageData{
 		pageData:     s.page(r, "Configuration", "configuration"),
 		Tab:          tab,
 		MediaServers: msViews,
 		Downloaders:  dlViews,
-		Mappings:     mapViews,
 		MappingOn:    enabled,
 		About:        s.aboutView(),
 		Uptime:       uptimeSince(s.startedAt),
@@ -668,66 +640,44 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 
 // --- mappings ---
 
-func (s *Server) createMapping(w http.ResponseWriter, r *http.Request) {
+// setMapping turns one cell of the mappings matrix on or off. A cell
+// has no id until it is first ticked, so this addresses a mapping by
+// the pair it joins rather than by id.
+func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	msID, err1 := strconv.ParseInt(r.FormValue("media_server_id"), 10, 64)
-	dlID, err2 := strconv.ParseInt(r.FormValue("downloader_id"), 10, 64)
+	serverID, err1 := strconv.ParseInt(r.FormValue("media_server_id"), 10, 64)
+	downloaderID, err2 := strconv.ParseInt(r.FormValue("downloader_id"), 10, 64)
 	if err1 != nil || err2 != nil {
-		s.renderConfigError(w, r, "mappings", "Choose both a media server and a downloader.")
+		http.Error(w, "bad ids", http.StatusBadRequest)
 		return
 	}
-	if _, err := s.db.CreateMapping(msID, dlID); err != nil {
-		slog.Error("creating mapping", "error", err)
-		s.renderConfigError(w, r, "mappings", "That mapping already exists.")
-		return
-	}
-	s.applyConfigChange(false)
-	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
-}
+	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "1"
 
-func (s *Server) toggleMapping(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "bad id", http.StatusBadRequest)
-		return
-	}
-	mappings, err := s.db.ListMappings()
-	if err != nil {
-		slog.Error("listing mappings", "error", err)
+	if err := s.db.SetMappingForPair(serverID, downloaderID, enabled); err != nil {
+		slog.Error("setting mapping", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	current := false
-	for _, m := range mappings {
-		if m.ID == id {
-			current = m.Enabled
-			break
+	s.applyConfigChange(false)
+
+	// Re-render the matrix rather than answering 204. HTMX does nothing
+	// with an empty response, so the cell kept its old label and the
+	// toggle read as broken even though the mapping had changed.
+	if r.Header.Get("HX-Request") == "true" {
+		data, err := s.buildConfigPageData(r, "mappings")
+		if err != nil {
+			slog.Error("rebuilding mappings after toggle", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
 		}
-	}
-	if err := s.db.SetMappingEnabled(id, !current); err != nil {
-		slog.Error("toggling mapping", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		if err := s.templates["configuration"].ExecuteTemplate(w, "mappingmatrix", data); err != nil {
+			slog.Error("rendering mappings matrix", "error", err)
+		}
 		return
 	}
-	s.applyConfigChange(false)
-	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
-}
-
-func (s *Server) deleteMapping(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "bad id", http.StatusBadRequest)
-		return
-	}
-	if err := s.db.DeleteMapping(id); err != nil {
-		slog.Error("deleting mapping", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	s.applyConfigChange(false)
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
 }
 

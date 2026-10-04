@@ -108,7 +108,7 @@ func TestDashboardThrottleStates(t *testing.T) {
 	busy := app.mediaServer("Busy Server", "jellyfin", "http://busy.lan")
 	app.watchers.running[idle], app.watchers.running[busy] = true, true
 	dl := app.downloader("qBit")
-	app.post("/configuration/mappings", url.Values{"media_server_id": {fmt.Sprint(busy)}, "downloader_id": {fmt.Sprint(dl)}})
+	app.setMapping(busy, dl, true)
 	waitFor(t, "the config change to resolve", func() bool { return app.sched.State(dl).Known })
 
 	live := app.get("/dashboard/live").Body.String()

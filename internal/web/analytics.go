@@ -192,47 +192,6 @@ func gapNotes(gaps []analytics.Span) []gapNote {
 	return out
 }
 
-// setMapping turns one cell of the mappings matrix on or off. A cell
-// has no id until it is first ticked, so this addresses a mapping by
-// the pair it joins rather than by id.
-func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	serverID, err1 := strconv.ParseInt(r.FormValue("media_server_id"), 10, 64)
-	downloaderID, err2 := strconv.ParseInt(r.FormValue("downloader_id"), 10, 64)
-	if err1 != nil || err2 != nil {
-		http.Error(w, "bad ids", http.StatusBadRequest)
-		return
-	}
-	enabled := r.FormValue("enabled") == "on" || r.FormValue("enabled") == "1"
-
-	if err := s.db.SetMappingForPair(serverID, downloaderID, enabled); err != nil {
-		slog.Error("setting mapping", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	s.applyConfigChange(false)
-
-	// Re-render the matrix rather than answering 204. HTMX does nothing
-	// with an empty response, so the cell kept its old label and the
-	// toggle read as broken even though the mapping had changed.
-	if r.Header.Get("HX-Request") == "true" {
-		data, err := s.buildConfigPageData(r, "mappings")
-		if err != nil {
-			slog.Error("rebuilding mappings after toggle", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		if err := s.templates["configuration"].ExecuteTemplate(w, "mappingmatrix", data); err != nil {
-			slog.Error("rendering mappings matrix", "error", err)
-		}
-		return
-	}
-	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
-}
-
 func maxInt(a, b int) int {
 	if a > b {
 		return a

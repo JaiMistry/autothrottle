@@ -95,9 +95,7 @@ func TestDeletingAServerRemovesItsMappings(t *testing.T) {
 	app := newApp(t)
 	ms := app.mediaServer("JF", "jellyfin", "http://jf.lan")
 	dl := app.downloader("qBit")
-	expectRedirect(t, app.post("/configuration/mappings", url.Values{
-		"media_server_id": {fmt.Sprint(ms)}, "downloader_id": {fmt.Sprint(dl)},
-	}), "/configuration?tab=mappings")
+	app.setMapping(ms, dl, true)
 
 	expectRedirect(t, app.post(fmt.Sprintf("/configuration/media-servers/%d/delete", ms), nil), "/configuration?tab=media-servers")
 	if mappings, _ := app.db.ListMappings(); len(mappings) != 0 {
@@ -133,32 +131,34 @@ func TestAddDownloader(t *testing.T) {
 	expectBody(t, rec, "is already added as")
 }
 
+// setMapping ticks or unticks one cell of the mappings matrix.
+func (a *testApp) setMapping(ms, dl int64, on bool) {
+	a.t.Helper()
+	form := url.Values{"media_server_id": {fmt.Sprint(ms)}, "downloader_id": {fmt.Sprint(dl)}}
+	if on {
+		form.Set("enabled", "on")
+	}
+	expectRedirect(a.t, a.post("/configuration/mappings/set", form), "/configuration?tab=mappings")
+}
+
 func TestMappings(t *testing.T) {
 	app := newApp(t)
 	ms := app.mediaServer("JF", "jellyfin", "http://jf.lan")
 	dl := app.downloader("qBit")
-	form := url.Values{"media_server_id": {fmt.Sprint(ms)}, "downloader_id": {fmt.Sprint(dl)}}
 
-	expectRedirect(t, app.post("/configuration/mappings", form), "/configuration?tab=mappings")
-	rec := app.post("/configuration/mappings", form)
-	expectStatus(t, rec, http.StatusUnprocessableEntity)
-	expectBody(t, rec, "already exists")
-
+	// Ticking the same cell twice is one mapping, not two.
+	app.setMapping(ms, dl, true)
+	app.setMapping(ms, dl, true)
 	mappings, _ := app.db.ListMappings()
 	if len(mappings) != 1 || !mappings[0].Enabled {
 		t.Fatalf("mappings = %+v", mappings)
 	}
-	app.post(fmt.Sprintf("/configuration/mappings/%d/toggle", mappings[0].ID), nil)
-	mappings, _ = app.db.ListMappings()
-	if mappings[0].Enabled {
-		t.Error("toggle left the mapping enabled")
-	}
-	app.post(fmt.Sprintf("/configuration/mappings/%d/delete", mappings[0].ID), nil)
-	if mappings, _ = app.db.ListMappings(); len(mappings) != 0 {
-		t.Error("delete left the mapping")
+	app.setMapping(ms, dl, false)
+	if mappings, _ = app.db.ListMappings(); mappings[0].Enabled {
+		t.Error("unticking left the mapping enabled")
 	}
 
-	expectStatus(t, app.post("/configuration/mappings", url.Values{"media_server_id": {"x"}}), http.StatusUnprocessableEntity)
+	expectStatus(t, app.post("/configuration/mappings/set", url.Values{"media_server_id": {"x"}}), http.StatusBadRequest)
 }
 
 // fakeJellyfin answers /System/Info only when the right key arrives, the
