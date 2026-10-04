@@ -106,5 +106,4 @@ func TestPauseStateIsRestoredFromSettings(t *testing.T) {
 	if !second.Paused() {
 		t.Fatal("expected pause state to be restored from the settings table")
 	}
-
 }

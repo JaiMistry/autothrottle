@@ -112,7 +112,7 @@ func getJSON(ctx context.Context, url string, setAuth func(*http.Request), out a
 	setAuth(req)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := (&http.Client{Timeout: testTimeout}).Do(req)
+	resp, err := (&http.Client{Timeout: RequestTimeout}).Do(req)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", url, err)
 	}

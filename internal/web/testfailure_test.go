@@ -18,6 +18,7 @@ func TestClassifyProbeError(t *testing.T) {
 		{"refused on a downloader says WebUI", probeDownloader, errors.New("connect: connection refused"), fieldURL, "WebUI port"},
 		{"no route blames the address", probeServer, errors.New("dial tcp 192.168.1.99:32400: connect: no route to host"), fieldURL, "Nothing answered at that address"},
 		{"timeout blames reachability", probeServer, errors.New("dial tcp: i/o timeout"), fieldURL, "unreachable from the AutoThrottle container"},
+		{"timeout quotes the real limit", probeServer, errors.New("context deadline exceeded"), fieldURL, "No reply in 8s"},
 		{"401 blames the credential", probeServer, errors.New("unexpected status 401 Unauthorized"), fieldCredential, "credential was rejected"},
 		{"403 on a downloader names both fields", probeDownloader, errors.New("403 Forbidden"), fieldCredential, "username or password"},
 		{"tls points at the URL", probeServer, errors.New("x509: certificate signed by unknown authority"), fieldURL, "TLS handshake failed"},

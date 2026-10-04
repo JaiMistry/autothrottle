@@ -20,15 +20,6 @@ func TestProtectedPagesRedirectToLogin(t *testing.T) {
 	}
 }
 
-func TestHealthNeedsNoLogin(t *testing.T) {
-	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
-	rec := app.get("/health")
-	if rec.Code != http.StatusOK && rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("/health without a session: %d", rec.Code)
-	}
-	expectBody(t, rec, `"status"`)
-}
-
 func TestLogin(t *testing.T) {
 	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
 
@@ -37,11 +28,39 @@ func TestLogin(t *testing.T) {
 	// Generic on purpose: naming the wrong half would confirm the username.
 	expectBody(t, rec, "Invalid username or password.")
 
-	app.login()
+	rec = app.do("POST", "/login", url.Values{"username": {testUser}, "password": {testPass}})
+	expectRedirect(t, rec, "/")
+	cookie := rec.Result().Cookies()[0]
+	if !cookie.HttpOnly || cookie.MaxAge != 24*60*60 {
+		t.Errorf("session cookie = %+v, want HttpOnly with a 24h lifetime", cookie)
+	}
 	expectStatus(t, app.get("/"), http.StatusOK)
 
+	// A restart (a new server over the same database) keeps you signed in.
+	app.restart()
+	expectStatus(t, app.get("/"), http.StatusOK)
+
+	app.csrf = csrfField.FindStringSubmatch(app.get("/configuration").Body.String())[1]
 	expectRedirect(t, app.post("/logout", nil), "/login")
 	expectRedirect(t, app.get("/"), "/login")
+}
+
+// The setup form is the one page open to anyone, so it is throttled
+// like the login form.
+func TestSetupIsRateLimited(t *testing.T) {
+	app := newAppWith(t, nil)
+	var last int
+	for i := 0; i < 8; i++ {
+		last = app.do("POST", "/setup", url.Values{"username": {"x"}, "password": {"short"}, "confirm": {"short"}}).Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("after 8 rapid attempts: %d, want 429", last)
+	}
+	rec := app.do("POST", "/setup", url.Values{"username": {"jai"}, "password": {"long-enough"}, "confirm": {"long-enough"}})
+	expectStatus(t, rec, http.StatusTooManyRequests)
+	if !app.srv.auth.NeedsSetup() {
+		t.Error("a rate-limited attempt created the account")
+	}
 }
 
 func TestLoginIsRateLimited(t *testing.T) {

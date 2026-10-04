@@ -1,6 +1,10 @@
 package web
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/JaiMistry/autothrottle/internal/clients"
+)
 
 // probeKind distinguishes the two things a connection test can be
 // talking to, because the same network error deserves different advice
@@ -54,7 +58,7 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
-		return []string{fieldURL}, "No reply in " + testConnectionTimeout.String() + ". Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
+		return []string{fieldURL}, "No reply in " + clients.RequestTimeout.String() + ". Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
 
 	case strings.Contains(msg, "x509"), strings.Contains(msg, "certificate"), strings.Contains(msg, "tls:"):
 		return []string{fieldURL}, "TLS handshake failed. Use http:// on a LAN address, or install the certificate."

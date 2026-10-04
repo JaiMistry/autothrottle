@@ -138,3 +138,15 @@ func TestSessionWithoutPositionNeverStalls(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchersUseThePausedSessionTimeout(t *testing.T) {
+	if got := newEmbyWatcher(flavorEmby, "http://x", "k", false).paused.timeout; got != pausedSessionTimeout {
+		t.Errorf("Emby watcher timeout = %s", got)
+	}
+	if got := NewPlexWatcher("http://x", "t", false).paused.timeout; got != pausedSessionTimeout {
+		t.Errorf("Plex watcher timeout = %s", got)
+	}
+	if pausedSessionTimeout != 30*time.Minute {
+		t.Errorf("pausedSessionTimeout = %s, the README promises 30 minutes", pausedSessionTimeout)
+	}
+}

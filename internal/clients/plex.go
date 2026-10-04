@@ -15,7 +15,8 @@ import (
 	"time"
 )
 
-const testTimeout = 8 * time.Second
+// RequestTimeout bounds each request a connection test makes.
+const RequestTimeout = 8 * time.Second
 
 // TestPlex checks a Plex server answers, then checks the token with
 // plex.tv, since the server itself accepts any token on the LAN.
@@ -28,7 +29,7 @@ func TestPlex(ctx context.Context, baseURL, token string) error {
 	req.Header.Set("X-Plex-Token", token)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: testTimeout}
+	client := &http.Client{Timeout: RequestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", baseURL, err)
@@ -74,7 +75,7 @@ func verifyPlexToken(ctx context.Context, token string) error {
 	plexAuthHeaders(req, plexProduct)
 	req.Header.Set("X-Plex-Token", token)
 
-	resp, err := (&http.Client{Timeout: testTimeout}).Do(req)
+	resp, err := (&http.Client{Timeout: RequestTimeout}).Do(req)
 	if err != nil {
 		// Deliberately a failure rather than a pass. The server answered,
 		// but the one thing that can vouch for the token did not, and

@@ -106,6 +106,17 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	return &testApp{t: t, srv: srv, db: database, sched: sched, watchers: watchers, handler: srv.Router(), qbit: qbit}
 }
 
+// restart replaces the server with a fresh one over the same database,
+// the way a container restart does; the browser's cookies carry over.
+func (a *testApp) restart() {
+	a.t.Helper()
+	srv, err := New(a.db, a.srv.auth, a.srv.encryptionKey, a.sched, a.watchers)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	a.srv, a.handler = srv, srv.Router()
+}
+
 var csrfField = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 
 // do sends a request carrying the session cookie, and keeps any cookie

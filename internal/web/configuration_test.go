@@ -197,7 +197,7 @@ func TestConnectionTest(t *testing.T) {
 	}{
 		{"credential accepted", jf.URL, "good-key", `data-state="connected"`, "credential was accepted"},
 		{"credential rejected", jf.URL, "bad-key", `data-state="failed"`, "API key was rejected"},
-		{"nothing listening", "http://127.0.0.1:1", "good-key", `data-state="failed"`, ""},
+		{"nothing listening", "http://127.0.0.1:1", "good-key", `data-state="failed"`, "Nothing is listening"},
 		{"fields missing", "", "", `data-state="failed"`, "Nothing to test"},
 	}
 	for _, c := range cases {
@@ -231,4 +231,41 @@ func TestNewEntriesStartEnabled(t *testing.T) {
 	if strings.Contains(body, `name="enabled" checked`) {
 		t.Error("editing a disabled server shows it as enabled")
 	}
+}
+
+func TestDownloaderConnectionTest(t *testing.T) {
+	app := newApp(t)
+	form := func(rawURL, user, pass string) url.Values {
+		return url.Values{"name": {"qBit"}, "type": {"qbittorrent"}, "url": {rawURL}, "username": {user}, "password": {pass}}
+	}
+	cases := []struct {
+		name string
+		form url.Values
+		want string
+	}{
+		{"nothing listening names the WebUI", form("http://127.0.0.1:1", "", ""), "WebUI port"},
+		{"no credentials says none were checked", form(app.qbit.URL, "", ""), "No credentials were sent"},
+		{"credentials accepted", form(app.qbit.URL, "admin", "pw"), "the credential was accepted"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := app.post("/configuration/downloaders/test", c.form)
+			expectStatus(t, rec, http.StatusOK)
+			expectBody(t, rec, c.want)
+		})
+	}
+}
+
+// The Test button on a saved row uses what is stored.
+func TestSavedEntryConnectionTest(t *testing.T) {
+	app := newApp(t)
+	jf := fakeJellyfin(t)
+	app.post("/configuration/media-servers", mediaServerForm("JF", "jellyfin", jf.URL, "good-key"))
+	servers, _ := app.db.ListMediaServers()
+	dl := app.downloader("qBit")
+
+	rec := app.post(fmt.Sprintf("/configuration/media-servers/%d/test", servers[0].ID), nil)
+	expectBody(t, rec, `data-state="connected"`)
+	rec = app.post(fmt.Sprintf("/configuration/downloaders/%d/test", dl), nil)
+	expectBody(t, rec, `data-state="connected"`)
 }

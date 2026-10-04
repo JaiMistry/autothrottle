@@ -9,7 +9,7 @@ test/e2e/run.sh
 ```
 
 Needs Docker and Python 3. The first run pulls about 2 GB of images and
-makes a short test video; after that a run takes around two minutes.
+makes a short test video; after that a run takes about a minute.
 
 | | |
 |---|---|
