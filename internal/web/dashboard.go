@@ -57,13 +57,12 @@ type sessionLineView struct {
 }
 
 type downloaderRowView struct {
-	Name      string
-	Type      string
-	State     string
-	Cause     string
-	Down      int64
-	Up        int64
-	AppliedAt string
+	Name  string
+	Type  string
+	State string
+	Cause string
+	Down  int64
+	Up    int64
 }
 
 type logRowView struct {
@@ -140,12 +139,8 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	data := dashboardData{
 		pageData: s.page(r, "Dashboard", "dashboard"),
 		Paused:   paused,
-		// Throttling needs all three: a server to watch, a downloader to
-		// slow down, and a mapping saying the one should affect the
-		// other. Missing any of them, the page has exactly one job.
-		// Nothing to manage means the page has exactly one job: point at
-		// Configuration. A downloader is the minimum for anything else
-		// on this page to have a subject.
+		// Without a downloader the page has one job: point at
+		// Configuration.
 		Empty:    len(downloaders) == 0,
 		Activity: activity,
 	}
@@ -262,9 +257,6 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			row.Cause = "nothing mapped is playing"
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 		}
-		if !state.AppliedAt.IsZero() {
-			row.AppliedAt = state.AppliedAt.Local().Format("15:04:05")
-		}
 		data.Downloaders = append(data.Downloaders, row)
 	}
 
@@ -341,20 +333,10 @@ func buildHero(paused bool, sessions int, throttled, causes []string, downloader
 	}
 }
 
-// livePosition carries a reported position forward to now.
-//
-// Media servers report position in steps — Plex in roughly ten-second
-// ones — so between reports the stored figure is stale by however long
-// it has been sitting there. Sending it raw makes every refresh hand
-// the browser the same number for several seconds running, and a page
-// that ticks a clock forward in between has no choice but to step
-// backwards when the stale figure arrives. Advancing it here means each
-// refresh returns a figure that has moved, and the two agree.
-//
-// A paused session is not advanced: its position genuinely is not
-// moving. Neither is one whose reading carries no timestamp, which is
-// any session the event stream announced before a snapshot described
-// it.
+// livePosition carries a reported position forward to now. Servers
+// report in steps (Plex every ten seconds or so), and a stale figure
+// would make the page's ticking clock jump backwards on each refresh.
+// Paused sessions, and readings with no timestamp, are not advanced.
 func livePosition(session clients.Session, now time.Time) time.Duration {
 	if session.Paused || session.PositionAt.IsZero() {
 		return session.Position

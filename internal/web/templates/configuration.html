@@ -59,25 +59,14 @@
     {{/* Outside the table on purpose: a <dialog> is not valid inside
          <tbody>, and the parser hoists it out anyway — landing it above
          the rows, where its own buttons come first in the document. */}}
-    {{range .MediaServers}}    <dialog class="at-dialog" id="del-ms-{{.ID}}">
-            <div class="at-dialog-panel">
-              <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
-              <p class="at-dialog-body">Its mappings are removed too. History entries are kept.</p>
-              <div class="at-dialog-actions">
-                <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('del-ms-{{.ID}}').close()">Cancel</button>
-                <form method="post" action="/configuration/media-servers/{{.ID}}/delete">
-                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
-                  <button class="at-btn at-btn--danger" type="submit">Delete</button>
-                </form>
-              </div>
-            </div>
-    </dialog>
+    {{range .MediaServers}}{{template "deletedialog" dict "ID" (printf "del-ms-%d" .ID) "Name" .Name "Action" (printf "/configuration/media-servers/%d/delete" .ID) "CSRF" $csrf
+      "Body" "Its mappings are removed too. History entries are kept."}}
     {{end}}
   </section>
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
-    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} style="display:grid;gap:var(--space-6)">
+    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
@@ -95,7 +84,7 @@
            Jellyfin only take an API key. Each input has its own name and
            the server picks by type, so a hidden blank field can never
            win over the value the user actually supplied. */}}
-      <div data-credgroup="plex" style="display:grid;gap:var(--space-6)">
+      <div data-credgroup="plex" class="at-stack">
         <div class="at-tabs at-tabs--sm" role="tablist">
           <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>
           <button type="button" class="at-tab" role="tab" aria-selected="false" data-credtab="signin">Sign in with Plex</button>
@@ -171,25 +160,14 @@
       </table>
     </div>
     {{/* Outside the table, for the same reason as the media servers. */}}
-    {{range .Downloaders}}    <dialog class="at-dialog" id="del-dl-{{.ID}}">
-            <div class="at-dialog-panel">
-              <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
-              <p class="at-dialog-body">Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it.</p>
-              <div class="at-dialog-actions">
-                <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('del-dl-{{.ID}}').close()">Cancel</button>
-                <form method="post" action="/configuration/downloaders/{{.ID}}/delete">
-                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
-                  <button class="at-btn at-btn--danger" type="submit">Delete</button>
-                </form>
-              </div>
-            </div>
-    </dialog>
+    {{range .Downloaders}}{{template "deletedialog" dict "ID" (printf "del-dl-%d" .ID) "Name" .Name "Action" (printf "/configuration/downloaders/%d/delete" .ID) "CSRF" $csrf
+      "Body" "Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it."}}
     {{end}}
   </section>
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
-    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} style="display:grid;gap:var(--space-6)">
+    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
@@ -431,3 +409,18 @@
   <div hx-get="/configuration/plex-signin/poll" hx-trigger="load delay:2s" hx-target="#plex-signin" hx-swap="innerHTML"></div>
   {{- end}}
 </div>{{end}}
+
+{{/* Args: ID, Name, Body, Action, CSRF */}}
+{{define "deletedialog"}}<dialog class="at-dialog" id="{{.ID}}">
+  <div class="at-dialog-panel">
+    <h3 class="at-dialog-title">Delete {{.Name}}?</h3>
+    <p class="at-dialog-body">{{.Body}}</p>
+    <div class="at-dialog-actions">
+      <button class="at-btn at-btn--ghost" type="button" onclick="document.getElementById('{{.ID}}').close()">Cancel</button>
+      <form method="post" action="{{.Action}}">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="at-btn at-btn--danger" type="submit">Delete</button>
+      </form>
+    </div>
+  </div>
+</dialog>{{end}}

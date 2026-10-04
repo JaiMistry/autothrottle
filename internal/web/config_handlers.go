@@ -693,24 +693,13 @@ type testResultView struct {
 	Dismissable bool
 }
 
-// writeTestResult renders a connection test into its bounded box.
-//
-// The backend's own error string is shown verbatim in mono, wrapped by
-// a plain-language headline rather than replaced by one — the machine's
-// words are usually the only thing that says what actually went wrong.
-// minTestDuration is how long a probe is held before its answer is
-// written. A client on the same LAN can answer in single-digit
-// milliseconds, which made the result look like it had appeared without
-// a test having run. Only the reply waits — the elapsed time on the
-// card is the real one, and a probe slower than this is not delayed at
-// all. Validation errors, which never reach the network, skip it.
+// minTestDuration holds a fast reply back briefly: a LAN client can
+// answer in milliseconds, which looked like no test had run. The
+// elapsed time shown stays the real one.
 const minTestDuration = 550 * time.Millisecond
 
-// reachedMessage is the success line for a connection test.
-//
-// A downloader WebUI with authentication switched off is a normal
-// setup on a home network, and claiming a credential "was accepted"
-// when none was sent is simply untrue — nothing was checked.
+// reachedMessage is the success line for a connection test. With no
+// credential sent, nothing was accepted, so it does not say so.
 func reachedMessage(hadCredential bool) string {
 	if hadCredential {
 		return "Reachable, and the credential was accepted."
@@ -728,6 +717,9 @@ type testResult struct {
 	Elapsed time.Duration
 }
 
+// writeTestResult renders a connection test into its bounded box. The
+// backend's own error is shown verbatim under a plain headline: it is
+// usually the only thing that says what actually went wrong.
 func (s *Server) writeTestResult(w http.ResponseWriter, res testResult) {
 	if res.Elapsed > 0 && res.Elapsed < minTestDuration {
 		time.Sleep(minTestDuration - res.Elapsed)

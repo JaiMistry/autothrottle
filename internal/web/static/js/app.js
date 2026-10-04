@@ -342,14 +342,8 @@
       // Handled here; htmx must not then replace the element we just
       // updated, or every gain above is undone.
       e.detail.shouldSwap = false;
-      // Cancelling the swap also cancels htmx:afterSwap, so anything
-      // that normally runs after new content lands has to be run here.
-      // Missing this is what left the playback clock reading values
-      // captured before the refresh.
-      //
-      // Announced as an event rather than called directly: the rest of
-      // that work lives in the other IIFE in this file and is not in
-      // scope here.
+      // Cancelling the swap also cancels htmx:afterSwap, so the work
+      // that follows new content is announced here instead.
       bindCaps();
       document.body.dispatchEvent(new CustomEvent("at:merged"));
       return;
@@ -439,26 +433,13 @@
     syncDisabled(form);
   }
 
-  // Playback counts forward in the page, the way a player does. The
-  // server says where a session had reached and whether it is running;
-  // between updates the page advances it itself, and every server
-  // update re-syncs it. Without this the timecode moves in whatever
-  // steps the upstream socket happens to push, which reads as a stutter
-  // rather than as playback.
-  /* Playback clock.
+  /* Playback clock: counts forward between server updates, the way a
+     player does, and re-syncs on each one. Every tick reads its state
+     from the element itself — the refresh merges values in place, and
+     rows reorder — so nothing holds a copy that can go stale. */
+  function pad(n) { return String(n).padStart(2, "0"); }
 
-     Every tick reads the DOM rather than a cached copy of it. The
-     Dashboard's refresh now merges new values straight into the existing
-     elements without any swap event, so anything holding its own copy
-     keeps counting from a baseline that stopped being true — which is
-     what made a paused stream carry on advancing and then jump when it
-     was finally corrected.
-
-     State lives on the element, never in a list indexed by position:
-     rows reorder when a server starts playing, and an index would then
-     hand one session's progress to another. */
   function timecode(ms) {
-    var pad = function (n) { return String(n).padStart(2, "0"); };
     var t = Math.max(0, Math.floor(ms / 1000));
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
     return h > 0 ? h + ":" + pad(m) + ":" + pad(sec) : m + ":" + pad(sec);
@@ -507,7 +488,6 @@
     if (!el) return;
     var boot = Number(el.dataset.uptimeSince);
     if (!boot) return;
-    var pad = function (n) { return String(n).padStart(2, "0"); };
     var tick = function () {
       if (!el.isConnected) { clearInterval(uptimeTimer); return; }
       var secs = Math.max(0, Math.floor((Date.now() - boot) / 1000));
@@ -553,16 +533,10 @@
     document.querySelectorAll("form[data-require]").forEach(gateSubmit);
   }
 
-  /* A pass describes the values that were tested, so editing any of them
-     retires it. Without this you could test a good address, change it to
-     a bad one, and still save — which is the hole the gate exists to
-     close. Only a passing card is cleared: a failure is left alone,
-     because its text is what explains the field being outlined. */
-  //
-  // "Edited" means the values differ from the ones that passed — not that
-  // an event fired. Leaving a field fires `change` even when nothing new
-  // was typed, and retiring on that disabled the save button in the
-  // instant before a click on it landed, so the save silently did nothing.
+  /* A pass covers the values that were tested, so changing any of them
+     retires it (a failure stays, to explain the outlined field).
+     "Changed" means the values differ, not that an event fired: leaving
+     a field fires change with nothing new typed. */
   function formValues(form) {
     var pairs = [];
     new FormData(form).forEach(function (value, name) {

@@ -35,10 +35,6 @@
   </svg>
 {{- else if or (eq .Icon "normal") (eq .Icon "idle") -}}
   <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/></svg>
-{{- else if eq .Icon "paused" -}}
-  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M19.9 9.1A8.4 8.4 0 1 1 14.9 4.1"/><path d="M13.2 1.7 14.9 4.1 12 4.9"/>
-  </svg>
 {{- else if eq .Icon "unreachable" -}}
   <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/>
@@ -138,7 +134,7 @@
 {{/* DownloaderRow. Throttling is per-downloader; there is no global
      "on". The state flag never stands alone — the reason line always
      says which media server caused it, or why the state is not known.
-     Args: Name, Type, State, Cause, Down, Up, AppliedAt */}}
+     Args: Name, Type, State, Cause, Down, Up */}}
 {{define "downloaderrow"}}<div class="at-dlrow-wrap" data-state="{{.State}}">
   <div class="at-dlrow">
     <div class="at-dlrow-head">
@@ -157,7 +153,6 @@
     <span class="at-dlrow-reason">{{.Cause}}</span>
     <div class="at-dlrow-side">
       <span class="at-dlrow-rates">{{template "ratefigure" dict "Down" .Down "Up" .Up}}</span>
-      {{if .AppliedAt}}<span class="at-rowapplied">{{.AppliedAt}}</span>{{end}}
     </div>
   </div>
 </div>{{end}}
@@ -170,20 +165,6 @@
   <span class="at-logrow-level">{{template "badge" dict "Tone" (levelTone .Level) "Label" .Level}}</span>
   <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{.Downloader}}{{if and .Downloader .Server}} ← {{end}}{{.Server}}</span>{{end}}</span>
 </div>{{end}}
-
-{{/* PageHeader. Args: Title, PillTone, PillIcon, PillLabel, Sub, Actions
-     (Actions is rendered by the caller via the "pageactions" block). */}}
-{{define "pagehead"}}<header class="at-page-head">
-  <div style="display:grid;gap:var(--space-2)">
-    <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
-      <h1 class="at-page-title">{{.Title}}</h1>
-      {{if .PillLabel}}<span style="display:inline-flex;align-items:center;transform:translateY(1px)">
-        {{template "statusflag" dict "Tone" .PillTone "Icon" .PillIcon "Label" .PillLabel}}
-      </span>{{end}}
-    </div>
-    {{if .Sub}}<p class="at-page-sub">{{.Sub}}</p>{{end}}
-  </div>
-</header>{{end}}
 
 {{/* One downloader's live state as a flag. Paused reads as Normal: the
      configured default rate is in force either way. */}}
@@ -205,9 +186,8 @@
 </span>{{end}}
 
 {{/* PagedLog. A fixed page size so the card never grows downward:
-     choose how many rows, step through with arrows. Refresh re-reads
-     from the server and returns to page 1; Clear empties the view only
-     — the events are still there, which is why it says so. */}}
+     choose how many rows, step through with arrows. Clear deletes the
+     events. */}}
 {{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}"
   {{- if and .LiveEndpoint (eq .Page 1)}}
   hx-get="{{.LiveEndpoint}}" hx-trigger="every 5s [document.visibilityState === 'visible']"
@@ -238,7 +218,7 @@
            one does not land on a different-looking page. */}}
       {{template "emptystate" dict "Title" (or .EmptyTitle "No events yet") "Body" .EmptyNote}}
     {{else}}
-      {{range .Events}}{{template "logrow" dict "Time" .Time "Level" .Level "Message" .Message "Downloader" .Downloader "Server" .Server}}{{end}}
+      {{range .Events}}{{template "logrow" .}}{{end}}
     {{end}}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding-top:var(--space-6);flex-wrap:wrap">
       <span class="at-mono" style="font-size:var(--text-label);color:var(--text-faint)">
@@ -259,11 +239,6 @@
   </div>
 </section>{{end}}
 
-{{/* CredentialField. Never echoes a stored secret — not even a hidden
-     field. Empty means "keep what is saved", and the note that says so
-     lives under the control rather than in the label, so the label
-     stays one line and keeps aligning with a plain field beside it.
-     Args: Label, Name, HasCredential, Placeholder */}}
 {{/* The swap target for a connection test. One bounded box, and it
      holds still until dismissed by hand — a result that vanished on its
      own would take the error text with it. */}}
@@ -278,6 +253,11 @@
   {{if .Hint}}<span class="at-testresult-hint">{{.Hint}}</span>{{end}}
 </div>{{end}}
 
+{{/* CredentialField. Never echoes a stored secret — not even a hidden
+     field. Empty means "keep what is saved", and the note that says so
+     lives under the control rather than in the label, so the label
+     stays one line and keeps aligning with a plain field beside it.
+     Args: Label, Name, HasCredential, Placeholder */}}
 {{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
   <label class="at-field">
     <span class="at-field-label">{{.Label}}{{if .Help}}<a class="at-helplink" href="{{.Help}}" target="_blank" rel="noreferrer" title="{{.HelpLabel}}" aria-label="{{.HelpLabel}}">?</a>{{end}}</span>

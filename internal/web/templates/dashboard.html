@@ -3,19 +3,10 @@
   <div style="display:grid;gap:var(--space-2)">
     <div style="display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
       <h1 class="at-page-title">Dashboard</h1>
-      <span id="dash-pill" style="display:inline-flex;align-items:center;transform:translateY(1px)">
-        {{template "statusflag" dict "Tone" .Overall.Tone "Icon" .Overall.Icon "Label" .Overall.Label}}
-      </span>
+      {{template "dashpill" .}}
     </div>
   </div>
-  {{if not .Empty}}
-  <div class="at-page-actions" id="dash-actions">
-    <form method="post" action="/pause-toggle">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button type="submit" class="at-btn{{if .Paused}} at-btn--warning{{end}}">{{if .Paused}}Resume throttling{{else}}Disable throttling{{end}}</button>
-    </form>
-  </div>
-  {{end}}
+  {{template "dashactions" .}}
 </header>
 
 {{if .Empty}}
@@ -74,12 +65,8 @@
       "Body" .UnreachableNote}}
   {{end}}
 
-  {{/* Both cards take the same height; past two rows the list scrolls
-       instead of stretching the page. One row still shrinks to fit.
-       Both cards share the row height so their top and bottom edges line
-       up; each list stretches its own rows to fill, so matching heights
-       costs no void. Past two rows a list scrolls inside its own card
-       rather than stretching the page. */}}
+  {{/* Both cards share the row height so their edges line up. Past two
+       rows a list scrolls inside its card rather than stretching the page. */}}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:var(--space-8);align-items:stretch">
     <section class="at-card" style="display:grid;grid-template-rows:auto 1fr">
       <header class="at-card-head">
@@ -89,7 +76,7 @@
       <div style="display:grid;min-height:0">
         <div class="at-listshell" data-cap-rows>
           {{range .Downloaders}}
-            {{template "downloaderrow" dict "Name" .Name "Type" .Type "State" .State "Cause" .Cause "Down" .Down "Up" .Up}}
+            {{template "downloaderrow" .}}
           {{else}}
             <p class="at-listempty">No downloaders configured.</p>
           {{end}}
@@ -105,7 +92,7 @@
       <div style="display:grid;min-height:0">
         <div class="at-listshell" data-cap-rows>
           {{range .Servers}}
-            {{template "serverrow" dict "Name" .Name "Type" .Type "State" .State "Sessions" .Sessions "Detail" .Detail "Playing" .Playing}}
+            {{template "serverrow" .}}
           {{else}}
             <p class="at-listempty">No media servers configured.</p>
           {{end}}
@@ -115,14 +102,24 @@
   </div>
 </div>
 {{- if .Fragment}}
-<span id="dash-pill" hx-swap-oob="true" style="display:inline-flex;align-items:center;transform:translateY(1px)">
+{{template "dashpill" .}}
+{{template "dashactions" .}}
+{{- end}}
+{{end}}
+
+{{/* The pill and the pause button live in the page header, outside the
+     refreshed block, so a refresh swaps them out of band. */}}
+{{define "dashpill"}}
+<span id="dash-pill"{{if .Fragment}} hx-swap-oob="true"{{end}} style="display:inline-flex;align-items:center;transform:translateY(1px)">
   {{template "statusflag" dict "Tone" .Overall.Tone "Icon" .Overall.Icon "Label" .Overall.Label}}
 </span>
-{{if not .Empty}}<div class="at-page-actions" id="dash-actions" hx-swap-oob="true">
+{{end}}
+
+{{define "dashactions"}}
+{{if not .Empty}}<div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}>
   <form method="post" action="/pause-toggle">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <button type="submit" class="at-btn{{if .Paused}} at-btn--warning{{end}}">{{if .Paused}}Resume throttling{{else}}Disable throttling{{end}}</button>
   </form>
 </div>{{end}}
-{{- end}}
 {{end}}

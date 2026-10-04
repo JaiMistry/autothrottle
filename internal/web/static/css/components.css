@@ -327,7 +327,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   border-radius: var(--radius-lg);
   padding: var(--pad-card-lg);
 }
-.at-card--sm { padding: var(--pad-card); }
 .at-card-head {
   display: flex;
   align-items: center;
@@ -367,21 +366,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-stat-value[data-tone="dim"] { color: var(--text-faint); }
 .at-stat-unit { font-size: var(--text-caption); font-weight: var(--weight-medium); color: var(--text-faint); margin-left: 5px; }
 .at-stat-foot { font-size: var(--text-label); color: var(--text-faint); margin-top: var(--space-2); }
-
-/* ── Section label ────────────────────────────────────────────────── */
-
-.at-section-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  margin: 0 0 var(--space-6);
-  font-size: var(--text-caption);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-kicker);
-  color: var(--text-faint);
-  font-weight: var(--weight-bold);
-}
-.at-section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
 /* ── Button ───────────────────────────────────────────────────────── */
 
@@ -448,10 +432,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   background: var(--fill-neutral);
   color: var(--text-dim);
 }
-.at-badge--good { background: var(--fill-good); color: var(--good); }
 .at-badge--warn { background: var(--fill-warn); color: var(--warn); }
 .at-badge--error { background: var(--fill-critical); color: var(--critical); }
-.at-badge--plain { text-transform: none; letter-spacing: 0; padding: 3px 6px; }
 
 /* ── StatusFlag ───────────────────────────────────────────────────── */
 
@@ -650,7 +632,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-rowname { font-size: var(--text-body); font-weight: var(--weight-semibold); color: var(--text); }
 .at-rowname--muted { color: var(--text-faint); }
 .at-rowtype { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); }
-.at-rowapplied { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-faint); white-space: nowrap; }
 .at-dlrow-rates { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-caption); color: var(--text-dim); white-space: nowrap; }
 .at-dlrow-wrap[data-state="throttled"] .at-dlrow-rates { color: var(--warn); }
 .at-dlrow-wrap[data-state="unreachable"] .at-dlrow-reason { color: var(--critical); }
@@ -704,7 +685,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
 /* Every live number gets tabular figures: without them, a swapped rate
    visibly jitters as digit widths change, and this page polls. */
-.at-mono, .at-num {
+.at-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -725,14 +706,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-alert-title { font-weight: var(--weight-bold); color: var(--text); }
 .at-alert-body { color: var(--text-dim); }
-.at-alert--good { background: var(--fill-good); border-color: var(--good); }
-.at-alert--good .at-alert-title { color: var(--good); }
 .at-alert--warn { background: var(--fill-warn); border-color: var(--warn); }
 .at-alert--warn .at-alert-title { color: var(--warn); }
 .at-alert--error { background: var(--fill-critical); border-color: var(--critical); }
 .at-alert--error .at-alert-title { color: var(--critical); }
-.at-alert--accent { background: var(--fill-accent); border-color: var(--accent); }
-.at-alert--accent .at-alert-title { color: var(--accent); }
 
 /* What is missing, why the page is blank, and one way forward. The
    dashed edge says "nothing here yet" rather than "something broke". */
@@ -846,7 +823,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   font-weight: var(--weight-semibold);
 }
 .at-field-hint { font-size: var(--text-caption); color: var(--text-faint); }
-.at-field-error { font-size: var(--text-caption); color: var(--critical); }
 
 .at-input, .at-select {
   width: 100%;
@@ -1139,11 +1115,9 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   font-size: var(--text-caption);
 }
 .at-table td.at-cell--dim { color: var(--text-dim); }
-.at-table td.at-cell--right, .at-table th.at-cell--right { text-align: right; }
 /* The actions column takes only what its buttons need, so the columns
    that carry real content get the rest of the width. */
 .at-table th.at-col-actions { width: 1%; white-space: nowrap; }
-.at-table td.at-cell--actions { white-space: nowrap; }
 
 .at-table-empty { padding: 22px 0; text-align: center; color: var(--text-faint); font-size: var(--text-caption); }
 .at-rowactions { display: inline-flex; gap: var(--space-4); justify-content: flex-end; align-items: center; }
@@ -1154,10 +1128,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
 /* ── Grids ────────────────────────────────────────────────────────── */
 
-/* Multi-column blocks size to their own content, not the viewport. */
-.at-grid-cards { display: grid; gap: var(--space-6); grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); }
-.at-grid-lists { display: grid; gap: var(--space-6); grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); align-items: start; }
-.at-grid-hero { display: grid; gap: var(--space-9); grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); align-items: center; }
 .at-stack { display: grid; gap: var(--space-6); }
 
 /* ── Theme toggle ─────────────────────────────────────────────────── */

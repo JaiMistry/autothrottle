@@ -11,7 +11,7 @@
     {{/* Card renders its children inside a body slot; mirroring that
          keeps the box model identical to the design's. */}}
     <div>
-    <form method="post" action="/login" style="display:grid;gap:var(--space-6)">
+    <form method="post" action="/login" class="at-stack">
       {{/* Deliberately generic: naming which half was wrong would leak
            which accounts exist. */}}
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}

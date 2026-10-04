@@ -55,13 +55,9 @@ type Scheduler struct {
 type appliedState struct {
 	throttled                  bool
 	downloadLimit, uploadLimit int64
-	// cause names the media server whose sessions produced this state,
-	// and appliedAt is when it was pushed. Both exist for the
-	// Dashboard: "Throttled, because Living Room Plex is playing" is
-	// the whole product, and it cannot be reconstructed from the
-	// throttled flag alone.
-	cause     string
-	appliedAt time.Time
+	// cause names the media server whose sessions produced this
+	// state, for the Dashboard's "because Living Room Plex is playing".
+	cause string
 	// failure holds the last error from applying this downloader's
 	// limits, so a row can read Unreachable with the machine's own
 	// words rather than a guess.
@@ -74,7 +70,6 @@ type DownloaderState struct {
 	Cause        string
 	DownloadKBps int64
 	UploadKBps   int64
-	AppliedAt    time.Time
 	Failure      string
 	Known        bool
 }
@@ -206,7 +201,6 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 		Cause:        state.cause,
 		DownloadKBps: state.downloadLimit,
 		UploadKBps:   state.uploadLimit,
-		AppliedAt:    state.appliedAt,
 		Failure:      state.failure,
 		Known:        known,
 	}
@@ -495,9 +489,7 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 
 	s.mu.Lock()
 	prev, known := s.applied[dl.ID]
-	// appliedAt and failure are bookkeeping, not part of "is this the
-	// same state" — comparing them would make every pass look like a
-	// change and fire an API call per resolve.
+	// A recorded failure is never "the same state": it must retry.
 	if known && prev.throttled == want.throttled &&
 		prev.downloadLimit == want.downloadLimit &&
 		prev.uploadLimit == want.uploadLimit &&
@@ -505,7 +497,6 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 		s.mu.Unlock()
 		return
 	}
-	want.appliedAt = time.Now()
 	// Recorded optimistically so concurrent resolves don't both fire
 	// the same call; a failure below un-records it.
 	s.applied[dl.ID] = want
@@ -548,7 +539,7 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 func (s *Scheduler) recordFailure(downloaderID int64, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
-	s.applied[downloaderID] = appliedState{failure: message, appliedAt: time.Now()}
+	s.applied[downloaderID] = appliedState{failure: message}
 	s.mu.Unlock()
 	if err := s.db.InsertEvent(db.Event{
 		Level:        "error",
