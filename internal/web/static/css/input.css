@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
-/* The design system's tokens are the source of truth for every value.
-   They publish both semantic names (--surface, --text-dim, --good) and
-   daisyUI parity names (--color-base-100, --color-primary), so wiring
-   the theme once keeps the compiled daisyUI layer and hand-written
-   components in sync. */
+/* The design system's tokens are the source of truth for every value. */
 @import "./tokens/palette.css";
 @import "./tokens/theme.css";
 @import "./tokens/typography.css";
@@ -16,31 +12,7 @@
 /* The design system's components, expressed as classes. */
 @import "./components.css";
 
-/* themes:false on purpose. daisyUI's own theme blocks would emit
-   [data-theme] rules that fight the token layer, and — more
-   importantly — daisyUI expects a data-theme attribute to always be
-   present, which breaks "System": System means NO attribute, so that
-   prefers-color-scheme can apply. tokens/theme.css already covers all
-   three cases (bare :root, the media query, and an explicit
-   [data-theme]), so daisyUI just reads the vars it finds. */
-@plugin "daisyui" {
-  themes: false;
-}
-
-/* Structural values daisyUI components read but the token files don't
-   publish, since nothing outside daisyUI uses them. Radii come from
-   the design's scale: 4px badges and checkboxes, 8px fields and
-   buttons, 10px cards — all denser than daisyUI's defaults. */
 @theme {
-  --radius-selector: 4px;
-  --radius-field: 8px;
-  --radius-box: 10px;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
-
   --font-sans: "Lexend", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 

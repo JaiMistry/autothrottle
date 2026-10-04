@@ -10,7 +10,7 @@
   /* ── Theme ──────────────────────────────────────────────────────
      Three modes, cycled. "System" is the absence of data-theme so
      prefers-color-scheme applies — setting it unconditionally, the way
-     daisyUI usually does, would make System impossible to express. */
+     many theme libraries do, would make System impossible to express. */
   var MODES = ["system", "light", "dark"];
 
   function applyTheme(mode) {
