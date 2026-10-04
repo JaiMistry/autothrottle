@@ -1,5 +1,5 @@
 // The end-to-end scenario: a fresh install set up and used entirely
-// through its web UI, against real Jellyfin, qBittorrent and
+// through its web UI, against a real Jellyfin or Emby, qBittorrent and
 // Transmission. Every check that matters is made twice where it can be —
 // on the page, and on the download client itself — because the page
 // saying "throttled" proves nothing if qBittorrent was never told.
@@ -11,6 +11,8 @@ const puppeteer = require('puppeteer');
 
 const env = JSON.parse(fs.readFileSync(path.join(__dirname, '.state/env.json')));
 const APP = env.autothrottle;
+const MEDIA = env.media; // Jellyfin or Emby, whichever this run provisioned
+const NAME = MEDIA.label;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let failures = 0;
@@ -33,35 +35,34 @@ async function until(what, fn, timeoutMs = 90000) {
 
 // --- the outside world: a player, and the download clients ---------------
 
-const jellyfin = {
+const AUTH = `MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0", Token="${MEDIA.userToken}"`;
+const player = {
   async report(endpoint, positionSeconds, paused = false) {
-    const res = await fetch(env.jellyfin.base + endpoint, {
+    const res = await fetch(MEDIA.base + endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0", Token="${env.jellyfin.userToken}"`,
-      },
+      // Jellyfin reads Authorization; Emby reads its own header.
+      headers: { 'Content-Type': 'application/json', Authorization: AUTH, 'X-Emby-Authorization': AUTH, 'X-Emby-Token': MEDIA.userToken },
       body: JSON.stringify({
-        ItemId: env.jellyfin.itemId, PlayMethod: 'DirectStream', CanSeek: true,
+        ItemId: MEDIA.itemId, PlayMethod: 'DirectStream', CanSeek: true,
         PositionTicks: Math.round(positionSeconds * 1e7), IsPaused: paused, PlaySessionId: 'e2e-1',
       }),
     });
-    if (!res.ok) throw new Error(`jellyfin ${endpoint}: ${res.status}`);
+    if (!res.ok) throw new Error(`${MEDIA.kind} ${endpoint}: ${res.status}`);
   },
 };
 
 // A player keeps reporting progress while it plays; this does the same.
 function startPlayer() {
   let position = 60, paused = false;
-  jellyfin.report('/Sessions/Playing', position);
+  player.report('/Sessions/Playing', position);
   const timer = setInterval(() => {
     if (!paused) position += 2;
-    jellyfin.report('/Sessions/Playing/Progress', position, paused).catch(() => {});
+    player.report('/Sessions/Playing/Progress', position, paused).catch(() => {});
   }, 2000);
   return {
-    pause() { paused = true; return jellyfin.report('/Sessions/Playing/Progress', position, true); },
-    resume() { paused = false; return jellyfin.report('/Sessions/Playing/Progress', position, false); },
-    async stop() { clearInterval(timer); await jellyfin.report('/Sessions/Playing/Stopped', position); },
+    pause() { paused = true; return player.report('/Sessions/Playing/Progress', position, true); },
+    resume() { paused = false; return player.report('/Sessions/Playing/Progress', position, false); },
+    async stop() { clearInterval(timer); await player.report('/Sessions/Playing/Stopped', position); },
   };
 }
 
@@ -136,7 +137,7 @@ const transmission = {
     };
   }
   // Names in the saved-entries table, not anywhere on the page: the type
-  // dropdown also says "Jellyfin".
+  // dropdown also names the server type.
   const savedNames = () => page.$$eval('tbody tr td:first-child', (cells) => cells.map((c) => c.innerText.trim()));
   const dashboard = async () => page.evaluate(() => ({
     hero: document.querySelector('#dash-live p')?.innerText.trim() || '',
@@ -162,28 +163,28 @@ const transmission = {
 
     section('Media server');
     await navigate('/configuration?tab=media-servers');
-    await page.select('#ms-form [name=type]', 'jellyfin');
-    await fill('#ms-form [name=name]', 'Jellyfin');
-    await fill('#ms-form [name=url]', env.jellyfin.internal);
+    await page.select('#ms-form [name=type]', MEDIA.kind);
+    await fill('#ms-form [name=name]', NAME);
+    await fill('#ms-form [name=url]', MEDIA.internal);
     const keyField = '#ms-form [name=api_token]';
     await fill(keyField, 'not-the-key');
     let result = await testConnection('#ms-form');
     check(result.state === 'failed' && !result.canSave, 'a wrong API key fails the test and blocks saving', JSON.stringify(result));
-    await fill(keyField, env.jellyfin.apiKey);
+    await fill(keyField, MEDIA.apiKey);
     check(!(await page.$('#ms-form .at-testresult[data-state="connected"]')), 'editing a field retires an old result');
     result = await testConnection('#ms-form');
     check(result.state === 'connected' && result.canSave, 'the right API key passes and allows saving', JSON.stringify(result));
     await submit('#ms-form');
-    check((await savedNames()).includes('Jellyfin'), 'the server is saved', JSON.stringify(await savedNames()));
+    check((await savedNames()).includes(NAME), 'the server is saved', JSON.stringify(await savedNames()));
 
-    await page.select('#ms-form [name=type]', 'jellyfin');
-    await fill('#ms-form [name=name]', 'Jellyfin again');
-    await fill('#ms-form [name=url]', env.jellyfin.internal + '/');
-    await fill(keyField, env.jellyfin.apiKey);
+    await page.select('#ms-form [name=type]', MEDIA.kind);
+    await fill('#ms-form [name=name]', `${NAME} again`);
+    await fill('#ms-form [name=url]', MEDIA.internal + '/');
+    await fill(keyField, MEDIA.apiKey);
     await testConnection('#ms-form');
     await submit('#ms-form');
     check((await text('.at-alert')).includes('already added'), 'adding the same server twice is refused with a reason', await text('.at-alert'));
-    check((await savedNames()).filter((n) => n.startsWith('Jellyfin')).length === 1, 'and nothing was added');
+    check((await savedNames()).filter((n) => n.startsWith(NAME)).length === 1, 'and nothing was added');
 
     section('Download clients');
     for (const [name, type, conf, down, up] of [
@@ -207,11 +208,11 @@ const transmission = {
     section('Mappings');
     await navigate('/configuration?tab=mappings');
     check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 2, 'new pairings start as Throttle');
-    await page.click('.at-matrix-cell[title="Leave Transmission at its default rate when Jellyfin plays"]');
-    await page.waitForSelector('.at-matrix-cell[aria-pressed="false"][title="Throttle Transmission when Jellyfin plays"]');
+    await page.click(`.at-matrix-cell[title="Leave Transmission at its default rate when ${NAME} plays"]`);
+    await page.waitForSelector(`.at-matrix-cell[aria-pressed="false"][title="Throttle Transmission when ${NAME} plays"]`);
     check(true, 'a pairing can be switched off');
-    await page.click('.at-matrix-cell[title="Throttle Transmission when Jellyfin plays"]');
-    await page.waitForSelector('.at-matrix-cell[aria-pressed="true"][title="Leave Transmission at its default rate when Jellyfin plays"]');
+    await page.click(`.at-matrix-cell[title="Throttle Transmission when ${NAME} plays"]`);
+    await page.waitForSelector(`.at-matrix-cell[aria-pressed="true"][title="Leave Transmission at its default rate when ${NAME} plays"]`);
     check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 2, 'and back on');
 
     section('Idle');
@@ -241,7 +242,7 @@ const transmission = {
     check(q.down === 1500 * 1024 && q.up === 300 * 1024, 'qBittorrent really is limited to 1500/300 KB/s', JSON.stringify(q));
     const t = await transmission.limits();
     check(t.down === 900 && t.up === 180, 'Transmission really is limited to 900/180 KB/s', JSON.stringify(t));
-    check((await page.content()).includes(env.jellyfin.itemName), 'the playing title is shown');
+    check((await page.content()).includes(MEDIA.itemName), 'the playing title is shown');
 
     const before = (await dashboard()).sessionTime;
     await sleep(6000);
@@ -278,7 +279,7 @@ const transmission = {
     section('Logs');
     await navigate('/logs');
     const logText = await text('#log-panel');
-    check(/throttled qBittorrent because Jellyfin is playing/.test(logText), 'the throttle is logged with its cause');
+    check(logText.includes(`throttled qBittorrent because ${NAME} is playing`), 'the throttle is logged with its cause');
     check(/restored default rate for qBittorrent/.test(logText), 'the restore is logged');
     await page.click('#log-panel form[action="/logs/clear"] button');
     await page.waitForFunction(() => document.querySelectorAll('.at-logrow').length === 0);

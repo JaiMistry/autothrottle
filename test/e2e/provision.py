@@ -4,8 +4,9 @@
     provision.py seed       before `docker compose up`: test media and the
                             qBittorrent password, which must exist before
                             qBittorrent first starts
-    provision.py configure  after it is up: Jellyfin's setup wizard, a user,
-                            a library and an API key
+    provision.py configure  after it is up: the media server's setup wizard
+                            (MEDIA=jellyfin or emby), a user, a library and
+                            an API key
 
 Writes .state/env.json for the scenario to read. Standard library only, so
 it runs on a bare CI runner.
@@ -24,8 +25,13 @@ import urllib.request
 HERE = pathlib.Path(__file__).resolve().parent
 STATE = HERE / ".state"
 
-JELLYFIN = "http://127.0.0.1:18196"
-JF_USER, JF_PASS = "e2e", "e2e-jellyfin"
+MEDIA = os.environ.get("MEDIA", "jellyfin")
+SERVERS = {
+    "jellyfin": {"label": "Jellyfin", "base": "http://127.0.0.1:18196", "internal": "http://jellyfin:8096"},
+    "emby": {"label": "Emby", "base": "http://127.0.0.1:18096", "internal": "http://emby:8096"},
+}
+SERVER = SERVERS[MEDIA]
+MS_USER, MS_PASS = "e2e", "e2e-media"
 QBIT_USER, QBIT_PASS = "admin", "e2e-qbittorrent"
 TR_USER, TR_PASS = "e2e", "e2e-transmission"
 CLIENT_AUTH = 'MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0"'
@@ -36,7 +42,7 @@ def log(msg):
 
 
 def seed():
-    for sub in ("autothrottle", "jellyfin", "media/movies", "qbittorrent/qBittorrent", "transmission"):
+    for sub in ("autothrottle", MEDIA, "media/movies", "qbittorrent/qBittorrent", "transmission"):
         (STATE / sub).mkdir(parents=True, exist_ok=True)
 
     movie = STATE / "media/movies/Sandbox Reel (2024).mkv"
@@ -69,12 +75,16 @@ def seed():
         log("seeded the qBittorrent password")
 
 
-def call(path, payload=None, method=None, token=None, base=JELLYFIN):
+def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(base + path, data=data, method=method or ("POST" if data is not None else "GET"))
     req.add_header("Content-Type", "application/json")
     auth = CLIENT_AUTH + (f', Token="{token}"' if token else "")
+    # Jellyfin reads Authorization; Emby reads its own header.
     req.add_header("Authorization", auth)
+    req.add_header("X-Emby-Authorization", auth)
+    if token:
+        req.add_header("X-Emby-Token", token)
     with urllib.request.urlopen(req, timeout=20) as resp:
         body = resp.read().decode()
         return json.loads(body) if body.strip() else None
@@ -93,16 +103,24 @@ def wait_for(what, check, timeout=180):
 
 
 def configure():
-    wait_for("Jellyfin", lambda: urllib.request.urlopen(JELLYFIN + "/health", timeout=5).read() == b"Healthy")
+    # Jellyfin answers some requests while still starting up; /health is
+    # its own "ready" signal. Emby has none, so its public info stands in.
+    ready = "/health" if MEDIA == "jellyfin" else "/System/Info/Public"
 
-    log("running Jellyfin's setup wizard")
+    def up():
+        with urllib.request.urlopen(SERVER["base"] + ready, timeout=5) as resp:
+            return resp.status == 200
+    wait_for(SERVER["label"], up)
+
+    log(f"running {SERVER['label']}'s setup wizard")
     call("/Startup/Configuration", {"UICulture": "en-US", "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en"})
     call("/Startup/User")
-    call("/Startup/User", {"Name": JF_USER, "Password": JF_PASS})
-    call("/Startup/RemoteAccess", {"EnableRemoteAccess": True, "EnableAutomaticPortMapping": False})
+    call("/Startup/User", {"Name": MS_USER, "Password": MS_PASS})
+    if MEDIA == "jellyfin":
+        call("/Startup/RemoteAccess", {"EnableRemoteAccess": True, "EnableAutomaticPortMapping": False})
     call("/Startup/Complete", {})
 
-    session = call("/Users/AuthenticateByName", {"Username": JF_USER, "Pw": JF_PASS})
+    session = call("/Users/AuthenticateByName", {"Username": MS_USER, "Pw": MS_PASS})
     token, user_id = session["AccessToken"], session["User"]["Id"]
 
     log("adding the test library")
@@ -110,24 +128,26 @@ def configure():
          {"LibraryOptions": {"PathInfos": [{"Path": "/media/movies"}]}}, token=token)
 
     item = {}
+    items_path = (f"/Items?Recursive=true&IncludeItemTypes=Movie&userId={user_id}" if MEDIA == "jellyfin"
+                  else f"/Users/{user_id}/Items?Recursive=true&IncludeItemTypes=Movie")
 
     def scanned():
-        items = call(f"/Items?Recursive=true&IncludeItemTypes=Movie&userId={user_id}", token=token)["Items"]
+        items = call(items_path, token=token)["Items"]
         if items:
             item.update(items[0])
         return bool(items)
     wait_for("the library scan", scanned)
 
     # The key AutoThrottle is given, made the way a person would: as an
-    # app key from Jellyfin's dashboard, not the user's session token.
+    # app key from the server's dashboard, not the user's session token.
     call("/Auth/Keys?app=AutoThrottle", {}, token=token)
     keys = call("/Auth/Keys", token=token)["Items"]
     api_key = next(k["AccessToken"] for k in keys if k.get("AppName") == "AutoThrottle")
 
     env = {
-        "jellyfin": {"base": JELLYFIN, "internal": "http://jellyfin:8096", "apiKey": api_key,
-                     "userToken": token, "itemId": item["Id"], "itemName": item["Name"],
-                     "runTicks": item.get("RunTimeTicks", 6_000_000_000)},
+        "media": {"kind": MEDIA, "label": SERVER["label"], "base": SERVER["base"], "internal": SERVER["internal"],
+                  "apiKey": api_key, "userToken": token, "itemId": item["Id"], "itemName": item["Name"],
+                  "runTicks": item.get("RunTimeTicks", 6_000_000_000)},
         "qbittorrent": {"base": "http://127.0.0.1:18180", "internal": "http://qbittorrent:8080",
                         "username": QBIT_USER, "password": QBIT_PASS},
         "transmission": {"base": "http://127.0.0.1:18191", "internal": "http://transmission:9091",

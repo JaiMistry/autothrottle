@@ -1,8 +1,8 @@
 name: E2E
 
-# The full suite against real Jellyfin, qBittorrent and Transmission.
-# Too heavy for every push — about 2 GB of images — so it runs nightly,
-# and on demand from the Actions tab.
+# The full suite against real Jellyfin and Emby (one job each),
+# qBittorrent and Transmission. Too heavy for every push — about 2 GB of
+# images — so it runs nightly, and on demand from the Actions tab.
 on:
   workflow_dispatch:
   schedule:
@@ -15,16 +15,23 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        media: [jellyfin, emby]
+    name: e2e (${{ matrix.media }})
     steps:
       - uses: actions/checkout@v4
 
       - name: Run the end-to-end suite
         run: test/e2e/run.sh
+        env:
+          MEDIA: ${{ matrix.media }}
 
       - name: Keep the failure screenshot
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failure
+          name: e2e-failure-${{ matrix.media }}
           path: test/e2e/.state/failure.png
           if-no-files-found: ignore

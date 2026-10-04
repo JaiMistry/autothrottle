@@ -1,5 +1,6 @@
-# End-to-end test stack: AutoThrottle against real Jellyfin, qBittorrent
-# and Transmission. Driven by test/e2e/run.sh — see the README there.
+# End-to-end test stack: AutoThrottle against a real Jellyfin or Emby
+# (one per run, chosen by profile), qBittorrent and Transmission. Driven
+# by test/e2e/run.sh — see the README there.
 #
 # Everything is published on 1xxxx ports so the stack can run beside a
 # normal install without a clash.
@@ -23,12 +24,27 @@ services:
 
   jellyfin:
     image: jellyfin/jellyfin:10.11.11
+    profiles: [jellyfin]
     container_name: e2e-jellyfin
     volumes:
       - ./.state/jellyfin:/config
       - ./.state/media:/media:ro
     ports:
       - "18196:8096"
+    mem_limit: 1g
+
+  emby:
+    image: emby/embyserver:4.9.5.0
+    profiles: [emby]
+    container_name: e2e-emby
+    environment:
+      - UID=1000
+      - GID=1000
+    volumes:
+      - ./.state/emby:/config
+      - ./.state/media:/media:ro
+    ports:
+      - "18096:8096"
     mem_limit: 1g
 
   qbittorrent:
