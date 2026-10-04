@@ -73,7 +73,8 @@ docker run -d \
 
 ## First-time setup
 
-Once you're signed in, everything happens on the **Configuration** page:
+Open `http://<your-server>:7676` and create your account. Everything else
+happens on the **Configuration** page:
 
 1. **Add a media server** — Plex, Emby or Jellyfin, with its URL and token or
    API key. For Plex you can sign in with your Plex account instead of
