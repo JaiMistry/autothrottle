@@ -636,7 +636,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
-		field, hint := classifyProbeError(probeServer, err)
+		field, hint := classifyProbeError(probeDownloader, err)
 		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}

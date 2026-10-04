@@ -500,20 +500,22 @@
   // Uptime counts forward in the page. The server sends the boot
   // timestamp and the first frame; recomputing from the timestamp keeps
   // it right across a tab that was asleep, which incrementing would not.
+  var uptimeTimer = null;
   function startUptime() {
+    clearInterval(uptimeTimer);
     var el = document.querySelector("[data-uptime-since]");
     if (!el) return;
     var boot = Number(el.dataset.uptimeSince);
     if (!boot) return;
     var pad = function (n) { return String(n).padStart(2, "0"); };
     var tick = function () {
-      if (!el.isConnected) { clearInterval(timer); return; }
+      if (!el.isConnected) { clearInterval(uptimeTimer); return; }
       var secs = Math.max(0, Math.floor((Date.now() - boot) / 1000));
       el.textContent =
         Math.floor(secs / 86400) + "d : " + pad(Math.floor((secs % 86400) / 3600)) +
         "h : " + pad(Math.floor((secs % 3600) / 60)) + "m : " + pad(secs % 60) + "s";
     };
-    var timer = setInterval(tick, 1000);
+    uptimeTimer = setInterval(tick, 1000);
     tick();
   }
 
