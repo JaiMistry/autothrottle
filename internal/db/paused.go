@@ -1,8 +1,6 @@
 package db
 
 import (
-	"database/sql"
-	"errors"
 	"time"
 )
 
@@ -60,10 +58,7 @@ func (d *DB) DeletePausedSession(mediaServerID int64, sessionKey string) error {
 	_, err := d.conn.Exec(
 		`DELETE FROM paused_sessions WHERE media_server_id = ? AND session_key = ?`,
 		mediaServerID, sessionKey)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	return nil
+	return err
 }
 
 // RetainPausedSessions drops every recorded pause for a media server

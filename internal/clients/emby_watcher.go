@@ -31,13 +31,6 @@ import (
 //     for longer — see startKeepAlive.
 //  3. There is no locality flag, so the local-playback exemption is
 //     computed from the client's address. See embySessionIsLocal.
-//
-// Deriving events from full lists is not a downgrade in this app's
-// design: the scheduler is already built to accept whole-set
-// replacement (ReplaceSessions, for reconciliation), and diffing means
-// a missed message self-corrects on the very next push rather than
-// persisting until the reconciliation poll. If anything these servers
-// drift less than Plex does.
 type EmbyWatcher struct {
 	BaseURL           string
 	APIKey            string
@@ -200,21 +193,10 @@ func (w *EmbyWatcher) handleMessage(ctx context.Context, conn *embyConn, data []
 // mistaken for a broken subscription.
 const embySubscriptionGrace = 30 * time.Second
 
-// warnIfSubscriptionSilent surfaces the one failure mode this protocol
-// has that looks exactly like success.
-//
-// A connection can be accepted, the subscription acknowledged, and the
-// keepalive honoured, while the server sends no session data at all —
-// reported for Jellyfin when authenticating with a bare API key rather
-// than a user access token from /Users/AuthenticateByName. Nothing
-// errors; the watcher simply believes nothing is ever playing, and the
-// app quietly never throttles.
-//
-// The reconciliation poll is the reason this degrades rather than
-// breaks: it reads the same sessions over REST, where the API key does
-// work, so throttling still happens at the poll interval instead of
-// within a second or two. This warning exists so that degradation is
-// visible in the log rather than inferred from the app feeling slow.
+// warnIfSubscriptionSilent logs the one failure that looks like
+// success: a subscription the server accepts but never feeds (reported
+// for Jellyfin with some API keys). Throttling still works off the
+// reconciliation poll, only slower, so this makes that visible.
 func (w *EmbyWatcher) warnIfSubscriptionSilent(ctx context.Context, conn *embyConn) {
 	select {
 	case <-ctx.Done():
@@ -270,21 +252,9 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 		if prev, had := previous[key]; !had {
 			emit(ctx, w.events, session, true)
 		} else if session.Position != prev.Position || session.Paused != prev.Paused {
-			// Still playing, but it has moved — or it has paused or
-			// resumed. The socket pushes a fresh list every second or so;
-			// without this the position only ever reached the app on the
-			// much slower reconcile poll and the timecode on screen sat
-			// still.
-			//
-			// The pause needs its own test: pausing stops the position,
-			// so "has it moved" alone never fired for the very change
-			// that mattered, and the Dashboard went on showing the stream
-			// as playing — clock running — until the next poll.
-			//
-			// Not the title, though. Keying on the title as well made a
-			// snapshot and a socket push disagree about the same session
-			// and re-announce it, which is what the baseline exists to
-			// prevent.
+			// Moved, paused or resumed: pass it on so the Dashboard's
+			// timecode tracks it. Not the title — a snapshot and a push
+			// can disagree on it for the same session.
 			emitDetail(ctx, w.events, session)
 		}
 	}

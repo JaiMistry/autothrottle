@@ -125,12 +125,8 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			continue
 		}
 		// A pause keeps counting, but not forever — see pausedTracker.
-		//
-		// The position matters here: the tracker treats a position of 0
-		// as "moving" and resets its clock, so passing a literal 0 (as
-		// this did before the notification's viewOffset was read) meant
-		// the socket path could never retire a stalled session at all —
-		// only the once-a-minute snapshot could.
+		// The real position is needed: the tracker reads a change in it
+		// as "still moving".
 		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Duration(n.ViewOffset)*time.Millisecond, time.Now()) {
 			w.mu.Lock()
 			delete(w.lastPos, n.SessionKey)
@@ -349,14 +345,9 @@ func (s plexSession) device() string {
 	return s.Player.Device
 }
 
-// plexStateCounts reports which playback states mean a session still
-// exists. Kept as one function so the WebSocket path and the
-// reconciliation path can never disagree.
-//
-// "paused" counts: the stream is in progress and the viewer is coming
-// back. Only "stopped" — and a session vanishing from the list — ends
-// it. How long a paused session goes on counting is pausedTracker's
-// job, not this one's.
+// plexStateCounts is the one definition of which playback states mean
+// a session exists, shared by the socket and reconciliation paths.
+// Paused counts; how long for is pausedTracker's job.
 func plexStateCounts(state string) bool {
 	return state == "playing" || state == "buffering" || state == "paused"
 }

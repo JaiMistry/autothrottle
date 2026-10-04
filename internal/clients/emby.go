@@ -13,14 +13,6 @@ import (
 // from Emby 3.5.2 and kept the Sessions API and the notification
 // WebSocket largely intact — so they share one implementation
 // parameterised by the handful of things that actually differ.
-//
-// NOTE: unlike the Plex client, none of this has been exercised
-// against a live server yet (no Emby or Jellyfin instance on the
-// homelab at time of writing). The endpoint shapes below come from
-// both projects' API documentation and their own web clients' traffic.
-// The unit tests pin the behaviour this code expects; what they cannot
-// prove is that a real server sends exactly that. Treat the first live
-// connection as the real verification.
 type embyFlavor struct {
 	name string
 	// webSocketPath differs: Emby kept its original /embywebsocket,
@@ -124,17 +116,9 @@ func (s embySession) label() string {
 	return item.Name
 }
 
-// embyStateCounts mirrors plexStateCounts: the single definition of
-// which sessions still exist, shared by the WebSocket path and the
-// snapshot path so the two can never disagree.
-//
-// NowPlayingItem is the whole test. It is absent for an idle connected
-// client and present for one with media loaded — including a paused
-// one, which is the point: a pause does not end a stream. Buffering
-// needs no special case either, since these servers report it as
-// ordinary playback rather than as a distinct state the way Plex does.
-//
-// How long a paused session goes on counting is pausedTracker's job.
+// embyStateCounts is the one definition of which sessions exist, shared
+// by the socket and snapshot paths. A paused session has media loaded,
+// so it counts; how long it goes on counting is pausedTracker's job.
 func embyStateCounts(s embySession) bool {
 	return s.NowPlayingItem != nil
 }
@@ -142,20 +126,11 @@ func embyStateCounts(s embySession) bool {
 // embySessionIsLocal reports whether a session's client is on the
 // local network, for the local-playback exemption.
 //
-// This is the one place these servers are meaningfully weaker than
-// Plex. Plex computes Player.local itself and hands it over; Emby and
-// Jellyfin only report the client's address, so locality is inferred
-// from the address being loopback, RFC1918/ULA private, or link-local.
-//
-// That inference carries the same caveat as Plex's flag, but more
-// sharply: a client connected over a VPN into the same network gets a
-// private address and is therefore judged local, while its stream
-// genuinely crosses the WAN link. An unparseable or empty address is
-// judged non-local, so it still counts toward throttling — the same
-// fail-toward-throttling direction the Plex watcher takes when a
-// locality lookup fails, and for the same reason: losing some download
-// speed is a visible, recoverable cost, whereas silently never
-// throttling is a bug with no symptom.
+// Unlike Plex, these servers report only the client's address, so
+// locality is inferred from it being loopback, private or link-local —
+// which judges a VPN client local though its stream crosses the WAN.
+// An unparseable address is judged non-local: throttling when unsure
+// costs some speed, never throttling is a bug with no symptom.
 func embySessionIsLocal(remoteEndPoint string) bool {
 	host := strings.TrimSpace(remoteEndPoint)
 	if host == "" {
@@ -223,8 +198,7 @@ func testEmbyFlavor(ctx context.Context, f embyFlavor, baseURL, apiKey string) e
 }
 
 // fetchEmbySessions reads /Sessions, the REST equivalent of what the
-// WebSocket pushes. Backs both the snapshot reconciliation poll and
-// the connection test's session-shaped sibling.
+// WebSocket pushes, for the reconciliation poll.
 func fetchEmbySessions(ctx context.Context, f embyFlavor, baseURL, apiKey string) ([]embySession, error) {
 	// Unlike Plex's MediaContainer wrapper, these return a bare array.
 	var sessions []embySession

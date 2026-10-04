@@ -545,13 +545,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	case r.FormValue("clear_credentials") == "on":
 		credentialEncrypted = sql.NullString{}
 	case username != "" && password != "":
-		encoded, err := credential.EncodeDownloader(username, password)
-		if err != nil {
-			slog.Error("encoding downloader credential", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		encrypted, err := crypto.Encrypt(s.encryptionKey, encoded)
+		encrypted, err := credential.Encrypt(s.encryptionKey, username, password)
 		if err != nil {
 			slog.Error("encrypting downloader credential", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

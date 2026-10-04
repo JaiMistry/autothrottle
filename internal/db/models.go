@@ -227,13 +227,6 @@ func (d *DB) InsertEvent(e Event) error {
 	return err
 }
 
-// SetMappingForPair turns the mapping between one media server and one
-// downloader on or off, creating it if it has never existed.
-//
-// The mappings matrix addresses cells by the pair they join rather than
-// by id, because an unticked cell has no row yet — and a user ticking
-// it back on expects the same mapping, not a duplicate. The UNIQUE
-// constraint on the pair is what makes the upsert safe.
 // EnableMappingsForMediaServer points a newly added server at every
 // downloader that already exists, and vice versa for a new downloader.
 //
@@ -274,6 +267,9 @@ func (d *DB) EnableMappingsForDownloader(downloaderID int64) error {
 	return nil
 }
 
+// SetMappingForPair turns the mapping between one media server and one
+// downloader on or off, creating it if it has never existed. The matrix
+// addresses cells by pair because an unticked cell has no row yet.
 func (d *DB) SetMappingForPair(mediaServerID, downloaderID int64, enabled bool) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)

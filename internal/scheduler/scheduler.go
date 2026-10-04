@@ -212,17 +212,6 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 	}
 }
 
-// DownloaderThrottled reports a downloader's last-applied throttle
-// state for the Dashboard's live view. known is false until the
-// scheduler has resolved at least once for this downloader (e.g. right
-// after startup, before any session event has fired).
-func (s *Scheduler) DownloaderThrottled(downloaderID int64) (throttled, known bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, known := s.applied[downloaderID]
-	return state.throttled, known
-}
-
 // ClearSessions drops every tracked session for a media server and
 // re-resolves. Called when a server's watcher stops (removed, disabled,
 // or reconnecting under new config) so a stopped server can't keep
@@ -259,20 +248,11 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 		detail[session.Key] = session
 	}
 
+	// Detail is written on every poll, even when the set is unchanged:
+	// position moves, and a session that started via the event stream
+	// has no title until a snapshot supplies one.
 	s.mu.Lock()
-	current := s.active[mediaServerID]
-	unchanged := sameSessionSet(current, next)
-	s.mu.Unlock()
-
-	// The snapshot is the only input that knows *what* is playing — the
-	// live event stream carries a key and nothing else — so detail is
-	// written on every poll, including the overwhelmingly common one
-	// where the session set has not changed at all. Doing this only on
-	// a change would leave every session that started via the event
-	// stream permanently untitled.
-	// Position moves on every poll, so the live view is refreshed even
-	// when the session set itself has not changed.
-	s.mu.Lock()
+	unchanged := sameSessionSet(s.active[mediaServerID], next)
 	if len(detail) == 0 {
 		delete(s.live, mediaServerID)
 	} else {
@@ -291,7 +271,7 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	}
 
 	s.mu.Lock()
-	current = s.active[mediaServerID]
+	current := s.active[mediaServerID]
 	started, ended := changedSessionKeys(current, next)
 	if len(next) == 0 {
 		delete(s.active, mediaServerID)
@@ -342,12 +322,7 @@ func sameSessionSet(a, b map[string]bool) bool {
 	return true
 }
 
-// Resolve re-evaluates every downloader against current configuration
-// and session state, applying any change. Exported so configuration
-// changes take effect immediately instead of waiting for the next
-// playback event.
-
-// ResolveAsync runs Resolve on its own timeout-bound context, for
+// ResolveAsync runs resolve on its own timeout-bound context, for
 // callers that must not block on downloader API calls — HTTP handlers
 // and the WebSocket read loop both use this.
 func (s *Scheduler) ResolveAsync() {
@@ -499,11 +474,12 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	s.mu.Unlock()
 
 	for _, r := range toApply {
-		s.applyState(ctx, r.downloader, r.throttled, r.causeServerName, r.causeServerID)
+		s.applyState(ctx, r)
 	}
 }
 
-func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled bool, causeServerName string, causeServerID int64) {
+func (s *Scheduler) applyState(ctx context.Context, r resolution) {
+	dl, throttled, causeServerName, causeServerID := r.downloader, r.throttled, r.causeServerName, r.causeServerID
 	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
 	if throttled {
@@ -566,16 +542,12 @@ func (s *Scheduler) applyState(ctx context.Context, dl db.Downloader, throttled 
 	}
 }
 
-// recordFailure logs and persists an error, and un-remembers the
-// attempted state so the next session event retries rather than
-// getting stuck believing a change that never actually applied.
+// recordFailure logs and persists an error. The attempted state is
+// replaced by the failure, so the next resolve retries, and the
+// Dashboard shows the downloader as unreachable rather than normal.
 func (s *Scheduler) recordFailure(downloaderID int64, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
-	// The attempted state is un-recorded so the next event retries, but
-	// the reason is kept: a downloader that failed to apply must read
-	// Unreachable with the machine's own words, never Normal.
-	delete(s.applied, downloaderID)
 	s.applied[downloaderID] = appliedState{failure: message, appliedAt: time.Now()}
 	s.mu.Unlock()
 	if err := s.db.InsertEvent(db.Event{

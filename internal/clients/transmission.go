@@ -12,13 +12,6 @@ import (
 // Transmission's RPC lives at one endpoint and dispatches on a method
 // name in the request body, rather than qBittorrent's one-path-per-
 // operation REST layout.
-//
-// NOTE: as with the Emby and Jellyfin clients, none of this has been
-// exercised against a live server yet — there is no Transmission
-// instance on the homelab at time of writing. The request and response
-// shapes come from Transmission's published RPC spec. The unit tests
-// pin the behaviour this code expects; they cannot prove a real daemon
-// sends exactly that.
 const transmissionRPCPath = "/transmission/rpc"
 
 // transmissionSessionHeader carries Transmission's CSRF token.
@@ -54,23 +47,10 @@ func TestTransmission(ctx context.Context, baseURL, username, password string) e
 
 // SetTransmissionLimits sets Transmission's global speed limits.
 //
-// Deliberately the ordinary limits rather than "alternative speed
-// limits" (turtle mode). Turtle mode is a user-facing toggle with its
-// own scheduler inside Transmission, so driving it from here would
-// silently fight anyone who also uses it by hand — and the two have no
-// way to tell each other's changes apart.
-//
-// Limits are KB/s per the app's schema convention, which is what
-// Transmission's RPC takes directly. Note this differs subtly from the
-// qBittorrent path, which multiplies by 1024 because that API takes
-// bytes/sec: the same configured number is a marginally different real
-// throughput on the two clients. Not worth reconciling — the limits are
-// a coarse "slow down while something is streaming", not a precise
-// allocation.
-//
-// 0 means unlimited, expressed here by disabling the limit rather than
-// setting it to zero, which Transmission would honour literally and
-// stop all traffic.
+// The ordinary limits, not turtle mode, which is the user's own toggle
+// and would be fought over. Limits are KB/s, which the RPC takes as is.
+// 0 means unlimited, so it disables the limit: a literal 0 would stop
+// all traffic.
 func SetTransmissionLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	args := map[string]any{
 		"speed-limit-down":         downloadLimitKBps,

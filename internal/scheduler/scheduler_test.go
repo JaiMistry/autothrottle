@@ -177,7 +177,7 @@ func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 	if got[1].download != 0 || got[1].upld != 0 {
 		t.Errorf("expected default (unlimited) rates after disable, got %d/%d", got[1].download, got[1].upld)
 	}
-	if throttled, _ := s.DownloaderThrottled(dlID); throttled {
+	if s.State(dlID).Throttled {
 		t.Error("downloader should not report throttled once its only server is disabled")
 	}
 }
@@ -192,7 +192,7 @@ func TestClearSessionsReleasesThrottle(t *testing.T) {
 
 	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
 	s.resolve(context.Background())
-	if throttled, known := s.DownloaderThrottled(dlID); !known || !throttled {
+	if st := s.State(dlID); !st.Known || !st.Throttled {
 		t.Fatal("expected downloader to be throttled while a session is active")
 	}
 
@@ -201,7 +201,7 @@ func TestClearSessionsReleasesThrottle(t *testing.T) {
 	s.mu.Unlock()
 	s.resolve(context.Background())
 
-	if throttled, _ := s.DownloaderThrottled(dlID); throttled {
+	if s.State(dlID).Throttled {
 		t.Error("expected throttle to release once sessions are cleared")
 	}
 	if got := limiter.snapshot(); len(got) != 2 || got[1].download != 0 {
@@ -221,12 +221,12 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 	s.resolve(context.Background())
 
 	s.SetPaused(context.Background(), true)
-	if throttled, _ := s.DownloaderThrottled(dlID); throttled {
+	if s.State(dlID).Throttled {
 		t.Error("pause must release the throttle even while a session is active")
 	}
 
 	s.SetPaused(context.Background(), false)
-	if throttled, known := s.DownloaderThrottled(dlID); !known || !throttled {
+	if st := s.State(dlID); !st.Known || !st.Throttled {
 		t.Error("unpausing must re-throttle against still-active sessions")
 	}
 	if got := limiter.snapshot(); len(got) != 3 {

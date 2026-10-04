@@ -86,14 +86,10 @@ func main() {
 		logger.Info("closed sessions left open by the previous run", "sessions", closed)
 	}
 
-	// The banner comes after the database is open so it can report what
-	// was actually found, and before the watchers start so the log reads
-	// in the order things happened.
-	// Fixed, like the data path: which port to use on the host is the
-	// port mapping's business. 7676 rather than 8080 because 8080 is
-	// qBittorrent's default — the app most likely to be running beside
-	// this one.
+	// Fixed, like the data path: the host port is the port mapping's
+	// business. Not 8080, which is qBittorrent's default.
 	const addr = ":7676"
+	// After the database opens, so the banner reports what was found.
 	printBanner(os.Stdout, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
