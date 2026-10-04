@@ -5,7 +5,7 @@
 <h1 align="center">AutoThrottle</h1>
 
 <p align="center">
-  <strong>Your torrents back off the moment someone hits play.</strong>
+  <strong>Throttles download clients while a media server has active playback.</strong>
 </p>
 
 <p align="center">
@@ -88,9 +88,6 @@ happens on the **Configuration** page:
 3. **Map them.** Choose which media servers should throttle which download
    clients.
 
-Every connection must pass **Test connection** before it can be saved, and
-the test checks your credentials, not just that the address answers.
-
 ## Configuration
 
 AutoThrottle needs no environment variables at all. These are available if
@@ -128,12 +125,6 @@ you want them:
 |---|---|
 | qBittorrent | 5.2+ |
 | Transmission | 4.1+ |
-
-## Health check
-
-`GET /health` reports whether each media server and download client is
-reachable, as JSON: `200` when everything is, `503` when anything isn't. It
-needs no login, so it plugs straight into an uptime monitor.
 
 ## License
 

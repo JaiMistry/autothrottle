@@ -223,12 +223,6 @@ const transmission = {
     }, 30000);
     check(!!idle, 'the Dashboard says nothing is throttled', JSON.stringify(await dashboard()));
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited');
-    const health = await until('a healthy /health', async () => {
-      const h = await (await fetch(env.autothrottle + '/health')).json();
-      return h.status === 'ok' ? h : null;
-    }, 30000);
-    check(!!health && health.media_servers.length === 1 && health.downloaders.length === 2,
-      '/health reports every backend reachable, each checked as its own type');
 
     section('Playback starts — watched live, no reloads');
     const player = startPlayer();

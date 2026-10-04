@@ -302,9 +302,8 @@ func (m *Manager) SnapshotAll(ctx context.Context) {
 	wg.Wait()
 }
 
-// Running reports which media servers currently have a live watcher —
-// for /health and the Dashboard, so "configured" and "actually being
-// watched" can be told apart in the UI.
+// Running reports which media servers currently have a live watcher, so
+// the Dashboard can tell "configured" from "actually being watched".
 func (m *Manager) Running(mediaServerID int64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
