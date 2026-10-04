@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/db"
-	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 // One pass has to do all three jobs. They're independent by design, so
@@ -24,8 +23,6 @@ func TestRunOnceRollsUpAndPrunes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating downloader: %v", err)
 	}
-
-	store := settings.New(database)
 
 	now := time.Now()
 	// Old enough to be rolled up, recent enough for the rollup to survive.
@@ -49,7 +46,7 @@ func TestRunOnceRollsUpAndPrunes(t *testing.T) {
 		t.Fatalf("inserting event: %v", err)
 	}
 
-	New(database, store).RunOnce()
+	New(database).RunOnce()
 
 	samples, err := database.ListBandwidthSamples(dlID, now.Add(-365*24*time.Hour), now.Add(time.Hour))
 	if err != nil {
@@ -92,8 +89,6 @@ func TestRunOnceDropsExpiredRollups(t *testing.T) {
 		t.Fatalf("creating downloader: %v", err)
 	}
 
-	store := settings.New(database)
-
 	now := time.Now()
 	if err := database.InsertBandwidthSample(db.BandwidthSample{
 		SampledAt: db.FormatTime(now.Add(-100 * 24 * time.Hour)), DownloaderID: dlID, DownloadBytesPerSec: 100,
@@ -101,7 +96,7 @@ func TestRunOnceDropsExpiredRollups(t *testing.T) {
 		t.Fatalf("inserting sample: %v", err)
 	}
 
-	runner := New(database, store)
+	runner := New(database)
 	runner.RunOnce() // folds it into a rollup, then drops that rollup as expired
 
 	rollups, err := database.ListBandwidthRollups(dlID, now.Add(-365*24*time.Hour), now)

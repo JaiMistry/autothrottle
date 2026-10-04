@@ -61,19 +61,17 @@ type Manager struct {
 	db            *db.DB
 	encryptionKey []byte
 	sched         sink
-	settings      *settings.Store
 
 	mu      sync.Mutex
 	root    context.Context
 	running map[int64]handle
 }
 
-func NewManager(database *db.DB, encryptionKey []byte, sched sink, store *settings.Store) *Manager {
+func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
 	return &Manager{
 		db:            database,
 		encryptionKey: encryptionKey,
 		sched:         sched,
-		settings:      store,
 		running:       make(map[int64]handle),
 	}
 }
@@ -101,7 +99,7 @@ func (m *Manager) Reconcile() {
 
 	desired := make(map[int64]db.MediaServer, len(mediaServers))
 	for _, ms := range mediaServers {
-		if !ms.Enabled || !supportedType(ms.Type) {
+		if !ms.Enabled || !clients.SupportedMediaServerType(ms.Type) {
 			continue // unsupported or switched off — no watcher wanted
 		}
 		desired[ms.ID] = ms
@@ -116,7 +114,7 @@ func (m *Manager) Reconcile() {
 
 	for id, h := range m.running {
 		ms, want := desired[id]
-		if want && h.fingerprint == m.fingerprint(ms) {
+		if fp, _ := m.fingerprint(ms); want && h.fingerprint == fp {
 			continue // already running with current config
 		}
 		h.cancel()
@@ -132,14 +130,9 @@ func (m *Manager) Reconcile() {
 		if _, ok := m.running[id]; ok {
 			continue
 		}
-		fingerprint := m.fingerprint(ms)
+		fingerprint, token := m.fingerprint(ms)
 		if fingerprint == "" {
 			continue // credential unreadable; fingerprint logged the reason
-		}
-		token, err := crypto.Decrypt(m.encryptionKey, ms.CredentialEncrypted)
-		if err != nil {
-			slog.Error("watcher: decrypting token", "media_server", ms.Name, "error", err)
-			continue
 		}
 
 		w, err := m.newWatcher(ms, token)
@@ -158,55 +151,25 @@ func (m *Manager) Reconcile() {
 	}
 }
 
-// newWatcher builds the right SessionWatcher for a media server's
-// type. Everything downstream — the manager's own lifecycle handling,
-// the scheduler, the web layer — sees only the interface, so a new
-// server type is a case here and a case in supportedType.
+// newWatcher builds the SessionWatcher for a media server's type, with
+// its abandoned-pause clocks kept in the database.
 func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
-	// Passed as a function so it stays out of the fingerprint that
-	// decides when a watcher must restart.
-	pausedTimeout := func() time.Duration {
-		if m.settings == nil {
-			return 0
-		}
-		return m.settings.PausedSessionTimeout()
+	var w interface {
+		clients.SessionWatcher
+		SetPauseStore(clients.PauseStore)
 	}
-
-	// The abandoned-pause clock outlives the process: see the
-	// paused_sessions table.
-	store := pauseStore{db: m.db, mediaServerID: ms.ID}
-
 	switch ms.Type {
 	case "plex":
-		w := clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
-		w.PausedSessionTimeout = pausedTimeout
-		w.SetPauseStore(store)
-		return w, nil
+		w = clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
 	case "emby":
-		w := clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback)
-		w.PausedSessionTimeout = pausedTimeout
-		w.SetPauseStore(store)
-		return w, nil
+		w = clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback)
 	case "jellyfin":
-		w := clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback)
-		w.PausedSessionTimeout = pausedTimeout
-		w.SetPauseStore(store)
-		return w, nil
+		w = clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback)
 	default:
 		return nil, fmt.Errorf("no watcher implementation for type %q", ms.Type)
 	}
-}
-
-// supportedType reports whether a media server type has a watcher
-// implementation. Kept next to newWatcher so adding a type stays a
-// change in one place.
-func supportedType(msType string) bool {
-	switch msType {
-	case "plex", "emby", "jellyfin":
-		return true
-	default:
-		return false
-	}
+	w.SetPauseStore(pauseStore{db: m.db, mediaServerID: ms.ID})
+	return w, nil
 }
 
 // forward pumps a watcher's events into the scheduler until its
@@ -251,7 +214,7 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(m.settings.SessionReconcileInterval()):
+			case <-time.After(settings.SessionReconcileInterval):
 			}
 		}
 		first = false
@@ -321,9 +284,6 @@ func (m *Manager) SnapshotAll(ctx context.Context) {
 	ids := make([]int64, 0, len(m.running))
 	watchers := make([]clients.SessionWatcher, 0, len(m.running))
 	for id, h := range m.running {
-		if h.watcher == nil {
-			continue
-		}
 		ids = append(ids, id)
 		watchers = append(watchers, h.watcher)
 	}
@@ -358,20 +318,21 @@ func (m *Manager) Connection(mediaServerID int64) (clients.ConnectionState, bool
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	h, running := m.running[mediaServerID]
-	if !running || h.watcher == nil {
+	if !running {
 		return clients.ConnectionState{}, false
 	}
 	return h.watcher.Connection(), true
 }
 
 // fingerprint returns a value that changes whenever anything a running
-// watcher captured at construction changes. Decryption failure yields
-// "", which callers treat as "can't run this one".
-func (m *Manager) fingerprint(ms db.MediaServer) string {
+// watcher captured at construction changes, and the decrypted token.
+// Decryption failure yields "", which callers treat as "can't run this
+// one".
+func (m *Manager) fingerprint(ms db.MediaServer) (fp, token string) {
 	token, err := crypto.Decrypt(m.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
-		slog.Error("watcher: decrypting token for fingerprint", "media_server", ms.Name, "error", err)
-		return ""
+		slog.Error("watcher: decrypting token", "media_server", ms.Name, "error", err)
+		return "", ""
 	}
 	// Field separator can't appear in a bool and is unlikely in a URL;
 	// a collision would only ever cause a missed restart, not a wrong
@@ -381,5 +342,5 @@ func (m *Manager) fingerprint(ms db.MediaServer) string {
 	if ms.SkipLocalPlayback {
 		local = "1"
 	}
-	return ms.URL + sep + token + sep + local
+	return ms.URL + sep + token + sep + local, token
 }

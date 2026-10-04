@@ -18,12 +18,11 @@ import (
 )
 
 type Runner struct {
-	db       *db.DB
-	settings *settings.Store
+	db *db.DB
 }
 
-func New(database *db.DB, store *settings.Store) *Runner {
-	return &Runner{db: database, settings: store}
+func New(database *db.DB) *Runner {
+	return &Runner{db: database}
 }
 
 // Run performs one pass immediately, then repeats on the configured
@@ -39,7 +38,7 @@ func (r *Runner) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(r.settings.MaintenanceInterval()):
+		case <-time.After(settings.MaintenanceInterval):
 		}
 		r.RunOnce()
 	}
@@ -50,19 +49,19 @@ func (r *Runner) Run(ctx context.Context) {
 func (r *Runner) RunOnce() {
 	now := time.Now()
 
-	if folded, err := r.db.RollUpBandwidth(now.Add(-r.settings.BandwidthRawRetention())); err != nil {
+	if folded, err := r.db.RollUpBandwidth(now.Add(-settings.BandwidthRawRetention)); err != nil {
 		slog.Error("retention: rolling up bandwidth samples", "error", err)
 	} else if folded > 0 {
 		slog.Info("retention: rolled up bandwidth samples", "samples", folded)
 	}
 
-	if deleted, err := r.db.PruneBandwidthRollups(now.Add(-r.settings.BandwidthRollupRetention())); err != nil {
+	if deleted, err := r.db.PruneBandwidthRollups(now.Add(-settings.BandwidthRollupRetention)); err != nil {
 		slog.Error("retention: pruning bandwidth rollups", "error", err)
 	} else if deleted > 0 {
 		slog.Info("retention: pruned bandwidth rollups", "rows", deleted)
 	}
 
-	if deleted, err := r.db.PruneEvents(now.Add(-r.settings.EventRetention())); err != nil {
+	if deleted, err := r.db.PruneEvents(now.Add(-settings.EventRetention)); err != nil {
 		slog.Error("retention: pruning events", "error", err)
 	} else if deleted > 0 {
 		slog.Info("retention: pruned history events", "rows", deleted)
@@ -78,7 +77,7 @@ func (r *Runner) RunOnce() {
 	// "what happened, and when", and splitting them would mean a
 	// timeline whose sessions and events disagree about how far back
 	// the page can look.
-	if deleted, err := r.db.PruneSessionHistory(now.Add(-r.settings.EventRetention())); err != nil {
+	if deleted, err := r.db.PruneSessionHistory(now.Add(-settings.EventRetention)); err != nil {
 		slog.Error("retention: pruning session history", "error", err)
 	} else if deleted > 0 {
 		slog.Info("retention: pruned session history", "rows", deleted)

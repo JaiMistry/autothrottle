@@ -104,13 +104,12 @@ func main() {
 		Mappings:     countRows(database.ListMappings()),
 	})
 
-	store := settings.New(database)
-	sched := scheduler.New(database, encryptionKey, store)
-	watchers := watcher.NewManager(database, encryptionKey, sched, store)
-	samples := sampler.New(database, encryptionKey, store, sched)
-	maintenance := retention.New(database, store)
+	sched := scheduler.New(database, encryptionKey, settings.New(database))
+	watchers := watcher.NewManager(database, encryptionKey, sched)
+	samples := sampler.New(database, encryptionKey, sched)
+	maintenance := retention.New(database)
 
-	srv, err := web.New(database, authenticator, encryptionKey, sched, watchers, store)
+	srv, err := web.New(database, authenticator, encryptionKey, sched, watchers)
 	if err != nil {
 		logger.Error("initializing web server", "error", err)
 		os.Exit(1)

@@ -9,7 +9,6 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
-	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 // fakeSink stands in for the scheduler. Watchers started here dial a
@@ -68,7 +67,7 @@ func newTestManager(t *testing.T) (*Manager, *db.DB, *fakeSink, []byte) {
 
 	key := make([]byte, 32)
 	sink := &fakeSink{}
-	m := NewManager(database, key, sink, settings.New(database))
+	m := NewManager(database, key, sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -197,8 +196,8 @@ func TestReconcileIsIdempotent(t *testing.T) {
 
 func TestSupportedTypes(t *testing.T) {
 	for _, msType := range []string{"plex", "emby", "jellyfin"} {
-		if !supportedType(msType) {
-			t.Errorf("supportedType(%q) = false, want true", msType)
+		if !clients.SupportedMediaServerType(msType) {
+			t.Errorf("SupportedMediaServerType(%q) = false, want true", msType)
 		}
 		w, err := (&Manager{}).newWatcher(db.MediaServer{Type: msType, URL: "http://host"}, "token")
 		if err != nil {
@@ -210,8 +209,8 @@ func TestSupportedTypes(t *testing.T) {
 		}
 	}
 
-	if supportedType("transmission") {
-		t.Error(`supportedType("transmission") = true, want false`)
+	if clients.SupportedMediaServerType("transmission") {
+		t.Error(`SupportedMediaServerType("transmission") = true, want false`)
 	}
 	if _, err := (&Manager{}).newWatcher(db.MediaServer{Type: "nope"}, "t"); err == nil {
 		t.Error("newWatcher for an unknown type should return an error")

@@ -87,10 +87,9 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 		t.Fatalf("loading auth: %v", err)
 	}
 	key := []byte("0123456789abcdef0123456789abcdef")
-	store := settings.New(database)
-	sched := scheduler.New(database, key, store)
+	sched := scheduler.New(database, key, settings.New(database))
 	watchers := &fakeWatchers{running: map[int64]bool{}}
-	srv, err := New(database, authenticator, key, sched, watchers, store)
+	srv, err := New(database, authenticator, key, sched, watchers)
 	if err != nil {
 		t.Fatalf("building server: %v", err)
 	}

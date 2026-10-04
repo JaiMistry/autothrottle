@@ -144,7 +144,7 @@ func TestEmbyPausedSessionKeepsCounting(t *testing.T) {
 // downloads for as long as their client holds the session open.
 func TestEmbyAbandonedPauseStopsCounting(t *testing.T) {
 	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
-	w.PausedSessionTimeout = func() time.Duration { return 50 * time.Millisecond }
+	w.paused.timeout = 50 * time.Millisecond
 	ctx := context.Background()
 
 	paused := playingSession("a", "8.8.8.8")

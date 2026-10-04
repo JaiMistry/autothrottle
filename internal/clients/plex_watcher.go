@@ -27,9 +27,6 @@ type PlexWatcher struct {
 	BaseURL           string
 	Token             string
 	SkipLocalPlayback bool
-	// PausedSessionTimeout caps how long a continuously paused session
-	// keeps counting. Nil uses the built-in default.
-	PausedSessionTimeout func() time.Duration
 
 	events chan SessionEvent
 	conn   connectionTracker
@@ -53,18 +50,13 @@ func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher 
 		localCache:        make(map[string]bool),
 		lastPos:           make(map[string]time.Duration),
 	}
-	w.paused = newPausedTracker(func() time.Duration {
-		if w.PausedSessionTimeout == nil {
-			return 0
-		}
-		return w.PausedSessionTimeout()
-	})
+	w.paused = newPausedTracker(pausedSessionTimeout)
 	return w
 }
 
 // SetPauseStore makes this watcher's abandoned-pause clocks durable,
 // so a restart does not resurrect a stream that was already retired.
-// Must be called before Start; nil leaves the clocks in memory only.
+// Call before Run; nil leaves the clocks in memory only.
 func (w *PlexWatcher) SetPauseStore(store PauseStore) { w.paused.store = store }
 
 func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }

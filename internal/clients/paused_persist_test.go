@@ -37,7 +37,7 @@ func (m *memPauseStore) Retain(present map[string]bool) error {
 }
 
 func tracker(store PauseStore, timeout time.Duration) *pausedTracker {
-	p := newPausedTracker(func() time.Duration { return timeout })
+	p := newPausedTracker(timeout)
 	p.store = store
 	return p
 }

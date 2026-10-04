@@ -6,36 +6,10 @@ import (
 	"time"
 )
 
-// defaultPausedSessionTimeout is how long a paused session keeps
-// counting toward throttling when nothing configures otherwise.
-const defaultPausedSessionTimeout = 30 * time.Minute
+// pausedSessionTimeout is how long a continuously paused session keeps
+// counting toward throttling before it is treated as abandoned.
+const pausedSessionTimeout = 30 * time.Minute
 
-// pausedTracker decides whether a paused session still counts.
-//
-// A paused session is a session in progress: the viewer stepped away
-// and is coming back, the client is often still buffering ahead, and
-// releasing the download client's limits for those two minutes would
-// hand the whole uplink to the torrents right up until the moment
-// playback resumes. So paused counts, and there is no debounce timer
-// anywhere — the server's own session list already says the stream
-// exists.
-//
-// The same cap covers a session that reports itself as playing while
-// going nowhere — a killed client, a crashed player. Jellyfin holds
-// such a session open indefinitely (measured: still "playing" four
-// minutes after the client stopped talking), so without this one dead
-// client throttles downloads until someone notices.
-//
-// What that alone cannot handle is the viewer who pauses and never
-// comes back. Media servers hold a paused session open for a long
-// time, sometimes until the client app is killed, so "paused counts"
-// taken literally means one forgotten client throttles downloads all
-// night. This caps it: past the timeout, a session that has been
-// continuously paused stops counting, and starts counting again the
-// moment it resumes.
-//
-// Shared by every watcher so the two protocols cannot drift apart on
-// what "still watching" means.
 // PausedSession is how long a session has been continuously paused,
 // and where it was paused.
 type PausedSession struct {
@@ -54,11 +28,17 @@ type PauseStore interface {
 	Retain(present map[string]bool) error
 }
 
+// pausedTracker decides whether a paused session still counts, shared
+// by every watcher so they agree on what "still watching" means.
+//
+// Paused counts: the viewer is usually coming back, and releasing the
+// limits for a two-minute pause hands the uplink to the torrents right
+// up until playback resumes. But media servers hold a paused session
+// open for hours, and Jellyfin keeps a dead client "playing" forever
+// (measured), so a session that has stopped moving for longer than the
+// timeout stops counting until it moves again.
 type pausedTracker struct {
-	// timeout reads the configured limit at the point of use, so a
-	// change takes effect without restarting a watcher. Nil, or any
-	// non-positive value, means defaultPausedSessionTimeout.
-	timeout func() time.Duration
+	timeout time.Duration
 
 	// store, when set, makes the clocks durable. An abandoned-pause
 	// timeout is measured in tens of minutes and a restart takes
@@ -75,7 +55,7 @@ type pausedTracker struct {
 	position map[string]time.Duration
 }
 
-func newPausedTracker(timeout func() time.Duration) *pausedTracker {
+func newPausedTracker(timeout time.Duration) *pausedTracker {
 	return &pausedTracker{timeout: timeout, since: make(map[string]time.Time), position: make(map[string]time.Duration)}
 }
 
@@ -117,16 +97,6 @@ func (p *pausedTracker) unpersist(sessionKey string) {
 	}
 }
 
-func (p *pausedTracker) limit() time.Duration {
-	if p.timeout == nil {
-		return defaultPausedSessionTimeout
-	}
-	if d := p.timeout(); d > 0 {
-		return d
-	}
-	return defaultPausedSessionTimeout
-}
-
 // counts reports whether a session that the server still lists should
 // count toward throttling, given whether it is currently paused.
 //
@@ -159,7 +129,7 @@ func (p *pausedTracker) counts(sessionKey string, paused bool, position time.Dur
 		p.persist(sessionKey, PausedSession{Since: now, Position: position})
 		return true
 	}
-	return now.Sub(started) < p.limit()
+	return now.Sub(started) < p.timeout
 }
 
 // forget drops a session's pause state, for a session that has ended.

@@ -6,31 +6,13 @@ import (
 	"time"
 )
 
-// MediaServerType names one supported media server, for a UI that
-// renders the set generically rather than hardcoding an option per
-// type.
-type MediaServerType struct {
-	Value string
-	Label string
-}
-
-// MediaServerTypes lists every type with a working watcher, in the
-// order a UI should offer them.
-var MediaServerTypes = []MediaServerType{
-	{Value: "plex", Label: "Plex"},
-	{Value: "emby", Label: "Emby"},
-	{Value: "jellyfin", Label: "Jellyfin"},
-}
-
-// SupportedMediaServerType reports whether a type string names a media
-// server this build can actually watch. The database's CHECK
-// constraint is deliberately wider than this — it permits any type the
-// schema anticipates — so this is what the web layer validates against.
+// SupportedMediaServerType reports whether this build can watch a
+// media server type. The database's CHECK constraint is deliberately
+// wider, so this is what the web layer validates against.
 func SupportedMediaServerType(msType string) bool {
-	for _, t := range MediaServerTypes {
-		if t.Value == msType {
-			return true
-		}
+	switch msType {
+	case "plex", "emby", "jellyfin":
+		return true
 	}
 	return false
 }
@@ -136,38 +118,14 @@ type RateLimiter interface {
 }
 
 // RateReporter reads a download client's current transfer rates, in
-// bytes per second. Separate from RateLimiter because reading and
-// writing rates are independent capabilities: a client could plausibly
-// support one without the other, and the bandwidth sampler only ever
-// needs to read.
+// bytes per second, for the bandwidth sampler.
 type RateReporter interface {
 	Rates(ctx context.Context, baseURL, username, password string) (downloadBytesPerSec, uploadBytesPerSec int64, err error)
 }
 
-// DownloaderType names one supported download client, for a UI that
-// renders the set generically. Mirrors MediaServerTypes.
-type DownloaderType struct {
-	Value string
-	Label string
-}
-
-// DownloaderTypes lists every type with a working rate limiter, in the
-// order a UI should offer them.
-var DownloaderTypes = []DownloaderType{
-	{Value: "qbittorrent", Label: "qBittorrent"},
-	{Value: "transmission", Label: "Transmission"},
-}
-
-// SupportedDownloaderType reports whether a type string names a
-// download client this build can actually control.
-func SupportedDownloaderType(dlType string) bool {
-	for _, t := range DownloaderTypes {
-		if t.Value == dlType {
-			return true
-		}
-	}
-	return false
-}
+// SupportedDownloaderType reports whether this build can control a
+// download client type.
+func SupportedDownloaderType(dlType string) bool { return RateLimiterFor(dlType) != nil }
 
 // TestDownloader runs the connection test for a downloader's type.
 func TestDownloader(ctx context.Context, dlType, baseURL, username, password string) error {

@@ -6,7 +6,7 @@ import (
 )
 
 func TestPausedTrackerCountsUntilTimeout(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC)
 
 	if !tracker.counts("a", true, 0, start) {
@@ -24,7 +24,7 @@ func TestPausedTrackerCountsUntilTimeout(t *testing.T) {
 // observed a second time — and resuming resets it, so someone who
 // pauses briefly every few minutes never accumulates toward the cap.
 func TestPausedTrackerResetsOnResume(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC)
 
 	tracker.counts("a", true, 0, start)
@@ -41,7 +41,7 @@ func TestPausedTrackerResetsOnResume(t *testing.T) {
 }
 
 func TestPausedTrackerPlayingAlwaysCounts(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Nanosecond })
+	tracker := newPausedTracker(time.Nanosecond)
 	now := time.Now()
 	for i := 0; i < 3; i++ {
 		if !tracker.counts("a", false, 0, now.Add(time.Duration(i)*time.Hour)) {
@@ -51,7 +51,7 @@ func TestPausedTrackerPlayingAlwaysCounts(t *testing.T) {
 }
 
 func TestPausedTrackerForgetsEndedSessions(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC)
 
 	tracker.counts("a", true, 0, start)
@@ -66,7 +66,7 @@ func TestPausedTrackerForgetsEndedSessions(t *testing.T) {
 // A long-lived watcher would otherwise keep an entry for every session
 // it has ever seen paused.
 func TestPausedTrackerRetainDropsAbsentSessions(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Date(2026, 8, 22, 20, 0, 0, 0, time.UTC)
 
 	tracker.counts("a", true, 0, start)
@@ -86,18 +86,6 @@ func TestPausedTrackerRetainDropsAbsentSessions(t *testing.T) {
 	}
 }
 
-func TestPausedTrackerFallsBackToDefaultTimeout(t *testing.T) {
-	for name, tracker := range map[string]*pausedTracker{
-		"nil accessor":  newPausedTracker(nil),
-		"zero duration": newPausedTracker(func() time.Duration { return 0 }),
-		"negative":      newPausedTracker(func() time.Duration { return -time.Hour }),
-	} {
-		if got := tracker.limit(); got != defaultPausedSessionTimeout {
-			t.Errorf("%s: limit = %s, want the default %s", name, got, defaultPausedSessionTimeout)
-		}
-	}
-}
-
 func TestPlexCountsPausedSessions(t *testing.T) {
 	for _, state := range []string{"playing", "buffering", "paused"} {
 		if !plexStateCounts(state) {
@@ -114,7 +102,7 @@ func TestPlexCountsPausedSessions(t *testing.T) {
 // has to expire the same way a long pause does. Otherwise one dead
 // player throttles downloads until somebody notices by hand.
 func TestStalledSessionStopsCounting(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Now()
 
 	// Playing and advancing: always counts.
@@ -142,7 +130,7 @@ func TestStalledSessionStopsCounting(t *testing.T) {
 // A server that never reports a position gives zero every time, which
 // must not be mistaken for a stall.
 func TestSessionWithoutPositionNeverStalls(t *testing.T) {
-	tracker := newPausedTracker(func() time.Duration { return time.Minute })
+	tracker := newPausedTracker(time.Minute)
 	start := time.Now()
 	for _, after := range []time.Duration{0, time.Minute, time.Hour, 6 * time.Hour} {
 		if !tracker.counts("b", false, 0, start.Add(after)) {

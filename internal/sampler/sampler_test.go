@@ -10,7 +10,6 @@ import (
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
-	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 // fakeReporter stands in for a download client. Every test here runs
@@ -52,7 +51,7 @@ func newTestSampler(t *testing.T, throttle throttleState) (*Sampler, *db.DB, *fa
 	t.Cleanup(func() { _ = database.Close() })
 
 	reporter := &fakeReporter{down: 4096, up: 512}
-	s := New(database, make([]byte, 32), settings.New(database), throttle)
+	s := New(database, make([]byte, 32), throttle)
 	s.reporterFor = func(string) clients.RateReporter { return reporter }
 	return s, database, reporter
 }

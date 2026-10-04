@@ -21,10 +21,6 @@ const (
 	// list is re-read to correct anything the live feed missed.
 	SessionReconcileInterval = 60 * time.Second
 
-	// PausedSessionTimeout caps how long a continuously paused stream
-	// keeps downloads throttled before it is treated as abandoned.
-	PausedSessionTimeout = 30 * time.Minute
-
 	// BandwidthSampleInterval is how often each downloader's transfer
 	// rates are recorded.
 	BandwidthSampleInterval = 60 * time.Second
@@ -46,9 +42,7 @@ const (
 // keyPaused is the only value this package persists.
 const keyPaused = "throttle.paused"
 
-// Store is the persisted half of the settings: the pause switch. The
-// interval methods report the constants above, which keeps every
-// caller reading its timing from one place.
+// Store persists the pause switch.
 type Store struct {
 	db *db.DB
 }
@@ -79,11 +73,3 @@ func (s *Store) Paused() bool {
 func (s *Store) SetPaused(paused bool) error {
 	return s.db.SetSetting(keyPaused, strconv.FormatBool(paused))
 }
-
-func (s *Store) SessionReconcileInterval() time.Duration { return SessionReconcileInterval }
-func (s *Store) PausedSessionTimeout() time.Duration     { return PausedSessionTimeout }
-func (s *Store) BandwidthSampleInterval() time.Duration  { return BandwidthSampleInterval }
-func (s *Store) MaintenanceInterval() time.Duration      { return MaintenanceInterval }
-func (s *Store) BandwidthRawRetention() time.Duration    { return BandwidthRawRetention }
-func (s *Store) BandwidthRollupRetention() time.Duration { return BandwidthRollupRetention }
-func (s *Store) EventRetention() time.Duration           { return EventRetention }

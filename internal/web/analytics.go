@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/analytics"
+	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 type downloaderOption struct {
@@ -82,7 +83,7 @@ func (s *Server) analyticsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	interval := s.settings.BandwidthSampleInterval()
+	interval := settings.BandwidthSampleInterval
 	view, err := analytics.Build(s.db, ids, rng, interval, time.Now())
 	if err != nil {
 		slog.Error("building analytics", "error", err)
@@ -115,8 +116,8 @@ func (s *Server) analyticsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rawDays := int(s.settings.BandwidthRawRetention().Hours() / 24)
-	rollupDays := int(s.settings.BandwidthRollupRetention().Hours() / 24)
+	rawDays := int(settings.BandwidthRawRetention.Hours() / 24)
+	rollupDays := int(settings.BandwidthRollupRetention.Hours() / 24)
 
 	transferValue, transferUnit := splitBytes(view.Stats.TransferredBytes)
 	periodsNote := "none in this window"

@@ -34,7 +34,6 @@ type throttleState interface {
 type Sampler struct {
 	db            *db.DB
 	encryptionKey []byte
-	settings      *settings.Store
 	throttle      throttleState
 
 	// reporterFor resolves a downloader type to its rate reader. A
@@ -45,11 +44,10 @@ type Sampler struct {
 	failures map[int64]int // downloader ID -> consecutive failed samples
 }
 
-func New(database *db.DB, encryptionKey []byte, store *settings.Store, throttle throttleState) *Sampler {
+func New(database *db.DB, encryptionKey []byte, throttle throttleState) *Sampler {
 	return &Sampler{
 		db:            database,
 		encryptionKey: encryptionKey,
-		settings:      store,
 		throttle:      throttle,
 		reporterFor:   clients.RateReporterFor,
 		failures:      make(map[int64]int),
@@ -62,7 +60,7 @@ func (s *Sampler) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(s.settings.BandwidthSampleInterval()):
+		case <-time.After(settings.BandwidthSampleInterval):
 		}
 		s.SampleOnce(ctx)
 	}

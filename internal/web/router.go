@@ -13,7 +13,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
-	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
 //go:embed templates/*.html
@@ -48,7 +47,6 @@ type Server struct {
 	encryptionKey []byte
 	scheduler     *scheduler.Scheduler
 	watchers      watcherManager
-	settings      *settings.Store
 	plex          plexSignIn
 	assets        *staticAssets
 	startedAt     time.Time
@@ -63,7 +61,7 @@ func parsePage(page string, funcs template.FuncMap) (*template.Template, error) 
 		templateFS, "templates/layout.html", "templates/components.html", "templates/"+page+".html")
 }
 
-func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager, store *settings.Store) (*Server, error) {
+func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byte, sched *scheduler.Scheduler, watchers watcherManager) (*Server, error) {
 	templates := make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		t, err := parsePage(page, templateFuncs())
@@ -93,7 +91,6 @@ func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byt
 		encryptionKey: encryptionKey,
 		scheduler:     sched,
 		watchers:      watchers,
-		settings:      store,
 		assets:        newStaticAssets(staticSub),
 		startedAt:     time.Now(),
 	}, nil
