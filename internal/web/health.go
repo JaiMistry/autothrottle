@@ -9,7 +9,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
-	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
 const healthCheckTimeout = 8 * time.Second
@@ -32,9 +31,7 @@ type healthResponse struct {
 }
 
 // healthHandler reports real per-backend reachability, not just "the
-// internal loop is alive". The app this replaces reported healthy
-// while a backend was unreachable, which made its health endpoint
-// useless for precisely the failure it existed to catch.
+// process is alive".
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 	defer cancel()
@@ -52,7 +49,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			if token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted); err != nil {
 				bs.Error = "credential could not be decrypted"
-			} else if err := clients.TestPlex(ctx, ms.URL, token); err != nil {
+			} else if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
 				bs.Error = err.Error()
 			} else {
 				bs.Reachable = true
@@ -70,10 +67,10 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			bs := backendStatus{Name: dl.Name, Type: dl.Type}
-			username, password, credErr := s.decodeDownloaderCredential(dl)
+			username, password, credErr := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 			if credErr != nil {
 				bs.Error = credErr.Error()
-			} else if err := clients.TestQBittorrent(ctx, dl.URL, username, password); err != nil {
+			} else if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
 				bs.Error = err.Error()
 			} else {
 				bs.Reachable = true
@@ -90,11 +87,4 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 	_ = json.NewEncoder(w).Encode(resp)
-}
-
-// decodeDownloaderCredential returns the decrypted username/password
-// for a downloader with a stored credential, or empty strings for one
-// with none (a legitimate no-auth configuration, not an error).
-func (s *Server) decodeDownloaderCredential(dl db.Downloader) (string, string, error) {
-	return credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 }
