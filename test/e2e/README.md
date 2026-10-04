@@ -24,7 +24,9 @@ First-run setup · adding a media server, with a wrong and a
 right key · refusing a duplicate · adding both download clients · the
 mapping matrix · the idle Dashboard · playback starting, watched live with
 no reloads, and the real limits on both clients · the timecode advancing ·
-pause holding the throttle and the clock · turning throttling off and on ·
+a restart mid-playback re-applying limits the client lost, without signing
+you out · pause holding the throttle and the clock · turning throttling off
+and on · the local-playback exemption ·
 playback stopping and the limits restored · the log recording all of it ·
 clearing the log and new events still arriving.
 

@@ -85,9 +85,17 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
     req.add_header("X-Emby-Authorization", auth)
     if token:
         req.add_header("X-Emby-Token", token)
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        body = resp.read().decode()
-        return json.loads(body) if body.strip() else None
+    # A server can report itself ready and still answer 503 for a few
+    # seconds while it finishes starting, so that alone is retried.
+    for attempt in range(30):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                body = resp.read().decode()
+                return json.loads(body) if body.strip() else None
+        except urllib.error.HTTPError as e:
+            if e.code != 503 or attempt == 29:
+                raise
+            time.sleep(2)
 
 
 def wait_for(what, check, timeout=180):

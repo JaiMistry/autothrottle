@@ -13,7 +13,9 @@ status=0
 for media in ${MEDIA:-jellyfin emby}; do
   echo "=== $media ==="
   MEDIA=$media ./reset.sh
+  # The Docker socket lets the scenario restart AutoThrottle mid-test.
   docker run --rm --memory=1500m --network host \
+    -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock)" \
     -e NODE_PATH=/home/pptruser/node_modules \
     -v "$PWD:/work" -w /work \
     ghcr.io/puppeteer/puppeteer:25.12.0 node scenario.js || {

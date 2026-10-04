@@ -6,6 +6,7 @@
 //
 // Run by run.sh inside the Puppeteer image with host networking.
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const puppeteer = require('puppeteer');
 
@@ -67,16 +68,42 @@ function startPlayer() {
 }
 
 const qbittorrent = {
-  async limits() {
-    const login = await fetch(env.qbittorrent.base + '/api/v2/auth/login', {
+  async login() {
+    const res = await fetch(env.qbittorrent.base + '/api/v2/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `username=${env.qbittorrent.username}&password=${env.qbittorrent.password}`,
     });
-    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    return (res.headers.get('set-cookie') || '').split(';')[0];
+  },
+  async limits() {
+    const cookie = await this.login();
     const get = async (p) => Number(await (await fetch(env.qbittorrent.base + p, { headers: { Cookie: cookie } })).text());
     return { down: await get('/api/v2/transfer/downloadLimit'), up: await get('/api/v2/transfer/uploadLimit') };
   },
+  // Changes the limits behind AutoThrottle's back, the way a person or a
+  // client restart would.
+  async unlimit() {
+    const cookie = await this.login();
+    for (const p of ['/api/v2/transfer/setDownloadLimit', '/api/v2/transfer/setUploadLimit']) {
+      await fetch(env.qbittorrent.base + p, {
+        method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'limit=0',
+      });
+    }
+  },
 };
+
+// Stops and starts the AutoThrottle container through Docker's API, the
+// socket run.sh mounts in.
+function docker(action) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: '/var/run/docker.sock', method: 'POST', path: `/containers/e2e-autothrottle/${action}` }, (res) => {
+      res.resume();
+      res.on('end', () => (res.statusCode < 300 ? resolve() : reject(new Error(`docker ${action}: ${res.statusCode}`))));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 const transmission = {
   sid: '',
@@ -243,6 +270,20 @@ const transmission = {
     const after = (await dashboard()).sessionTime;
     check(before && after && before !== after, 'the timecode advances while playing', `${before} → ${after}`);
 
+    section('Restart while throttled');
+    await docker('stop');
+    await qbittorrent.unlimit();
+    await docker('start');
+    const reasserted = await until('the throttle to be re-applied', async () =>
+      ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 60000);
+    check(!!reasserted, 'a restart re-applies the throttle the client lost');
+    await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
+    await navigate('/');
+    check(at() === '/', 'the browser is still signed in after the restart', at());
+    const resumed = await until('the Dashboard to show it', async () =>
+      ((await dashboard()).downloaders.every((s) => s === 'throttled') ? true : null), 30000);
+    check(!!resumed, 'the Dashboard shows the clients throttled again');
+
     section('Pause and resume');
     await player.pause();
     const paused = await until('the pause to show', async () => ((await dashboard()).paused ? await dashboard() : null), 30000);
@@ -269,6 +310,28 @@ const transmission = {
     check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
+
+    section('Local playback exemption');
+    // The player runs on this machine, so the server sees a private
+    // address: local playback.
+    async function setExempt(on) {
+      await navigate('/configuration?tab=media-servers');
+      await settle(() => page.click('a[href*="tab=media-servers&edit="]'));
+      const box = await page.$('#ms-form [name=skip_local_playback]');
+      if ((await box.evaluate((b) => b.checked)) !== on) await box.click();
+      const r = await testConnection('#ms-form');
+      if (r.state !== 'connected') throw new Error('re-testing the server failed: ' + JSON.stringify(r));
+      await submit('#ms-form');
+    }
+    await setExempt(true);
+    await navigate('/');
+    const local = startPlayer();
+    await sleep(10000);
+    const d = await dashboard();
+    check(d.hero === 'Nothing is throttled' && (await qbittorrent.limits()).down === 0,
+      'local playback is ignored when the exemption is on', JSON.stringify(d));
+    await local.stop();
+    await setExempt(false);
 
     section('Logs');
     await navigate('/logs');
