@@ -23,3 +23,4 @@ handoff/
 
 # End-to-end test scratch: generated media, server state, keys
 /test/e2e/.state/
+__pycache__/
