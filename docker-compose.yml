@@ -9,7 +9,7 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles
       # Optional. Leave unset to create an account in the browser on
-      # first run, using the setup code printed in the container log.
+      # first run.
       # - AUTH_USERNAME=admin
       # - AUTH_PASSWORD=change-me
     volumes:

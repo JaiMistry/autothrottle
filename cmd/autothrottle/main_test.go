@@ -60,10 +60,10 @@ func TestBanner(t *testing.T) {
 	var b strings.Builder
 	printBanner(&b, version.Current(), startupInfo{
 		DatabasePath: "/data/autothrottle.db", Address: ":7676",
-		AuthMode: auth.ModeSetup, SetupCode: "ABCD-EFGH",
+		AuthMode: auth.ModeSetup,
 	})
 	out := b.String()
-	for _, want := range []string{"Throttles your download clients", ":7676", "ABCD-EFGH", "not set up yet", "nothing yet"} {
+	for _, want := range []string{"Throttles your download clients", ":7676", "First run", "not set up yet", "nothing yet"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("banner is missing %q", want)
 		}

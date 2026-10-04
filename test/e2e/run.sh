@@ -10,19 +10,9 @@ cd "$(dirname "$0")"
 
 ./reset.sh
 
-# The setup code is only ever in the container log — exactly where a
-# person would have to go and get it.
-code=""
-for _ in $(seq 1 30); do
-  code=$(docker logs e2e-autothrottle 2>&1 | grep -oE '[A-Z0-9]{4}-[A-Z0-9]{4}' | head -1 || true)
-  [ -n "$code" ] && break
-  sleep 1
-done
-[ -n "$code" ] || { echo "no setup code in the AutoThrottle log"; docker logs e2e-autothrottle; exit 1; }
-
 status=0
 docker run --rm --memory=1500m --network host \
-  -e SETUP_CODE="$code" -e NODE_PATH=/home/pptruser/node_modules \
+  -e NODE_PATH=/home/pptruser/node_modules \
   -v "$PWD:/work" -w /work \
   ghcr.io/puppeteer/puppeteer:25.12.0 node scenario.js || status=$?
 

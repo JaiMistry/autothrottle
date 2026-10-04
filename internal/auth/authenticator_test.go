@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 )
@@ -92,36 +91,23 @@ func TestEnvironmentVerify(t *testing.T) {
 func TestSetupCreatesAnAccountOnce(t *testing.T) {
 	store := &accountMem{}
 	a, _ := load(t, "", "", "", store)
-	code := a.SetupCode()
-	if len(normalizeCode(code)) != 8 || strings.ContainsAny(code, "01OIL") {
-		t.Fatalf("setup code %q should be 8 unambiguous characters", code)
-	}
-
-	if err := a.CompleteSetup("WRNG-CODE", "jai", "a-long-password"); !errors.Is(err, ErrBadSetupCode) {
-		t.Fatalf("wrong code: err = %v", err)
-	}
-	if err := a.CompleteSetup(code, "  ", "a-long-password"); !errors.Is(err, ErrUsernameEmpty) {
+	if err := a.CompleteSetup("  ", "a-long-password"); !errors.Is(err, ErrUsernameEmpty) {
 		t.Fatalf("blank username: err = %v", err)
 	}
-	if err := a.CompleteSetup(code, "jai", "short"); !errors.Is(err, ErrPasswordShort) {
+	if err := a.CompleteSetup("jai", "short"); !errors.Is(err, ErrPasswordShort) {
 		t.Fatalf("short password: err = %v", err)
 	}
 
-	// Copied loosely: lower case, no dash.
-	loose := strings.ToLower(strings.ReplaceAll(code, "-", ""))
-	if err := a.CompleteSetup(loose, " jai ", "a-long-password"); err != nil {
+	if err := a.CompleteSetup(" jai ", "a-long-password"); err != nil {
 		t.Fatalf("CompleteSetup: %v", err)
 	}
 	if a.Mode() != ModeAccount || a.Username() != "jai" {
 		t.Fatalf("after setup: mode %v user %q", a.Mode(), a.Username())
 	}
-	if a.SetupCode() != "" {
-		t.Error("the setup code must stop working once an account exists")
-	}
 	if !a.Verify("jai", "a-long-password") || a.Verify("jai", "a-long-passwore") {
 		t.Error("stored account does not verify correctly")
 	}
-	if err := a.CompleteSetup(code, "intruder", "another-password"); !errors.Is(err, ErrSetupDone) {
+	if err := a.CompleteSetup("intruder", "another-password"); !errors.Is(err, ErrSetupDone) {
 		t.Errorf("second setup: err = %v, want ErrSetupDone", err)
 	}
 }

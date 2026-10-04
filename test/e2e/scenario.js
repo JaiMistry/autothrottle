@@ -11,7 +11,6 @@ const puppeteer = require('puppeteer');
 
 const env = JSON.parse(fs.readFileSync(path.join(__dirname, '.state/env.json')));
 const APP = env.autothrottle;
-const SETUP_CODE = process.env.SETUP_CODE;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let failures = 0;
@@ -150,17 +149,15 @@ const transmission = {
     section('First run');
     await navigate('/');
     check(at() === '/setup', 'a fresh install opens on the setup screen', at());
-    await fill('[name=code]', 'WRNG-CODE');
     await fill('[name=username]', 'admin');
     await fill('[name=password]', 'e2e-password');
-    await fill('[name=confirm]', 'e2e-password');
+    await fill('[name=confirm]', 'e2e-passwore');
     await settle(() => page.click('button[type=submit]'));
-    check((await text('.at-alert')).includes('setup code is not right'), 'a wrong setup code is refused');
-    await fill('[name=code]', SETUP_CODE);
+    check((await text('.at-alert')).includes('two passwords'), 'mismatched passwords are refused');
     await fill('[name=password]', 'e2e-password');
     await fill('[name=confirm]', 'e2e-password');
     await settle(() => page.click('button[type=submit]'));
-    check(at() === '/', 'the right code creates the account and signs in', at());
+    check(at() === '/', 'setup creates the account and signs in', at());
     check((await page.content()).includes('Nothing configured yet'), 'the empty Dashboard says nothing is configured');
 
     section('Media server');

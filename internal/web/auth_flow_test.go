@@ -86,22 +86,21 @@ func TestFirstRunSetup(t *testing.T) {
 	expectRedirect(t, app.get("/login"), "/setup")
 	expectStatus(t, app.get("/setup"), http.StatusOK)
 
-	submit := func(code, user, pass, confirm string) *httpResult {
-		rec := app.do("POST", "/setup", url.Values{"code": {code}, "username": {user}, "password": {pass}, "confirm": {confirm}})
+	submit := func(user, pass, confirm string) *httpResult {
+		rec := app.do("POST", "/setup", url.Values{"username": {user}, "password": {pass}, "confirm": {confirm}})
 		return &httpResult{rec.Code, rec.Header().Get("Location"), rec.Body.String()}
 	}
 
-	r := submit("WRNG-CODE", "jai", "long-enough", "long-enough")
-	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "setup code is not right") {
-		t.Fatalf("wrong code: %d %.200s", r.code, r.body)
+	r := submit("jai", "long-enough", "different")
+	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "two passwords") {
+		t.Fatalf("mismatched passwords: %d %.200s", r.code, r.body)
 	}
-	r = submit("WRNG-CODE", "jai", "long-enough", "different")
-	if !strings.Contains(r.body, "two passwords") {
-		t.Fatalf("mismatched passwords: %.200s", r.body)
+	r = submit("jai", "short", "short")
+	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "at least 8 characters") {
+		t.Fatalf("short password: %d %.200s", r.code, r.body)
 	}
 
-	code := app.setupCodeFromAuth()
-	r = submit(code, "jai", "long-enough", "long-enough")
+	r = submit("jai", "long-enough", "long-enough")
 	if r.code != http.StatusSeeOther || r.location != "/" {
 		t.Fatalf("valid setup: %d → %q", r.code, r.location)
 	}
@@ -109,7 +108,7 @@ func TestFirstRunSetup(t *testing.T) {
 	expectStatus(t, app.get("/"), http.StatusOK)
 	// And can never run again.
 	expectRedirect(t, app.get("/setup"), "/login")
-	r = submit(code, "intruder", "long-enough", "long-enough")
+	r = submit("intruder", "long-enough", "long-enough")
 	if r.location != "/login" {
 		t.Fatalf("second setup was not refused: %d → %q", r.code, r.location)
 	}
@@ -119,18 +118,4 @@ type httpResult struct {
 	code     int
 	location string
 	body     string
-}
-
-// setupCodeFromAuth reads the code the way a person would get it: it is
-// never in the page, only in the log, so the test asks the authenticator.
-func (a *testApp) setupCodeFromAuth() string {
-	a.t.Helper()
-	code := a.srv.auth.SetupCode()
-	if code == "" {
-		a.t.Fatal("no setup code while setup is pending")
-	}
-	if strings.Contains(a.get("/setup").Body.String(), code) {
-		a.t.Fatal("the setup page leaks the setup code")
-	}
-	return code
 }

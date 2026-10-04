@@ -44,8 +44,8 @@ func (s *Server) completeSetup(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	retry := setupData{Username: username}
 
-	// Shares the login limiter: guessing setup codes is guessing a
-	// password, and gets the same few tries a minute.
+	// Shares the login limiter, so the one page open to anyone cannot
+	// be hammered either.
 	if !s.limiter.Allow() {
 		retry.Error = "Too many attempts. Wait a moment and try again."
 		s.renderSetup(w, http.StatusTooManyRequests, retry)
@@ -57,10 +57,10 @@ func (s *Server) completeSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.auth.CompleteSetup(r.FormValue("code"), username, r.FormValue("password"))
+	err := s.auth.CompleteSetup(username, r.FormValue("password"))
 	switch {
 	case err == nil:
-	case errors.Is(err, auth.ErrBadSetupCode), errors.Is(err, auth.ErrUsernameEmpty), errors.Is(err, auth.ErrPasswordShort):
+	case errors.Is(err, auth.ErrUsernameEmpty), errors.Is(err, auth.ErrPasswordShort):
 		retry.Error = capitalize(err.Error()) + "."
 		s.renderSetup(w, http.StatusUnprocessableEntity, retry)
 		return

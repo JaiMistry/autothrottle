@@ -89,14 +89,7 @@ No schedules to maintain, no "slow mode" to remember to switch off.
    docker compose up -d
    ```
 
-4. **Get your setup code** from the log:
-
-   ```sh
-   docker logs autothrottle
-   ```
-
-5. **Open `http://<your-server>:7676`**, enter the setup code, and create
-   your account.
+4. **Open `http://<your-server>:7676`** and create your account.
 
 The image is also published as `ghcr.io/jaimistry/autothrottle`.
 
@@ -136,10 +129,10 @@ you want them:
 
 ### Signing in
 
-With no credentials set, the first visit asks you to create an account. To
-make sure nobody else on your network can claim the instance before you, the
-form asks for a **one-time setup code** that is only ever printed to the
-container log. It stops working as soon as the account exists.
+With no credentials set, the first visit asks you to create an account — the
+same first-run screen Sonarr or Jellyfin show. It appears once; after that
+it's an ordinary login page. Open the UI right after you deploy, before
+anyone else on your network does.
 
 **Forgot your password?** Set `AUTH_USERNAME` and `AUTH_PASSWORD` and restart.
 Environment credentials always take priority over the stored account.

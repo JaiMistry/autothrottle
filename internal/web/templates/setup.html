@@ -1,7 +1,6 @@
 {{define "content"}}
-{{/* Reachable only while nothing can log in. The setup code is the one
-     thing a stranger on the network cannot see: it is printed to the
-     container log and nowhere else. */}}
+{{/* Reachable only while nothing can log in; gone for good once the
+     account exists. */}}
 <div class="at-login-inner">
   <div class="at-login-brand">
     <img src="/static/img/logo-mark.svg" width="72" height="72" alt="">
@@ -12,16 +11,12 @@
     <form method="post" action="/setup" style="display:grid;gap:var(--space-6)">
       <div style="display:grid;gap:var(--space-2)">
         <h1 style="margin:0;font-size:var(--text-ui);font-weight:var(--weight-bold)">Create your account</h1>
-        <p style="margin:0;font-size:var(--text-caption);color:var(--text-dim);text-wrap:pretty">This is the account you'll log in with. The setup code is printed in the container log — run <code class="at-mono">docker logs autothrottle</code> to see it.</p>
+        <p style="margin:0;font-size:var(--text-caption);color:var(--text-dim);text-wrap:pretty">This is the account you'll log in with. It's the only one, and this page won't appear again.</p>
       </div>
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
       <label class="at-field">
-        <span class="at-field-label">Setup code</span>
-        <input class="at-input at-mono" type="text" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" autofocus required>
-      </label>
-      <label class="at-field">
         <span class="at-field-label">Username</span>
-        <input class="at-input" type="text" name="username" value="{{.Username}}" autocomplete="username" required>
+        <input class="at-input" type="text" name="username" value="{{.Username}}" autocomplete="username" autofocus required>
       </label>
       <label class="at-field">
         <span class="at-field-label">Password</span>

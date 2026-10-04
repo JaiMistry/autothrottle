@@ -9,17 +9,13 @@
 //     environment. They always win, which also makes them the recovery
 //     path for anyone locked out of a stored account.
 //   - A stored account, created once on the first-run setup screen.
-//   - Nothing yet — every page leads to setup.
-//
-// The setup screen is the one page anyone can reach without logging
-// in, and whoever reaches it first would own the instance. It is closed
-// to strangers by a one-time setup code that is only ever printed to
-// the container log: completing setup needs access to the host, not
-// just to the network.
+//   - Nothing yet — every page leads to setup, where whoever opens the
+//     app first creates the account. That is the same bargain Sonarr,
+//     Jellyfin and Home Assistant make: on a home network, the person
+//     who just deployed it is the one opening it.
 package auth
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -47,7 +43,6 @@ const (
 // Setup failures the screen can explain.
 var (
 	ErrSetupDone     = errors.New("setup has already been completed")
-	ErrBadSetupCode  = errors.New("that setup code is not right — copy it from the container log")
 	ErrUsernameEmpty = errors.New("choose a username")
 	ErrPasswordShort = fmt.Errorf("use a password of at least %d characters", minPasswordLength)
 )
@@ -63,8 +58,9 @@ type Authenticator struct {
 	envPass  string // held in memory only, never persisted
 	store    AccountStore
 
-	mu        sync.Mutex
-	setupCode string
+	// mu makes setup happen once: two submissions racing each other
+	// cannot both create the account.
+	mu sync.Mutex
 }
 
 // Load reads AUTH_DISABLED, AUTH_USERNAME and AUTH_PASSWORD. Setting
@@ -80,13 +76,6 @@ func Load(store AccountStore) (*Authenticator, error) {
 	}
 	if !a.disabled && (a.envUser == "") != (a.envPass == "") {
 		return nil, errors.New("AUTH_USERNAME and AUTH_PASSWORD must be set together — set both, or neither to create an account on first run")
-	}
-	if a.Mode() == ModeSetup {
-		code, err := newSetupCode()
-		if err != nil {
-			return nil, err
-		}
-		a.setupCode = code
 	}
 	return a, nil
 }
@@ -110,17 +99,6 @@ func (a *Authenticator) Disabled() bool { return a.disabled }
 
 // NeedsSetup reports whether nobody can log in until an account is made.
 func (a *Authenticator) NeedsSetup() bool { return a.Mode() == ModeSetup }
-
-// SetupCode is the one-time code the setup screen asks for, or "" once
-// there is no setup left to do.
-func (a *Authenticator) SetupCode() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.Mode() != ModeSetup {
-		return ""
-	}
-	return a.setupCode
-}
 
 // Username is who is signed in, for display.
 func (a *Authenticator) Username() string {
@@ -155,18 +133,13 @@ func (a *Authenticator) Verify(username, password string) bool {
 	}
 }
 
-// CompleteSetup creates the account. The code is checked first, so a
-// wrong one says nothing about whether the other fields would have been
-// accepted.
-func (a *Authenticator) CompleteSetup(code, username, password string) error {
+// CompleteSetup creates the account.
+func (a *Authenticator) CompleteSetup(username, password string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if a.Mode() != ModeSetup {
 		return ErrSetupDone
-	}
-	if subtle.ConstantTimeCompare([]byte(normalizeCode(code)), []byte(normalizeCode(a.setupCode))) != 1 {
-		return ErrBadSetupCode
 	}
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -179,41 +152,5 @@ func (a *Authenticator) CompleteSetup(code, username, password string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.store.CreateAccount(username, hash); err != nil {
-		return err
-	}
-	a.setupCode = ""
-	return nil
-}
-
-// setupAlphabet leaves out characters that are easy to misread when
-// copying from a terminal: 0/O, 1/I/L.
-const setupAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-
-// newSetupCode returns eight characters as XXXX-XXXX: about 39 bits,
-// plenty for a code that is rate-limited and lives only until setup.
-func newSetupCode() (string, error) {
-	raw := make([]byte, 8)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generating setup code: %w", err)
-	}
-	var b strings.Builder
-	for i, v := range raw {
-		if i == 4 {
-			b.WriteByte('-')
-		}
-		b.WriteByte(setupAlphabet[int(v)%len(setupAlphabet)])
-	}
-	return b.String(), nil
-}
-
-// normalizeCode forgives how a code was copied: case, and the dash or
-// any spacing around it.
-func normalizeCode(code string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '-' || r == ' ' || r == '\t' {
-			return -1
-		}
-		return r
-	}, strings.ToUpper(code))
+	return a.store.CreateAccount(username, hash)
 }

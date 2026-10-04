@@ -99,7 +99,6 @@ func main() {
 		Address:      addr,
 		AuthMode:     authenticator.Mode(),
 		AuthUser:     authenticator.Username(),
-		SetupCode:    authenticator.SetupCode(),
 		MediaServers: countRows(database.ListMediaServers()),
 		Downloaders:  countRows(database.ListDownloaders()),
 		Mappings:     countRows(database.ListMappings()),

@@ -29,7 +29,6 @@ type startupInfo struct {
 	Address      string
 	AuthMode     auth.Mode
 	AuthUser     string
-	SetupCode    string
 	MediaServers int
 	Downloaders  int
 	Mappings     int
@@ -66,14 +65,8 @@ func printBanner(out io.Writer, build version.Build, info startupInfo) {
 	row("Auth", authDesc(info))
 	row("Configured", configuredDesc(info))
 	b.WriteString("\n")
-	if info.SetupCode != "" {
-		fmt.Fprintf(&b, "  ┌──────────────────────────────────────────────────┐\n")
-		fmt.Fprintf(&b, "  │  First run. Open the web UI and enter this code: │\n")
-		fmt.Fprintf(&b, "  │                                                  │\n")
-		fmt.Fprintf(&b, "  │                     %s                    │\n", info.SetupCode)
-		fmt.Fprintf(&b, "  │                                                  │\n")
-		fmt.Fprintf(&b, "  │  It works once, until an account is created.     │\n")
-		fmt.Fprintf(&b, "  └──────────────────────────────────────────────────┘\n\n")
+	if info.AuthMode == auth.ModeSetup {
+		b.WriteString("  First run: open the web UI to create your account.\n\n")
 	}
 
 	// Written one line at a time on purpose. A single multi-line write
