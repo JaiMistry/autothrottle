@@ -432,6 +432,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
   background: var(--fill-neutral);
   color: var(--text-dim);
 }
+.at-badge--good { background: var(--fill-good); color: var(--good); }
 .at-badge--warn { background: var(--fill-warn); color: var(--warn); }
 .at-badge--error { background: var(--fill-critical); color: var(--critical); }
 
