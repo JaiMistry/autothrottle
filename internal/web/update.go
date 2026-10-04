@@ -84,9 +84,7 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	if elapsed := time.Since(started); elapsed < minCheckDuration {
 		time.Sleep(minCheckDuration - elapsed)
 	}
-	if err := s.templates["configuration"].ExecuteTemplate(w, "updatecheck", view); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.renderFragment(w, "configuration", "updatecheck", view)
 }
 
 // checkLatestRelease compares a release number — not a raw stamp — with

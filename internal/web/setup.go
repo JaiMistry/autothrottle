@@ -19,9 +19,7 @@ func (s *Server) renderSetup(w http.ResponseWriter, status int, data setupData) 
 	data.Version = version.Label()
 	data.Asset = s.assets.URL
 	w.WriteHeader(status)
-	if err := s.templates["setup"].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering setup page", "error", err)
-	}
+	s.render(w, "setup", data)
 }
 
 // setupPage is only ever reachable while there is no way to log in.

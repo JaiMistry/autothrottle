@@ -1,7 +1,6 @@
 package web
 
 import (
-	"log/slog"
 	"net/http"
 
 	"github.com/JaiMistry/autothrottle/internal/version"
@@ -27,9 +26,7 @@ type pageData struct {
 func (s *Server) loginFailed(w http.ResponseWriter, r *http.Request, status int, message string) {
 	w.WriteHeader(status)
 	data := pageData{Title: "Log in", Version: version.Label(), Error: message, Asset: s.assets.URL}
-	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering login failure", "error", err)
-	}
+	s.render(w, "login", data)
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +39,5 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := pageData{Title: "Log in", Version: version.Label(), Asset: s.assets.URL}
-	if err := s.templates["login"].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering login page", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.render(w, "login", data)
 }

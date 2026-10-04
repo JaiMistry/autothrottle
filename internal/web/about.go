@@ -18,7 +18,6 @@ type aboutView struct {
 	Runtime   string
 	BootUnix  int64
 	BootNote  string
-	Auth      string
 }
 
 func (s *Server) aboutView() aboutView {
@@ -44,7 +43,6 @@ func (s *Server) aboutView() aboutView {
 		Runtime:   rt,
 		BootUnix:  s.startedAt.UnixMilli(),
 		BootNote:  "Last restarted: " + s.startedAt.Local().Format("2 Jan 2006, 15:04"),
-		Auth:      s.authSummary(),
 	}
 }
 

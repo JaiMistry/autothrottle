@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"html/template"
 	"net/url"
 )
@@ -53,17 +52,14 @@ type pagedLog struct {
 
 // newPagedLog does the paging arithmetic once, so the two callers can
 // disagree about page size and filters but not about how paging works.
+// clampPage keeps page within 1..pages, where an empty log is one page.
+func clampPage(page, total, perPage int) (int, int) {
+	pages := max(1, (total+perPage-1)/perPage)
+	return min(max(page, 1), pages), pages
+}
+
 func newPagedLog(title, targetID, endpoint string, events []logRowView, total, perPage, page int, extra url.Values) pagedLog {
-	pages := (total + perPage - 1) / perPage
-	if pages < 1 {
-		pages = 1
-	}
-	if page > pages {
-		page = pages
-	}
-	if page < 1 {
-		page = 1
-	}
+	page, pages := clampPage(page, total, perPage)
 
 	query := ""
 	if encoded := extra.Encode(); encoded != "" {
@@ -93,5 +89,3 @@ func newPagedLog(title, targetID, endpoint string, events []logRowView, total, p
 	}
 	return p
 }
-
-func (p pagedLog) String() string { return fmt.Sprintf("pagedLog(%s)", p.Title) }

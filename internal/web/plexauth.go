@@ -50,12 +50,7 @@ func (s *Server) startPlexSignIn(w http.ResponseWriter, r *http.Request) {
 	s.plex.started = time.Now()
 	s.plex.mu.Unlock()
 
-	s.renderPlexPanel(w, plexPanel{
-		State:   "waiting",
-		AuthURL: pin.AuthURL,
-		Code:    pin.Code,
-		PinID:   pin.ID,
-	})
+	s.renderPlexPanel(w, plexPanel{State: "waiting", AuthURL: pin.AuthURL})
 }
 
 // pollPlexSignIn is polled by the panel until Plex attaches a token.
@@ -77,12 +72,7 @@ func (s *Server) pollPlexSignIn(w http.ResponseWriter, r *http.Request) {
 	if token == "" {
 		// Still waiting on the user. Re-render the same panel so the
 		// poll continues rather than reporting a failure.
-		s.renderPlexPanel(w, plexPanel{
-			State:   "waiting",
-			AuthURL: pin.AuthURL,
-			Code:    pin.Code,
-			PinID:   pin.ID,
-		})
+		s.renderPlexPanel(w, plexPanel{State: "waiting", AuthURL: pin.AuthURL})
 		return
 	}
 
@@ -100,8 +90,6 @@ func (s *Server) pollPlexSignIn(w http.ResponseWriter, r *http.Request) {
 type plexPanel struct {
 	State   string // idle | waiting | done | error
 	AuthURL string
-	Code    string
-	PinID   int
 	Token   string
 }
 
@@ -126,10 +114,7 @@ func (s *Server) cancelPlexSignIn(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderPlexPanel(w http.ResponseWriter, panel plexPanel) {
-	if err := s.templates["configuration"].ExecuteTemplate(w, "plexsignin", panel); err != nil {
-		slog.Error("rendering plex sign-in", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.renderFragment(w, "configuration", "plexsignin", panel)
 }
 
 // randomClientID identifies this install to plex.tv for the duration of

@@ -192,9 +192,7 @@ func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, tab, 
 	}
 	data.FormError = message
 	w.WriteHeader(http.StatusUnprocessableEntity)
-	if err := s.templates["configuration"].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering configuration page", "error", err)
-	}
+	s.render(w, "configuration", data)
 }
 
 func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
@@ -234,10 +232,7 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := s.templates["configuration"].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering configuration page", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.render(w, "configuration", data)
 }
 
 func parseInt64Form(r *http.Request, name string) int64 {
@@ -401,6 +396,19 @@ func (s *Server) storedMediaServerCredential(r *http.Request) (string, bool) {
 	return token, true
 }
 
+// probe runs one connection test and writes its result.
+func (s *Server) probe(w http.ResponseWriter, r *http.Request, kind probeKind, target, okMessage string, test func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
+	defer cancel()
+	started := time.Now()
+	if err := test(ctx); err != nil {
+		field, hint := classifyProbeError(kind, err)
+		s.writeTestResult(w, testResult{Target: target, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
+		return
+	}
+	s.writeTestResult(w, testResult{OK: true, Target: target, Message: okMessage, Elapsed: time.Since(started)})
+}
+
 func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		s.writeTestResult(w, testResult{Message: "bad form data"})
@@ -426,15 +434,9 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Message: "choose a supported media server type first"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
-	defer cancel()
-	started := time.Now()
-	if err := clients.TestMediaServer(ctx, msType, rawURL, token); err != nil {
-		field, hint := classifyProbeError(probeServer, err)
-		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
-		return
-	}
-	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
+	s.probe(w, r, probeServer, rawURL, "Reachable, and the credential was accepted.", func(ctx context.Context) error {
+		return clients.TestMediaServer(ctx, msType, rawURL, token)
+	})
 }
 
 func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
@@ -453,15 +455,9 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Message: "stored credential could not be decrypted", Fields: []string{fieldCredential}, Hint: "Re-enter the token and save the server again."})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
-	defer cancel()
-	started := time.Now()
-	if err := clients.TestMediaServer(ctx, ms.Type, ms.URL, token); err != nil {
-		field, hint := classifyProbeError(probeServer, err)
-		s.writeTestResult(w, testResult{Target: ms.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
-		return
-	}
-	s.writeTestResult(w, testResult{OK: true, Target: ms.URL, Message: "Reachable, and the credential was accepted.", Elapsed: time.Since(started)})
+	s.probe(w, r, probeServer, ms.URL, "Reachable, and the credential was accepted.", func(ctx context.Context) error {
+		return clients.TestMediaServer(ctx, ms.Type, ms.URL, token)
+	})
 }
 
 // --- downloaders ---
@@ -598,15 +594,9 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 
-	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
-	defer cancel()
-	started := time.Now()
-	if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
-		field, hint := classifyProbeError(probeDownloader, err)
-		s.writeTestResult(w, testResult{Target: rawURL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
-		return
-	}
-	s.writeTestResult(w, testResult{OK: true, Target: rawURL, Message: reachedMessage(username != "" || password != ""), Elapsed: time.Since(started)})
+	s.probe(w, r, probeDownloader, rawURL, reachedMessage(username != "" || password != ""), func(ctx context.Context) error {
+		return clients.TestDownloader(ctx, dlType, rawURL, username, password)
+	})
 }
 
 func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
@@ -627,15 +617,9 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
-	defer cancel()
-	started := time.Now()
-	if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
-		field, hint := classifyProbeError(probeDownloader, err)
-		s.writeTestResult(w, testResult{Target: dl.URL, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
-		return
-	}
-	s.writeTestResult(w, testResult{OK: true, Target: dl.URL, Message: reachedMessage(username != "" || password != ""), Elapsed: time.Since(started)})
+	s.probe(w, r, probeDownloader, dl.URL, reachedMessage(username != "" || password != ""), func(ctx context.Context) error {
+		return clients.TestDownloader(ctx, dl.Type, dl.URL, username, password)
+	})
 }
 
 // --- mappings ---
@@ -673,9 +657,7 @@ func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if err := s.templates["configuration"].ExecuteTemplate(w, "mappingmatrix", data); err != nil {
-			slog.Error("rendering mappings matrix", "error", err)
-		}
+		s.renderFragment(w, "configuration", "mappingmatrix", data)
 		return
 	}
 	http.Redirect(w, r, "/configuration?tab=mappings", http.StatusSeeOther)
@@ -762,7 +744,5 @@ func (s *Server) writeTestResult(w http.ResponseWriter, res testResult) {
 		view.Elapsed = fmt.Sprintf("%.1fs", res.Elapsed.Seconds())
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates["configuration"].ExecuteTemplate(w, "testresult", view); err != nil {
-		slog.Error("rendering test result", "error", err)
-	}
+	s.renderFragment(w, "configuration", "testresult", view)
 }

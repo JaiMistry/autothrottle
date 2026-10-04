@@ -60,10 +60,7 @@ func (s *Server) logPanelFragment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := s.templates["logs"].ExecuteTemplate(w, "logpanelfragment", data); err != nil {
-		slog.Error("rendering log panel", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.renderFragment(w, "logs", "logpanelfragment", data)
 }
 
 // logRowsFragment serves the card on its own, for paging within a
@@ -75,36 +72,7 @@ func (s *Server) logRowsFragment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := s.templates["logs"].ExecuteTemplate(w, "pagedlog", data.Log); err != nil {
-		slog.Error("rendering log rows", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
-}
-
-// logsLive lets the Events card refresh itself, but only when it is
-// showing the newest page of an unfiltered view. It refreshes the whole
-// panel rather than the card alone, so the level counts and the "N of
-// the last M" line move with the rows instead of drifting out of step.
-func logsLive(p pagedLog, level, search string, perPage int) pagedLog {
-	if search != "" {
-		return p
-	}
-	q := url.Values{}
-	if level != "" {
-		q.Set("level", level)
-	}
-	q.Set("per", strconv.Itoa(perPage))
-	p.LiveEndpoint = "/logs/panel?" + q.Encode()
-	p.LiveTarget = "#log-panel"
-	return p
-}
-
-// panelLive is logsLive's answer, moved onto the panel and cleared off
-// the card so the page does not poll twice for the same thing.
-func panelLive(data *logsData) {
-	data.LivePanel = data.Log.LiveEndpoint
-	data.Log.LiveEndpoint = ""
-	data.Log.LiveTarget = ""
+	s.renderFragment(w, "logs", "pagedlog", data.Log)
 }
 
 func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
@@ -158,9 +126,17 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 		CountAll: counts["info"] + counts["warn"] + counts["error"],
 		Matching: total,
 		NoEvents: unfiltered == 0,
-		Log:      logsLive(newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra), level, search, perPage),
+		Log:      newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra),
 	}
-	panelLive(&data)
+	// The whole panel refreshes, not just the card, so the level counts
+	// move with the rows. Not while a search is showing.
+	if search == "" {
+		q := url.Values{"per": {strconv.Itoa(perPage)}}
+		if level != "" {
+			q.Set("level", level)
+		}
+		data.LivePanel = "/logs/panel?" + q.Encode()
+	}
 	data.Log.ClearEndpoint = "/logs/clear"
 	data.Log.ClearTarget = "#log-panel"
 	data.Log.CSRFToken = s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context()))
@@ -170,13 +146,7 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 // pageOfEvents reads one page of the filtered log, clamped to the
 // window the page advertises.
 func (s *Server) pageOfEvents(filter db.EventFilter, perPage, page, total int) ([]logRowView, int, error) {
-	pages := (total + perPage - 1) / perPage
-	if pages < 1 {
-		pages = 1
-	}
-	if page > pages {
-		page = pages
-	}
+	page, _ = clampPage(page, total, perPage)
 	filter.Limit = perPage
 	filter.Offset = (page - 1) * perPage
 
@@ -203,10 +173,7 @@ func (s *Server) activityFragment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := s.templates["dashboard"].ExecuteTemplate(w, "pagedlog", log); err != nil {
-		slog.Error("rendering recent activity", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
+	s.renderFragment(w, "dashboard", "pagedlog", log)
 }
 
 func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {

@@ -12,26 +12,18 @@ import (
 // staticAssets serves the embedded CSS, JS, fonts and images with
 // cache headers Go's plain FileServer cannot provide here.
 //
-// Embedded files carry a zero modification time, so http.FileServer
-// emits no Last-Modified and can answer no conditional request — which
-// means the browser re-downloads every asset on every navigation. On a
-// server-rendered app that is every click, and the 100KB stylesheet
-// being refetched each time is what makes navigation feel heavy and
-// can leave a moment of unstyled HTML on screen.
-//
-// Each file gets an ETag from its content hash. A request carrying the
-// matching ?v= is answered as immutable, because the hash *is* the
-// version: a new build changes the hash, which changes the URL, so a
-// stale asset can never be served under a new one.
+// Embedded files have no modification time, so FileServer can answer
+// no conditional request and every click re-downloads every asset.
+// Each file gets an ETag from its content hash instead, and a request
+// carrying the matching ?v= is answered as immutable: a new build
+// changes the hash, and with it the URL.
 type staticAssets struct {
-	files   fs.FS
 	handler http.Handler
 	hashes  map[string]string
 }
 
 func newStaticAssets(files fs.FS) *staticAssets {
 	s := &staticAssets{
-		files:   files,
 		handler: http.FileServer(http.FS(files)),
 		hashes:  make(map[string]string),
 	}

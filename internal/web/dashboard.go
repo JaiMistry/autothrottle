@@ -87,7 +87,6 @@ type dashboardData struct {
 	ActiveSessions  int
 	SessionTone     string
 	SessionFootnote string
-	ThrottledCount  int
 	ThrottledTone   string
 	ThrottledLabel  string
 	Paused          bool
@@ -117,9 +116,7 @@ func (s *Server) dashboardLive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Fragment = true
-	if err := s.templates["dashboard"].ExecuteTemplate(w, "dashlive", data); err != nil {
-		slog.Error("rendering dashboard fragment", "error", err)
-	}
+	s.renderFragment(w, "dashboard", "dashlive", data)
 }
 
 // buildDashboardData assembles the whole page's state, shared by the
@@ -275,7 +272,6 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 
 	data.ActiveSessions = totalSessions
 	data.SessionTone = tone(totalSessions > 0, "accent", "dim")
-	data.ThrottledCount = len(throttledNames)
 	data.ThrottledTone = tone(len(throttledNames) > 0, "warn", "dim")
 	data.ThrottledLabel = fmt.Sprintf("%d of %d", len(throttledNames), len(downloaders))
 	data.Hero = buildHero(paused, totalSessions, throttledNames, causes, len(downloaders), unresolved)
@@ -593,8 +589,13 @@ func (s *Server) page(r *http.Request, title, active string) pageData {
 }
 
 func (s *Server) render(w http.ResponseWriter, page string, data any) {
-	if err := s.templates[page].ExecuteTemplate(w, "layout", data); err != nil {
-		slog.Error("rendering page", "page", page, "error", err)
+	s.renderFragment(w, page, "layout", data)
+}
+
+// renderFragment executes one named template from a page's set.
+func (s *Server) renderFragment(w http.ResponseWriter, page, name string, data any) {
+	if err := s.templates[page].ExecuteTemplate(w, name, data); err != nil {
+		slog.Error("rendering", "page", page, "template", name, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
