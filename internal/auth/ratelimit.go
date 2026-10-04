@@ -17,7 +17,12 @@ type LoginLimiter struct {
 	window   time.Duration
 }
 
-func NewLoginLimiter(max int, window time.Duration) *LoginLimiter {
+// NewLoginLimiter allows 5 attempts a minute.
+func NewLoginLimiter() *LoginLimiter {
+	return newLoginLimiter(loginRateMax, loginRateWindow)
+}
+
+func newLoginLimiter(max int, window time.Duration) *LoginLimiter {
 	return &LoginLimiter{max: max, window: window}
 }
 

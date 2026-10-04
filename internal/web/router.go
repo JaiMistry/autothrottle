@@ -86,8 +86,8 @@ func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byt
 	return &Server{
 		db:            database,
 		auth:          authenticator,
-		sessions:      auth.NewDefaultSessionManager().WithStore(database),
-		limiter:       auth.NewDefaultLoginLimiter(),
+		sessions:      auth.NewSessionManager(database),
+		limiter:       auth.NewLoginLimiter(),
 		csrf:          csrf,
 		templates:     templates,
 		encryptionKey: encryptionKey,

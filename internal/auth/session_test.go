@@ -25,54 +25,38 @@ func (m *memStore) AuthSessionValid(token string, now time.Time) (bool, error) {
 
 func (m *memStore) DeleteAuthSession(token string) error { delete(m.rows, token); return nil }
 
-// A restart must not sign everyone out. Sessions held only in memory
-// did exactly that, which on a self-hosted app that auto-updates means
-// being logged out regularly for no visible reason.
-func TestSessionsSurviveARestart(t *testing.T) {
+func TestSessionManager(t *testing.T) {
 	store := &memStore{}
-	first := NewSessionManager(time.Hour).WithStore(store)
-	token, err := first.Create()
+	sm := NewSessionManager(store)
+	token, err := sm.Create()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Create: %v", err)
 	}
-	if !first.Valid(token) {
-		t.Fatal("a fresh session should be valid")
+	if !sm.Valid(token) {
+		t.Fatal("freshly created session should be valid")
 	}
-
+	if sm.Valid("not-a-real-token") || sm.Valid("") {
+		t.Fatal("unknown token should not be valid")
+	}
 	// A new manager over the same store is what a restart looks like.
-	second := NewSessionManager(time.Hour).WithStore(store)
-	if !second.Valid(token) {
-		t.Error("session did not survive the restart")
+	if !NewSessionManager(store).Valid(token) {
+		t.Error("session did not survive a restart")
+	}
+	sm.Revoke(token)
+	if NewSessionManager(store).Valid(token) {
+		t.Fatal("revoked session should no longer be valid")
 	}
 }
 
-func TestRevokeClearsTheDurableCopy(t *testing.T) {
-	store := &memStore{}
-	m := NewSessionManager(time.Hour).WithStore(store)
-	token, _ := m.Create()
-	m.Revoke(token)
-
-	if NewSessionManager(time.Hour).WithStore(store).Valid(token) {
-		t.Error("a revoked session must not come back after a restart")
-	}
-}
-
-// An expired token in the durable copy must not be adopted back.
-func TestExpiredStoredSessionIsRejected(t *testing.T) {
-	store := &memStore{rows: map[string]time.Time{"stale": time.Now().Add(-time.Minute)}}
-	if NewSessionManager(time.Hour).WithStore(store).Valid("stale") {
-		t.Error("an expired stored session must not be accepted")
-	}
-}
-
-// Without a store the manager still works, it just forgets on restart.
-func TestSessionsWorkWithoutAStore(t *testing.T) {
-	m := NewSessionManager(time.Hour)
-	token, err := m.Create()
+func TestSessionManagerExpiry(t *testing.T) {
+	sm := NewSessionManager(&memStore{})
+	sm.ttl = 20 * time.Millisecond
+	token, err := sm.Create()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Create: %v", err)
 	}
-	if !m.Valid(token) {
-		t.Error("in-memory sessions should still validate")
+	time.Sleep(40 * time.Millisecond)
+	if sm.Valid(token) {
+		t.Fatal("expired session should not be valid")
 	}
 }

@@ -116,21 +116,15 @@ func RequireCSRF(a *Authenticator, csrf *CSRF) func(http.Handler) http.Handler {
 	}
 }
 
-// LoginHandler handles POST /login: rate-limited credential check,
-// session creation, redirect to the dashboard.
 // LoginFailure renders a rejected attempt. It is a callback so this
 // package keeps owning the credential logic without knowing anything
 // about templates, and a failed login can still come back as the real
 // login page rather than a plain-text error.
 type LoginFailure func(w http.ResponseWriter, r *http.Request, status int, message string)
 
-func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimiter, onFailure LoginFailure) http.HandlerFunc {
-	fail := onFailure
-	if fail == nil {
-		fail = func(w http.ResponseWriter, _ *http.Request, status int, message string) {
-			http.Error(w, message, status)
-		}
-	}
+// LoginHandler handles POST /login: rate-limited credential check,
+// session creation, redirect to the dashboard.
+func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimiter, fail LoginFailure) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
 			fail(w, r, http.StatusTooManyRequests, "Too many attempts. Wait a moment and try again.")
@@ -148,12 +142,10 @@ func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimi
 			fail(w, r, http.StatusUnauthorized, "Invalid username or password.")
 			return
 		}
-		token, err := sessions.Create()
-		if err != nil {
+		if err := StartSession(w, r, sessions); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		setSessionCookie(w, r, token)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
@@ -179,14 +171,4 @@ func LogoutHandler(sessions *SessionManager) http.HandlerFunc {
 		clearSessionCookie(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
-}
-
-// NewLoginLimiter with the app's standard rate: 5 attempts per minute.
-func NewDefaultLoginLimiter() *LoginLimiter {
-	return NewLoginLimiter(loginRateMax, loginRateWindow)
-}
-
-// NewDefaultSessionManager with the app's standard 24-hour session TTL.
-func NewDefaultSessionManager() *SessionManager {
-	return NewSessionManager(sessionTTL)
 }
