@@ -217,7 +217,7 @@
 {{else}}
   {{template "emptystate" dict
     "Title" "Nothing to map yet"
-    "Body" "Add at least one media server and one downloader first. A mapping is just the link between them."}}
+    "Body" "Add at least one media server and one downloader first. Mappings control what downloaders get throttled."}}
 {{end}}
 
 {{else}}
@@ -360,8 +360,8 @@
     </span>{{end -}}
   </legend>{{end}}
   <div class="at-ratepair-grid">
-    {{template "ratefield" dict "Name" .DownName "Label" "Download" "Value" .Down "Dir" "down"}}
     {{template "ratefield" dict "Name" .UpName "Label" "Upload" "Value" .Up "Dir" "up"}}
+    {{template "ratefield" dict "Name" .DownName "Label" "Download" "Value" .Down "Dir" "down"}}
   </div>
   {{if .Note}}<span class="at-ratepair-note">{{.Note}}</span>{{end}}
 </fieldset>{{end}}
