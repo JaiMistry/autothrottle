@@ -407,7 +407,7 @@ func tone(test bool, whenTrue, whenFalse string) string {
 // sessionFootnote qualifies the active-session count, which can include
 // local playback when a server does not exempt it.
 func sessionFootnote(paused bool, sessions int, countsLocal bool) string {
-	if countsLocal && !(paused && sessions > 0) {
+	if countsLocal && (!paused || sessions == 0) {
 		return "includes local playback"
 	}
 	return ""
