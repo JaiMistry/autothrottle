@@ -23,7 +23,7 @@ func TestClassifyProbeError(t *testing.T) {
 		{"403 on a downloader names both fields", probeDownloader, errors.New("403 Forbidden"), fieldCredential, "username or password"},
 		{"tls points at the URL", probeServer, errors.New("x509: certificate signed by unknown authority"), fieldURL, "TLS handshake failed"},
 		{"dns points at the URL", probeServer, errors.New("dial tcp: lookup plex.example: no such host"), fieldURL, "did not resolve"},
-		{"a scheme-less URL is a URL problem", probeServer, errors.New(`Get "192.168.1.12:32400": unsupported protocol scheme ""`), fieldURL, "not a complete URL"},
+		{"a scheme-less URL is a URL problem", probeServer, errors.New(`Get "192.168.1.50:32400": unsupported protocol scheme ""`), fieldURL, "not a complete URL"},
 		{"nil is not a failure", probeServer, nil, "", ""},
 	}
 	for _, c := range cases {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestSecureRequest(t *testing.T) {
-	plain := httptest.NewRequest("GET", "http://192.168.1.10:8080/", nil)
+	plain := httptest.NewRequest("GET", "http://192.168.1.30:8080/", nil)
 	if secureRequest(plain) {
 		t.Error("plain HTTP on a LAN must not get a Secure cookie, or login breaks")
 	}

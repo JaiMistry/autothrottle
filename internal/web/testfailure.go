@@ -76,7 +76,7 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 
 	case strings.Contains(msg, "unsupported protocol scheme"), strings.Contains(msg, "missing protocol scheme"),
 		strings.Contains(msg, "invalid url"), strings.Contains(msg, "first path segment"):
-		return []string{fieldURL}, "That is not a complete URL. Include the scheme, as in http://192.168.1.12:32400."
+		return []string{fieldURL}, "That is not a complete URL. Include the scheme, as in http://192.168.1.50:32400."
 	}
 	return nil, ""
 }

@@ -78,7 +78,7 @@
           <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
-        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.12:32400" required>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
         <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
       {{/* Plex takes either a pasted token or its own sign-in; Emby and
            Jellyfin only take an API key. Each input has its own name and
