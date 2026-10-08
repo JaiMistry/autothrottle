@@ -66,11 +66,11 @@
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
-    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
+    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServerID}} data-editing{{end}}{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
-        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}" required></label>
+        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}"{{if not .EditMediaServerID}} data-autoname="{{.EditMediaServer.Name}}"{{end}} required></label>
       <label class="at-field"><span class="at-field-label">Type</span>
         <select class="at-select" name="type">
           <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
@@ -106,8 +106,7 @@
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
         <span class="at-check-text">
-          <span>Exempt sessions playing from the local network</span>
-          <span class="at-check-desc">Exempt sessions never enter the active count, so they can never trigger throttling.</span>
+          <span>Ignore local network playback</span>
         </span>
       </label>
       <label class="at-check-label">
@@ -138,7 +137,7 @@
             <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
             <td>{{template "ratefigure" dict "Down" .DefaultDownloadLimit "Up" .DefaultUploadLimit}}</td>
             <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
-            <td>{{template "dlstateflag" .State}}</td>
+            <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{end}}</td>
             <td>
               <span class="at-rowactions">
                 <a class="at-btn at-btn--xs" href="/configuration?tab=downloaders&edit={{.ID}}">Edit</a>
@@ -167,11 +166,11 @@
 
   <section class="at-card" style="width:520px;max-width:100%">
     <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
-    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
+    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloaderID}} data-editing{{end}}{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
       <input type="hidden" name="csrf_token" value="{{$csrf}}">
       {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
       <label class="at-field"><span class="at-field-label">Name</span>
-        <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}" placeholder="qBittorrent" required></label>
+        <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}"{{if not .EditDownloaderID}} data-autoname="{{.EditDownloader.Name}}"{{end}} required></label>
       <label class="at-field"><span class="at-field-label">Type</span>
         <select class="at-select" name="type">
           <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>

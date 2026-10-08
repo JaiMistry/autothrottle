@@ -83,9 +83,9 @@
 <span class="at-rate at-rate--unlimited{{if eq (or .Size "caption") "ui"}} at-rate--ui{{end}}">Unlimited</span>
 {{- else -}}
 <span class="at-rate{{if eq (or .Size "caption") "ui"}} at-rate--ui{{end}}">{{- "" -}}
-<span class="at-rate-leg at-rate-leg--down">{{template "ratearrow" dict "Dir" "down" "Size" $sz}}{{if eq .Down 0}}unlimited{{else}}{{commas .Down}}<span class="at-rate-unit">KB/s</span>{{end}}</span>{{- "" -}}
-<span class="at-rate-sep" aria-hidden="true">/</span>{{- "" -}}
 <span class="at-rate-leg at-rate-leg--up">{{template "ratearrow" dict "Dir" "up" "Size" $sz}}{{if eq .Up 0}}unlimited{{else}}{{commas .Up}}<span class="at-rate-unit">KB/s</span>{{end}}</span>{{- "" -}}
+<span class="at-rate-sep" aria-hidden="true">/</span>{{- "" -}}
+<span class="at-rate-leg at-rate-leg--down">{{template "ratearrow" dict "Dir" "down" "Size" $sz}}{{if eq .Down 0}}unlimited{{else}}{{commas .Down}}<span class="at-rate-unit">KB/s</span>{{end}}</span>{{- "" -}}
 </span>
 {{- end}}{{end}}
 
@@ -101,10 +101,11 @@
   <div class="at-serverrow-main">
     <div class="at-serverrow-head">
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
+      {{if eq .State "disabled"}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{else}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{end}}
       {{if eq .State "playing"}}{{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d playing" .Sessions)}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
       {{else if eq .State "connecting"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting…"}}
-      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
+      {{else if eq .State "disabled"}}
       {{else}}{{template "statusflag" dict "Tone" "good" "Icon" "idle" "Label" "Idle"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
@@ -139,9 +140,10 @@
   <div class="at-dlrow">
     <div class="at-dlrow-head">
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
-      {{if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
+      {{if eq .State "disabled"}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{else}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{end}}
+      {{if eq .State "disabled"}}{{/* the badge says it */}}
+      {{else if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
-      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
       {{else if eq .State "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown"}}
       {{else}}{{/* normal and paused read the same: throttling off means
                    the configured default rate is in force, which is the
@@ -165,15 +167,6 @@
   <span class="at-logrow-level">{{template "badge" dict "Tone" (levelTone .Level) "Label" .Level}}</span>
   <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{with .Server}}<span class="at-logrow-tag">{{.}}</span>{{end}}{{if and .Downloader .Server}}<span class="at-logrow-arrow" aria-label="throttles">→</span>{{end}}{{with .Downloader}}<span class="at-logrow-tag">{{.}}</span>{{end}}</span>{{end}}</span>
 </div>{{end}}
-
-{{/* One downloader's live state as a flag. Paused reads as Normal: the
-     configured default rate is in force either way. */}}
-{{define "dlstateflag"}}
-{{- if eq . "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled" "Size" "sm"}}
-{{- else if eq . "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable" "Size" "sm"}}
-{{- else if eq . "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled" "Size" "sm"}}
-{{- else if eq . "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
-{{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates" "Size" "sm"}}{{end}}{{end}}
 
 {{/* PagedLog. A fixed page size so the card never grows downward:
      choose how many rows, step through with arrows. Clear deletes the

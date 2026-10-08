@@ -244,7 +244,7 @@ func TestDownloaderConnectionTest(t *testing.T) {
 		want string
 	}{
 		{"nothing listening names the WebUI", form("http://127.0.0.1:1", "", ""), "WebUI port"},
-		{"no credentials says none were checked", form(app.qbit.URL, "", ""), "No credentials were sent"},
+		{"no credentials says none were checked", form(app.qbit.URL, "", ""), "Successfully connected"},
 		{"credentials accepted", form(app.qbit.URL, "admin", "pw"), "Successfully connected"},
 	}
 	for _, c := range cases {

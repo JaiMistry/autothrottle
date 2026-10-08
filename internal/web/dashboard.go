@@ -358,11 +358,7 @@ func buildHero(in heroInput) heroState {
 	case in.unresolved:
 		return heroState{Statement: "State not resolved yet", Reason: "Nothing mapped is playing.", Tone: "dim"}
 	default:
-		reason := fmt.Sprintf("%d downloaders are at their default rate.", in.downloaders)
-		if in.downloaders == 1 {
-			reason = "1 downloader is at its default rate."
-		}
-		return heroState{Statement: "Nothing is throttled", Reason: reason, Tone: "good"}
+		return heroState{Statement: "Nothing is throttled", Reason: "All downloaders at default rates.", Tone: "good"}
 	}
 }
 

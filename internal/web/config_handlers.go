@@ -214,6 +214,9 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 	// anywhere to say why nothing happened.
 	data.EditMediaServer.Enabled = true
 	data.EditDownloader.Enabled = true
+	// A new entry is named after its type until someone names it.
+	data.EditMediaServer.Name = "Plex"
+	data.EditDownloader.Name = "qBittorrent"
 
 	if editID := r.URL.Query().Get("edit"); editID != "" {
 		if id, err := strconv.ParseInt(editID, 10, 64); err == nil {
@@ -594,7 +597,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 
-	s.probe(w, r, probeDownloader, rawURL, reachedMessage(username != "" || password != ""), func(ctx context.Context) error {
+	s.probe(w, r, probeDownloader, rawURL, "Successfully connected.", func(ctx context.Context) error {
 		return clients.TestDownloader(ctx, dlType, rawURL, username, password)
 	})
 }
@@ -617,7 +620,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.probe(w, r, probeDownloader, dl.URL, reachedMessage(username != "" || password != ""), func(ctx context.Context) error {
+	s.probe(w, r, probeDownloader, dl.URL, "Successfully connected.", func(ctx context.Context) error {
 		return clients.TestDownloader(ctx, dl.Type, dl.URL, username, password)
 	})
 }
@@ -697,15 +700,6 @@ type testResultView struct {
 // answer in milliseconds, which looked like no test had run. The
 // elapsed time shown stays the real one.
 const minTestDuration = 550 * time.Millisecond
-
-// reachedMessage is the success line for a connection test. With no
-// credential sent, nothing was accepted, so it does not say so.
-func reachedMessage(hadCredential bool) string {
-	if hadCredential {
-		return "Successfully connected."
-	}
-	return "Reachable. No credentials were sent, so none were checked."
-}
 
 // testResult is one probe's outcome, in the shape the card renders.
 type testResult struct {

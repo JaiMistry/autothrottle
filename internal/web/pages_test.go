@@ -198,8 +198,7 @@ func TestHeroStatements(t *testing.T) {
 		{"three throttled", heroInput{throttled: []string{"A", "B", "C"}, servers: 1, downloaders: 3}, heroState{Statement: "A, B and 1 other throttled", Tone: "warn"}},
 		{"five throttled", heroInput{throttled: []string{"A", "B", "C", "D", "E"}, servers: 1, downloaders: 5}, heroState{Statement: "A, B and 3 others throttled", Tone: "warn"}},
 		{"just booted", heroInput{unresolved: true, servers: 1, downloaders: 2}, heroState{Statement: "State not resolved yet", Tone: "dim", Reason: "Nothing mapped is playing."}},
-		{"idle", heroInput{servers: 1, downloaders: 2}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "2 downloaders are at their default rate."}},
-		{"idle, one", heroInput{servers: 1, downloaders: 1}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "1 downloader is at its default rate."}},
+		{"idle", heroInput{servers: 1, downloaders: 2}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "All downloaders at default rates."}},
 	}
 	for _, c := range cases {
 		if got := buildHero(c.in); got != c.want {

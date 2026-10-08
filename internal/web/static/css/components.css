@@ -1382,7 +1382,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
   margin-right: var(--space-2);
 }
 .at-hm-slot { display: inline-block; text-align: right; transition: min-width var(--dur-base) var(--ease-out); }
-.at-hm-wrap { overflow: hidden; }
 .at-hm {
   display: grid;
   grid-template-columns: 40px repeat(24, minmax(0, 1fr));

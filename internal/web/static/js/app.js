@@ -497,12 +497,16 @@
       var el = form.querySelector('[name="' + name + '"]');
       return el && !el.disabled && !el.closest("[hidden]") ? el.value.trim() : "";
     };
-    // A passing connection test is required before anything can be
-    // saved. Filling the fields in only proves they are not empty; it
-    // says nothing about whether the address answers or the credential
-    // works, and a server saved on a bad token fails silently later —
-    // the feed connects and then reports nothing.
-    var ok = !!form.querySelector('.at-testresult[data-state="connected"]');
+    // A passing connection test is required before a new connection can
+    // be saved: filled-in fields say nothing about whether the address
+    // answers or the credential works. When editing, the saved
+    // connection needs no new test until one of its own fields changes,
+    // and changing it back counts as unchanged.
+    if (form.hasAttribute("data-editing") && form.__savedValues === undefined) {
+      form.__savedValues = formValues(form);
+    }
+    var ok = !!form.querySelector('.at-testresult[data-state="connected"]') ||
+      (form.hasAttribute("data-editing") && formValues(form) === form.__savedValues);
     require.split(",").forEach(function (need) {
       if (need === "credential") {
         // A stored credential counts, and so does a token Plex just
@@ -534,6 +538,15 @@
     });
     return pairs.join("&");
   }
+
+  // A new entry is named after its type until someone types a name.
+  document.addEventListener("change", function (e) {
+    var select = e.target;
+    if (!select.matches || !select.matches('select[name="type"]')) return;
+    var name = select.form && select.form.querySelector("[data-autoname]");
+    if (!name || (name.value.trim() !== name.dataset.autoname && name.value.trim() !== "")) return;
+    name.value = name.dataset.autoname = select.options[select.selectedIndex].text;
+  });
 
   function retireTestResult(form) {
     var passed = form.querySelector('.at-testresult[data-state="connected"]');
@@ -880,13 +893,15 @@
     var wrap = card.querySelector(".at-hm-wrap");
     var before = wrap.offsetHeight;
     if (reduceMotion() || !wrap.animate) { card.dataset.range = range; return; }
+    // Clipped only while it moves, so tooltips on the top rows are not.
     animating = true;
+    wrap.style.overflow = "hidden";
     if (range === "30d") {
       // Expanding: draw the new rows, then reveal them.
       card.dataset.range = range;
       var after = wrap.offsetHeight;
       wrap.animate([{ height: before + "px" }, { height: after + "px" }], { duration: DURATION, easing: EASE })
-        .onfinish = function () { animating = false; };
+        .onfinish = function () { wrap.style.overflow = ""; animating = false; };
       return;
     }
     // Collapsing: animate down to the top of the 8th row while the old
@@ -901,6 +916,7 @@
       .onfinish = function () {
         card.dataset.range = range;
         wrap.style.height = "";
+        wrap.style.overflow = "";
         animating = false;
       };
   }
