@@ -1379,6 +1379,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
   font-weight: var(--weight-bold);
   font-size: var(--text-ui);
   white-space: nowrap;
+  margin-right: var(--space-2);
 }
 .at-hm-slot { display: inline-block; text-align: right; transition: min-width var(--dur-base) var(--ease-out); }
 .at-hm-wrap { overflow: hidden; }

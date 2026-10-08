@@ -57,7 +57,7 @@ func TestHistoryCells(t *testing.T) {
 		t.Errorf("an hour the app was down = %+v", off)
 	}
 
-	if v.TotalText() != "1h 55m" || v.Empty || v.Total7 != 115 || v.Total30 != 115 {
+	if v.TotalText() != "1hr 55m" || v.Empty || v.Total7 != 115 || v.Total30 != 115 {
 		t.Errorf("total %q (7d %d, 30d %d), empty %v", v.TotalText(), v.Total7, v.Total30, v.Empty)
 	}
 }
@@ -72,13 +72,13 @@ func TestHistoryMonthBreakAndEmpty(t *testing.T) {
 	if v.Rows[1].MonthBreak || !v.Rows[2].MonthBreak || v.Rows[2].Month != "Sep" {
 		t.Errorf("month breaks: %v %v (%q)", v.Rows[1].MonthBreak, v.Rows[2].MonthBreak, v.Rows[2].Month)
 	}
-	if !v.Empty || v.TotalText() != "0m" || !v.ShowM() || v.ShowH() {
+	if !v.Empty || v.TotalText() != "0hr 0m" {
 		t.Errorf("empty history reads %q, empty %v", v.TotalText(), v.Empty)
 	}
 }
 
 func TestTotalLabel(t *testing.T) {
-	for minutes, want := range map[int]string{0: "0m", 45: "45m", 180: "3h", 1095: "18h 15m"} {
+	for minutes, want := range map[int]string{0: "0hr 0m", 45: "0hr 45m", 180: "3hr 0m", 1095: "18hr 15m"} {
 		if got := totalLabel(minutes); got != want {
 			t.Errorf("totalLabel(%d) = %q, want %q", minutes, got, want)
 		}

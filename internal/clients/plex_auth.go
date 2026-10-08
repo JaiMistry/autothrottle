@@ -83,7 +83,7 @@ func PollPlexPin(ctx context.Context, clientID string, pinID int) (string, error
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		// Plex expires a PIN after a few minutes; a new one is needed.
-		return "", fmt.Errorf("this sign-in expired — start again")
+		return "", fmt.Errorf("this sign-in expired; start again")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("plex.tv answered %d", resp.StatusCode)

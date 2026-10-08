@@ -75,7 +75,7 @@ func Load(store AccountStore) (*Authenticator, error) {
 		store:    store,
 	}
 	if !a.disabled && (a.envUser == "") != (a.envPass == "") {
-		return nil, errors.New("AUTH_USERNAME and AUTH_PASSWORD must be set together — set both, or neither to create an account on first run")
+		return nil, errors.New("AUTH_USERNAME and AUTH_PASSWORD must be set together: set both, or neither to create an account on first run")
 	}
 	return a, nil
 }

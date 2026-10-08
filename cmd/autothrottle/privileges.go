@@ -39,7 +39,7 @@ func dropPrivileges(dataDir string) error {
 		return err
 	}
 	if uid == 0 || gid == 0 {
-		return fmt.Errorf("PUID and PGID must not be 0 — running as root would defeat the point of setting them")
+		return fmt.Errorf("PUID and PGID must not be 0: running as root would defeat the point of setting them")
 	}
 
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {

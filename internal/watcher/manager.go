@@ -233,7 +233,7 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			// down stays down, and one line per interval would bury
 			// everything else on the page.
 			if failures == 0 {
-				m.note("warn", fmt.Sprintf("Lost contact with %s — playback there will not be noticed until it answers again", name), mediaServerID)
+				m.note("warn", fmt.Sprintf("Lost contact with %s. Playback there will not be noticed until it answers again.", name), mediaServerID)
 			}
 			failures++
 			continue

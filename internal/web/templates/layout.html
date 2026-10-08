@@ -20,7 +20,7 @@
       if (m === "light" || m === "dark") r.setAttribute("data-theme", m);
       else { r.removeAttribute("data-theme"); m = "system"; }
       r.setAttribute("data-theme-mode", m);
-      try { if (localStorage.getItem("at-rail") === "1") r.setAttribute("data-rail", "collapsed"); } catch (e) {}
+      try { if (sessionStorage.getItem("at-rail") === "1") r.setAttribute("data-rail", "collapsed"); } catch (e) {}
       // Suppressed until the first frame, so nothing that is merely
       // arriving animates as though it changed.
       r.className = "at-boot";
@@ -91,7 +91,7 @@
 
 {{/* The mark is the way back to the Dashboard from anywhere, which is
      what people reach for first on a phone. */}}
-{{define "brand"}}<a class="at-brand" href="/" aria-label="AutoThrottle — go to the Dashboard">
+{{define "brand"}}<a class="at-brand" href="/" aria-label="AutoThrottle: go to the Dashboard">
   <img src="/static/img/logo-mark.svg" width="{{.Size}}" height="{{.Size}}" alt="">
   {{if .ShowName}}<span class="at-rail-name">AutoThrottle</span>{{end}}
 </a>{{end}}

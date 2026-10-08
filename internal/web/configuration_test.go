@@ -195,7 +195,7 @@ func TestConnectionTest(t *testing.T) {
 	cases := []struct {
 		name, url, key, wantState, wantText string
 	}{
-		{"credential accepted", jf.URL, "good-key", `data-state="connected"`, "credential was accepted"},
+		{"credential accepted", jf.URL, "good-key", `data-state="connected"`, "Successfully connected"},
 		{"credential rejected", jf.URL, "bad-key", `data-state="failed"`, "API key was rejected"},
 		{"nothing listening", "http://127.0.0.1:1", "good-key", `data-state="failed"`, "Nothing is listening"},
 		{"fields missing", "", "", `data-state="failed"`, "Nothing to test"},
@@ -245,7 +245,7 @@ func TestDownloaderConnectionTest(t *testing.T) {
 	}{
 		{"nothing listening names the WebUI", form("http://127.0.0.1:1", "", ""), "WebUI port"},
 		{"no credentials says none were checked", form(app.qbit.URL, "", ""), "No credentials were sent"},
-		{"credentials accepted", form(app.qbit.URL, "admin", "pw"), "the credential was accepted"},
+		{"credentials accepted", form(app.qbit.URL, "admin", "pw"), "Successfully connected"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

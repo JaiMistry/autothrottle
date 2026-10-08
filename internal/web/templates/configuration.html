@@ -93,7 +93,7 @@
           {{template "credentialfield" dict "Label" "X-Plex-Token" "Name" "token"
             "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"
             "Help" "https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
-            "HelpLabel" "Finding an authentication token (X-Plex-Token) — Plex support"}}
+            "HelpLabel" "Plex support: finding an authentication token (X-Plex-Token)"}}
         </div>
         <div data-credpane="signin" hidden>
           <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
@@ -195,7 +195,7 @@
         "HintLabel" "Applied while a mapped server is playing." "HintID" "hint-throttled-rates"
         "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
         "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
-        "Note" "Rates are KB/s. 0 means unlimited — the field says so as you type."}}
+        "Note" "Rates are KB/s. 0 means unlimited, and the field says so as you type."}}
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>
@@ -395,8 +395,8 @@
     {{- end}}
   </div>
   <span class="at-plexsignin-note">
-    {{- if eq .State "waiting"}}A Plex window is open. Approve the request there — this page waits.
-    {{- else if eq .State "done"}}Token received — save the server to store it.
+    {{- if eq .State "waiting"}}A Plex window is open. Approve the request there and this page will pick it up.
+    {{- else if eq .State "done"}}
     {{- else if eq .State "error"}}Plex did not confirm the request. Try again, or paste an X-Plex-Token instead.
     {{- else}}Opens a Plex window to approve this server. Nothing is stored until you save.
     {{- end}}</span>

@@ -202,16 +202,9 @@ func clockRange(from, to time.Time, ongoing bool) string {
 	return from.In(time.Local).Format("3:04 PM") + " – " + end
 }
 
-// totalLabel is "18h 15m", "45m" or "3h".
+// totalLabel is "18hr 15m", or "0hr 0m" with nothing throttled.
 func totalLabel(minutes int) string {
-	switch {
-	case minutes < 60:
-		return fmt.Sprintf("%dm", minutes)
-	case minutes%60 == 0:
-		return fmt.Sprintf("%dh", minutes/60)
-	default:
-		return fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
-	}
+	return fmt.Sprintf("%dhr %dm", minutes/60, minutes%60)
 }
 
 // loadHistory reads what the heatmap needs and lays it out.
@@ -254,13 +247,10 @@ func (s *Server) historyCard(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "dashboard", "throttlehistory", v)
 }
 
-// The caption's total, split into hours and minutes the way the page
-// shows it: "18h 15m", "45m", "3h", "0m".
+// The caption's total, split into hours and minutes: "18hr 15m".
 func (v historyView) totalMinutes() int { return int(math.Round(v.Total.Minutes())) }
 func (v historyView) TotalH() int       { return v.totalMinutes() / 60 }
 func (v historyView) TotalM() int       { return v.totalMinutes() % 60 }
-func (v historyView) ShowH() bool       { return v.TotalH() > 0 }
-func (v historyView) ShowM() bool       { return v.TotalM() > 0 || v.TotalH() == 0 }
 func (v historyView) HDigits() int      { return len(fmt.Sprint(v.TotalH())) }
 func (v historyView) MDigits() int      { return len(fmt.Sprint(v.TotalM())) }
 func (v historyView) TotalText() string { return totalLabel(v.totalMinutes()) }

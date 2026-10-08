@@ -23,8 +23,9 @@ type heroState struct {
 	Reason    string
 	Tone      string // warn | good | dim | plain — colours the statement
 	// Missing names what setup still needs ("a media server"); the
-	// reason line then ends in a link to Configuration.
-	Missing string
+	// reason line then links to the Configuration tab for it.
+	Missing    string
+	MissingTab string
 	// Since is when the current throttle period began, for the session
 	// timer that replaces the reason line while throttling.
 	Since time.Time
@@ -331,10 +332,15 @@ func buildHero(in heroInput) heroState {
 	}
 	switch {
 	case len(missing) > 0:
+		tab := "media-servers"
+		if in.servers > 0 {
+			tab = "downloaders"
+		}
 		return heroState{
-			Statement: "Not ready to throttle",
-			Tone:      "dim",
-			Missing:   strings.Join(missing, " and "),
+			Statement:  "Not ready to throttle",
+			Tone:       "dim",
+			Missing:    strings.Join(missing, " and "),
+			MissingTab: tab,
 		}
 	case in.paused:
 		h := heroState{Statement: "Default downloader speeds enforced", Tone: "plain"}
@@ -482,7 +488,7 @@ func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
 		devices := byTitle[title]
 		switch {
 		case title != "" && len(devices) > 0:
-			parts = append(parts, title+" — "+strings.Join(devices, " · "))
+			parts = append(parts, title+" on "+strings.Join(devices, " · "))
 		case title != "":
 			parts = append(parts, title)
 		case len(devices) > 0:

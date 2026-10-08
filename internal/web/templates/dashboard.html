@@ -29,16 +29,19 @@
      and playback position keep up without a refresh. It is one complete
      subtree on purpose: a fragment split mid-element re-parses a broken
      tree on every swap. */}}
+{{/* hx-disinherit keeps links inside from inheriting the refresh's
+     target and swap: boosted, they would load the next page into this
+     block, shell and sidebar included. */}}
 {{define "dashlive"}}<div id="dash-live" style="display:grid;gap:var(--space-8)"
      hx-get="/dashboard/live" hx-trigger="every 5s [document.visibilityState === 'visible']"
-     hx-swap="outerHTML" hx-target="this">
+     hx-swap="outerHTML" hx-target="this" hx-disinherit="*">
 
   <section class="at-card at-hero"{{if .HeroBorder}} data-border="{{.HeroBorder}}"{{end}}>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:var(--space-8);align-items:center">
       <div style="display:grid;gap:var(--space-4)">
         <p class="at-hero-statement" data-tone="{{.Hero.Tone}}">{{.Hero.Statement}}</p>
         {{if .Hero.Missing}}
-          <p class="at-hero-reason">Add {{.Hero.Missing}} to start throttling. AutoThrottle needs at least one of each. <a href="/configuration">Go to Configuration</a></p>
+          <p class="at-hero-reason">Add {{.Hero.Missing}} to start throttling. AutoThrottle needs at least one downloader and media server added. Go to <a href="/configuration?tab={{.Hero.MissingTab}}">Configuration</a></p>
         {{else if .Hero.Reason}}
           <p class="at-hero-reason">{{.Hero.Reason}}</p>
         {{else if not .Hero.Since.IsZero}}
@@ -138,7 +141,7 @@
     </span>
   </header>
   <div class="at-history">
-    <p class="at-hm-caption"><span class="at-hm-total" aria-label="{{.TotalText}}">{{template "historytotal" .}}</span> <span class="at-hm-caption-text">{{if .Empty}}No throttled history yet{{else}}throttled in the last {{.Days}} days{{end}}</span></p>
+    <p class="at-hm-caption"><span class="at-hm-total" aria-label="{{.TotalText}}">{{template "historytotal" .}}</span> <span class="at-hm-caption-text">{{if .Empty}}No throttled history{{else}}throttled in the last {{.Days}} days{{end}}</span></p>
     <div class="at-hm-wrap">
       <div class="at-hm" role="grid" aria-label="Minutes throttled per hour, last {{.Days}} days">
         <span class="at-hm-corner">{{.Corner}}</span>
@@ -167,7 +170,7 @@
 
 {{/* The total, in fixed-width slots so app.js can count it without the
      text after it moving. */}}
-{{define "historytotal"}}{{if .ShowH}}<span class="at-hm-slot" style="min-width:{{.HDigits}}ch">{{.TotalH}}</span>h{{end}}{{if and .ShowH .ShowM}} {{end}}{{if .ShowM}}<span class="at-hm-slot" style="min-width:{{.MDigits}}ch">{{.TotalM}}</span>m{{end}}{{end}}
+{{define "historytotal"}}<span class="at-hm-slot" style="min-width:{{.HDigits}}ch">{{.TotalH}}</span>hr <span class="at-hm-slot" style="min-width:{{.MDigits}}ch">{{.TotalM}}</span>m{{end}}
 
 {{/* The pill and the pause button live in the page header, outside the
      refreshed block, so a refresh swaps them out of band. */}}

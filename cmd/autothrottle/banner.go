@@ -97,13 +97,13 @@ func buildDate(t time.Time) string {
 func authDesc(info startupInfo) string {
 	switch info.AuthMode {
 	case auth.ModeDisabled:
-		return "disabled — anyone who can reach this port has full access"
+		return "disabled (anyone who can reach this port has full access)"
 	case auth.ModeEnvironment:
 		return "account " + info.AuthUser + " (from AUTH_USERNAME / AUTH_PASSWORD)"
 	case auth.ModeAccount:
 		return "account " + info.AuthUser
 	default:
-		return "not set up yet — open the web UI to create an account"
+		return "not set up yet (open the web UI to create an account)"
 	}
 }
 
@@ -112,7 +112,7 @@ func authDesc(info startupInfo) string {
 // case where a fresh install looks broken but is not.
 func configuredDesc(info startupInfo) string {
 	if info.MediaServers == 0 && info.Downloaders == 0 {
-		return "nothing yet — add a media server and a downloader to begin"
+		return "nothing yet (add a media server and a downloader to begin)"
 	}
 	parts := []string{
 		count(info.MediaServers, "media server"),

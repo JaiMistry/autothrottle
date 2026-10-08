@@ -37,7 +37,8 @@
     var collapsed = root.getAttribute("data-rail") === "collapsed";
     if (collapsed) root.removeAttribute("data-rail");
     else root.setAttribute("data-rail", "collapsed");
-    try { localStorage.setItem("at-rail", collapsed ? "0" : "1"); } catch (e2) {}
+    // Per tab, not per browser: a freshly opened app starts expanded.
+    try { sessionStorage.setItem("at-rail", collapsed ? "0" : "1"); } catch (e2) {}
   });
 
   /* Release the transition suppression once a frame has been painted. */
@@ -523,10 +524,13 @@
      retires it (a failure stays, to explain the outlined field).
      "Changed" means the values differ, not that an event fired: leaving
      a field fires change with nothing new typed. */
+  // Only what the test actually connects with. Renaming the entry, its
+  // rates or its checkboxes leaves a passing test standing.
+  var TESTED_FIELDS = ["type", "url", "token", "api_token", "plex_token", "username", "password"];
   function formValues(form) {
     var pairs = [];
     new FormData(form).forEach(function (value, name) {
-      if (name !== "csrf_token") pairs.push(name + "=" + value);
+      if (TESTED_FIELDS.indexOf(name) !== -1) pairs.push(name + "=" + value);
     });
     return pairs.join("&");
   }
@@ -718,7 +722,7 @@
       '<span class="at-testresult-hint">' + why + "</span></div>";
   }
   document.body.addEventListener("htmx:sendError", function (e) {
-    testRequestFailed(e, "Could not reach AutoThrottle to run the test. It may be restarting — reload the page and try again.");
+    testRequestFailed(e, "Could not reach AutoThrottle to run the test. It may be restarting, so reload the page and try again.");
   });
   document.body.addEventListener("htmx:responseError", function (e) {
     var s = (e.detail && e.detail.xhr && e.detail.xhr.status) || 0;
@@ -817,10 +821,7 @@
   var EASE = "cubic-bezier(0.33, 1, 0.68, 1)";
   var animating = false;
 
-  function label(min) {
-    if (min < 60) return min + "m";
-    return min % 60 ? Math.floor(min / 60) + "h " + (min % 60) + "m" : Math.floor(min / 60) + "h";
-  }
+  function label(min) { return Math.floor(min / 60) + "hr " + (min % 60) + "m"; }
 
   // Hours and minutes sit in right-aligned slots sized for the widest
   // value the count passes through, so nothing after them moves; once
@@ -833,14 +834,11 @@
     parts.h.style.minWidth = widest + "ch";
     parts.m.style.minWidth = "2ch";
     parts.h.style.transition = parts.m.style.transition = "none";
-    var showHours = Math.floor(Math.max(from, to) / 60) > 0;
     var t0 = performance.now();
     (function frame(now) {
       var p = Math.min(1, (now - t0) / DURATION);
       var v = Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3)));
-      var h = Math.floor(v / 60);
-      show(parts, showHours || h > 0, true);
-      parts.h.textContent = h;
+      parts.h.textContent = Math.floor(v / 60);
       parts.m.textContent = v % 60;
       if (p < 1) { requestAnimationFrame(frame); return; }
       parts.h.style.transition = parts.m.style.transition = "";
@@ -850,22 +848,12 @@
   }
 
   function build(el) {
-    el.innerHTML = '<span class="at-hm-slot"></span>h<span> </span><span class="at-hm-slot"></span>m';
-    var kids = el.childNodes;
-    return { el: el, h: kids[0], hu: kids[1], sep: kids[2], m: kids[3], mu: kids[4] };
-  }
-
-  function show(parts, hours, minutes) {
-    parts.h.style.display = hours ? "" : "none";
-    parts.hu.textContent = hours ? "h" : "";
-    parts.sep.style.display = hours && minutes ? "" : "none";
-    parts.m.style.display = minutes ? "" : "none";
-    parts.mu.textContent = minutes ? "m" : "";
+    el.innerHTML = '<span class="at-hm-slot"></span>hr <span class="at-hm-slot"></span>m';
+    return { el: el, h: el.children[0], m: el.children[1] };
   }
 
   function settle(parts, total) {
     var h = Math.floor(total / 60), m = total % 60;
-    show(parts, h > 0, m > 0 || h === 0);
     parts.h.textContent = h;
     parts.m.textContent = m;
     parts.h.style.minWidth = String(h).length + "ch";
@@ -881,7 +869,7 @@
       tab.setAttribute("aria-selected", tab.dataset.historyRange === range ? "true" : "false");
     });
     var empty = card.getAttribute("data-empty-" + days) === "true";
-    card.querySelector(".at-hm-caption-text").textContent = empty ? "No throttled history yet" : "throttled in the last " + days + " days";
+    card.querySelector(".at-hm-caption-text").textContent = empty ? "No throttled history" : "throttled in the last " + days + " days";
     card.querySelector(".at-hm").setAttribute("aria-label", "Minutes throttled per hour, last " + days + " days");
     try { history.replaceState(history.state, "", "?range=" + range); } catch (e) {}
 

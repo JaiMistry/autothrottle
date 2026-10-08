@@ -201,11 +201,11 @@ func countRows[T any](rows []T, err error) int {
 // to SQLite that surfaces as an opaque "unable to open database file".
 func checkWritable(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("%w — check the bind mount for /data", err)
+		return fmt.Errorf("%w (check the bind mount for /data)", err)
 	}
 	probe, err := os.CreateTemp(dir, ".write-test-*")
 	if err != nil {
-		return fmt.Errorf("cannot write to it as uid %d, gid %d — if the container is started with user:, that user must own the mounted directory; otherwise check the mount is not read-only", os.Getuid(), os.Getgid())
+		return fmt.Errorf("cannot write to it as uid %d, gid %d. If the container is started with user:, that user must own the mounted directory; otherwise check the mount is not read-only", os.Getuid(), os.Getgid())
 	}
 	name := probe.Name()
 	_ = probe.Close()

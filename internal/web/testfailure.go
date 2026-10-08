@@ -54,7 +54,7 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 		// Blaming the container's networking sends people to the wrong
 		// place — the usual cause is a name pointing at an address that
 		// no longer exists.
-		return []string{fieldURL}, "Nothing answered at that address. Check the address is right and the machine is up — and, if it is on another network, that the container can reach it."
+		return []string{fieldURL}, "Nothing answered at that address. Check the address is right and the machine is up. If it is on another network, make sure the container can reach it."
 
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
@@ -107,11 +107,11 @@ func missingRequired(name, rawURL, credential string, needCredential bool) (fiel
 	case 0:
 		return nil, ""
 	case 1:
-		return fields, "Enter " + missing[0] + " before testing — nothing was sent."
+		return fields, "Enter " + missing[0] + " before testing. Nothing was sent."
 	case 2:
-		return fields, "Enter " + missing[0] + " and " + missing[1] + " before testing — nothing was sent."
+		return fields, "Enter " + missing[0] + " and " + missing[1] + " before testing. Nothing was sent."
 	default:
 		return fields, "Enter " + strings.Join(missing[:len(missing)-1], ", ") +
-			", and " + missing[len(missing)-1] + " before testing — nothing was sent."
+			", and " + missing[len(missing)-1] + " before testing. Nothing was sent."
 	}
 }

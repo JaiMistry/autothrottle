@@ -72,7 +72,7 @@ func (s *Server) downloaderState(dl db.Downloader) string {
 func (s *Server) authSummary() string {
 	switch s.auth.Mode() {
 	case auth.ModeDisabled:
-		return "disabled — anyone who can reach this app is signed in"
+		return "disabled · anyone who can reach this app is signed in"
 	case auth.ModeEnvironment:
 		return "signed in as " + s.auth.Username() + " · credentials from the environment"
 	default:
@@ -434,7 +434,7 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Message: "choose a supported media server type first"})
 		return
 	}
-	s.probe(w, r, probeServer, rawURL, "Reachable, and the credential was accepted.", func(ctx context.Context) error {
+	s.probe(w, r, probeServer, rawURL, "Successfully connected.", func(ctx context.Context) error {
 		return clients.TestMediaServer(ctx, msType, rawURL, token)
 	})
 }
@@ -455,7 +455,7 @@ func (s *Server) testMediaServerByID(w http.ResponseWriter, r *http.Request) {
 		s.writeTestResult(w, testResult{Message: "stored credential could not be decrypted", Fields: []string{fieldCredential}, Hint: "Re-enter the token and save the server again."})
 		return
 	}
-	s.probe(w, r, probeServer, ms.URL, "Reachable, and the credential was accepted.", func(ctx context.Context) error {
+	s.probe(w, r, probeServer, ms.URL, "Successfully connected.", func(ctx context.Context) error {
 		return clients.TestMediaServer(ctx, ms.Type, ms.URL, token)
 	})
 }
@@ -702,7 +702,7 @@ const minTestDuration = 550 * time.Millisecond
 // credential sent, nothing was accepted, so it does not say so.
 func reachedMessage(hadCredential bool) string {
 	if hadCredential {
-		return "Reachable, and the credential was accepted."
+		return "Successfully connected."
 	}
 	return "Reachable. No credentials were sent, so none were checked."
 }
