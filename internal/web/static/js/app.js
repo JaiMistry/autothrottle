@@ -369,20 +369,6 @@
       trigger.focus({ preventScroll: true });
     }
   });
-
-  // ApexCharts instances hold a canvas and their own resize listeners.
-  // Swapping their container without destroying them first leaks both
-  // and leaves stacked charts behind.
-  document.body.addEventListener("htmx:beforeSwap", function (e) {
-    if (!window.ATCharts) return;
-    Object.keys(window.ATCharts).forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el && e.detail.target.contains(el)) {
-        try { window.ATCharts[id].destroy(); } catch (err) {}
-        delete window.ATCharts[id];
-      }
-    });
-  });
 })();
 
 /* ── Credential method sub-tabs ───────────────────────────────────
@@ -799,4 +785,152 @@
   // announces itself this way instead.
   document.body.addEventListener("at:merged", syncAfterRender);
   document.addEventListener("DOMContentLoaded", syncAfterRender);
+})();
+
+/* ── Session timer and Throttle History ─────────────────────────────
+   The timer counts up from data-throttled-since, reading it on every
+   tick so the Dashboard's refresh can move it. The history card holds
+   all 30 days; switching range counts the total from the old figure to
+   the new one and animates the grid's height, both over 700ms. */
+(function () {
+  "use strict";
+
+  var reduceMotion = function () {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  };
+  function pad(n) { return String(n).padStart(2, "0"); }
+
+  setInterval(function () {
+    document.querySelectorAll("[data-throttled-since]").forEach(function (el) {
+      var since = Date.parse(el.dataset.throttledSince);
+      if (isNaN(since)) return;
+      var t = Math.max(0, Math.floor((Date.now() - since) / 1000));
+      var n = el.querySelectorAll(".at-timer-n");
+      if (n.length !== 3) return;
+      n[0].textContent = pad(Math.floor(t / 3600));
+      n[1].textContent = pad(Math.floor((t % 3600) / 60));
+      n[2].textContent = pad(t % 60);
+    });
+  }, 1000);
+
+  var DURATION = 700;
+  var EASE = "cubic-bezier(0.33, 1, 0.68, 1)";
+  var animating = false;
+
+  function label(min) {
+    if (min < 60) return min + "m";
+    return min % 60 ? Math.floor(min / 60) + "h " + (min % 60) + "m" : Math.floor(min / 60) + "h";
+  }
+
+  // Hours and minutes sit in right-aligned slots sized for the widest
+  // value the count passes through, so nothing after them moves; once
+  // it settles they ease to the final value's natural width.
+  function countTotal(el, from, to) {
+    if (from === to) return;
+    if (reduceMotion()) { el.innerHTML = ""; settle(build(el), to); return; }
+    var parts = build(el);
+    var widest = String(Math.floor(Math.max(from, to) / 60)).length;
+    parts.h.style.minWidth = widest + "ch";
+    parts.m.style.minWidth = "2ch";
+    parts.h.style.transition = parts.m.style.transition = "none";
+    var showHours = Math.floor(Math.max(from, to) / 60) > 0;
+    var t0 = performance.now();
+    (function frame(now) {
+      var p = Math.min(1, (now - t0) / DURATION);
+      var v = Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3)));
+      var h = Math.floor(v / 60);
+      show(parts, showHours || h > 0, true);
+      parts.h.textContent = h;
+      parts.m.textContent = v % 60;
+      if (p < 1) { requestAnimationFrame(frame); return; }
+      parts.h.style.transition = parts.m.style.transition = "";
+      settle(parts, to);
+    })(t0);
+    el.setAttribute("aria-label", label(to));
+  }
+
+  function build(el) {
+    el.innerHTML = '<span class="at-hm-slot"></span>h<span> </span><span class="at-hm-slot"></span>m';
+    var kids = el.childNodes;
+    return { el: el, h: kids[0], hu: kids[1], sep: kids[2], m: kids[3], mu: kids[4] };
+  }
+
+  function show(parts, hours, minutes) {
+    parts.h.style.display = hours ? "" : "none";
+    parts.hu.textContent = hours ? "h" : "";
+    parts.sep.style.display = hours && minutes ? "" : "none";
+    parts.m.style.display = minutes ? "" : "none";
+    parts.mu.textContent = minutes ? "m" : "";
+  }
+
+  function settle(parts, total) {
+    var h = Math.floor(total / 60), m = total % 60;
+    show(parts, h > 0, m > 0 || h === 0);
+    parts.h.textContent = h;
+    parts.m.textContent = m;
+    parts.h.style.minWidth = String(h).length + "ch";
+    parts.m.style.minWidth = String(m).length + "ch";
+    parts.el.setAttribute("aria-label", label(total));
+  }
+
+  function setRange(card, range) {
+    var from = card.dataset.range;
+    if (from === range || animating) return;
+    var days = range === "30d" ? 30 : 7;
+    card.querySelectorAll("[data-history-range]").forEach(function (tab) {
+      tab.setAttribute("aria-selected", tab.dataset.historyRange === range ? "true" : "false");
+    });
+    var empty = card.getAttribute("data-empty-" + days) === "true";
+    card.querySelector(".at-hm-caption-text").textContent = empty ? "No throttled history yet" : "throttled in the last " + days + " days";
+    card.querySelector(".at-hm").setAttribute("aria-label", "Minutes throttled per hour, last " + days + " days");
+    try { history.replaceState(history.state, "", "?range=" + range); } catch (e) {}
+
+    countTotal(card.querySelector(".at-hm-total"),
+      Number(card.getAttribute("data-total-" + (from === "30d" ? 30 : 7))),
+      Number(card.getAttribute("data-total-" + days)));
+
+    var wrap = card.querySelector(".at-hm-wrap");
+    var before = wrap.offsetHeight;
+    if (reduceMotion() || !wrap.animate) { card.dataset.range = range; return; }
+    animating = true;
+    if (range === "30d") {
+      // Expanding: draw the new rows, then reveal them.
+      card.dataset.range = range;
+      var after = wrap.offsetHeight;
+      wrap.animate([{ height: before + "px" }, { height: after + "px" }], { duration: DURATION, easing: EASE })
+        .onfinish = function () { animating = false; };
+      return;
+    }
+    // Collapsing: animate down to the top of the 8th row while the old
+    // rows are still drawn, then drop them and release the height in
+    // the same frame, so nothing snaps.
+    var grid = wrap.firstElementChild;
+    var cut = grid.querySelector('[data-row="7"]');
+    var gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+    var target = cut ? cut.getBoundingClientRect().top - wrap.getBoundingClientRect().top - gap : before;
+    wrap.style.height = target + "px";
+    wrap.animate([{ height: before + "px" }, { height: target + "px" }], { duration: DURATION, easing: EASE })
+      .onfinish = function () {
+        card.dataset.range = range;
+        wrap.style.height = "";
+        animating = false;
+      };
+  }
+
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest && e.target.closest("[data-history-range]");
+    if (!tab) return;
+    var card = tab.closest("#throttle-history");
+    if (!card) return;
+    e.preventDefault();
+    setRange(card, tab.dataset.historyRange);
+  });
+
+  // The hour in progress keeps filling, so the card refreshes itself —
+  // but not while the pointer is reading a tooltip, or mid-animation.
+  setInterval(function () {
+    var card = document.getElementById("throttle-history");
+    if (!card || animating || document.visibilityState !== "visible" || card.matches(":hover") || !window.htmx) return;
+    htmx.ajax("GET", "/dashboard/history?range=" + card.dataset.range, { target: "#throttle-history", swap: "outerHTML" });
+  }, 60000);
 })();

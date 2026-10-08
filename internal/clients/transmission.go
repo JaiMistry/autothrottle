@@ -64,24 +64,6 @@ func SetTransmissionLimits(ctx context.Context, baseURL, username, password stri
 	return nil
 }
 
-// TransmissionRates reads current global transfer rates in bytes per
-// second, for the bandwidth sampler.
-func TransmissionRates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
-	raw, err := transmissionCall(ctx, baseURL, username, password, "session-stats", nil)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	var stats struct {
-		DownloadSpeed int64 `json:"downloadSpeed"`
-		UploadSpeed   int64 `json:"uploadSpeed"`
-	}
-	if err := json.Unmarshal(raw, &stats); err != nil {
-		return 0, 0, fmt.Errorf("decoding session stats: %w", err)
-	}
-	return stats.DownloadSpeed, stats.UploadSpeed, nil
-}
-
 // transmissionCall performs one RPC, completing the session-id
 // handshake if the daemon asks for it.
 //

@@ -5,8 +5,7 @@ import (
 	"net/url"
 )
 
-// pagedLog is the shared paged event card used by the Dashboard's
-// recent activity and the Logs page.
+// pagedLog is the Logs page's paged event card.
 type pagedLog struct {
 	Title    string
 	TargetID string
@@ -38,20 +37,8 @@ type pagedLog struct {
 	ClearEndpoint string
 	ClearTarget   string
 	CSRFToken     string
-	// LiveEndpoint and LiveTarget, when set, make the card refresh
-	// itself. Only ever set for page one of an unfiltered view: a list
-	// that reordered under someone reading page three, or mid-search,
-	// would be worse than a stale one.
-	LiveEndpoint string
-	LiveTarget   string
-	EmptyTitle   string
-	EmptyNote    string
-	ExtraHref    string
-	ExtraLabel   string
 }
 
-// newPagedLog does the paging arithmetic once, so the two callers can
-// disagree about page size and filters but not about how paging works.
 // clampPage keeps page within 1..pages, where an empty log is one page.
 func clampPage(page, total, perPage int) (int, int) {
 	pages := max(1, (total+perPage-1)/perPage)

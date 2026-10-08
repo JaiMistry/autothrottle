@@ -10,7 +10,7 @@ import (
 // Every page behind login, as a visitor without a session sees it.
 func TestProtectedPagesRedirectToLogin(t *testing.T) {
 	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
-	for _, path := range []string{"/", "/configuration", "/logs", "/dashboard/live", "/activity"} {
+	for _, path := range []string{"/", "/configuration", "/logs", "/dashboard/live", "/dashboard/history"} {
 		expectRedirect(t, app.get(path), "/login")
 	}
 	// A state change without a session must not happen either.

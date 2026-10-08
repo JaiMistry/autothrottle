@@ -3,6 +3,9 @@ package web
 import (
 	"io"
 	"testing"
+	"time"
+
+	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
 func TestCommasGroupsThousands(t *testing.T) {
@@ -43,15 +46,18 @@ func TestPagesRender(t *testing.T) {
 		"setup": setupData{pageData: pageData{Title: "Set up", Version: "test", Asset: func(p string) string { return p }}},
 		"dashboard": dashboardData{
 			pageData: testPage("Dashboard"),
-			Hero:     heroState{Statement: "Nothing is throttled", Reason: "…", Tone: "good"},
+			Hero:     heroState{Statement: "qBittorrent throttled", Tone: "warn", Since: time.Now().Add(-time.Minute)},
+			Ready:    true,
 			Overall:  overallFlag{Tone: "good", Label: "Idle", Icon: "normal"},
 			Servers:  []serverRowView{{Name: "Plex", Type: "plex", State: "playing", Sessions: 2, Detail: "…"}},
 			Downloaders: []downloaderRowView{
 				{Name: "qBittorrent", Type: "qbittorrent", State: "throttled", Cause: "because Plex is playing", Down: 2200, Up: 512},
 			},
-			Activity: newPagedLog("Recent activity", "activity-card", "/activity",
-				[]logRowView{{Time: "12:00:00", Level: "info", Message: "hello", Downloader: "qBittorrent"}},
-				1, 10, 1, nil),
+			Unreachable: []unreachableView{{"Attic Jellyfin", "Media server"}},
+			History: buildHistory(
+				[]db.Span{{Start: time.Now().Add(-90 * time.Minute)}},
+				[]db.Span{{Start: time.Now().Add(-40 * 24 * time.Hour)}},
+				time.Now(), 30),
 		},
 		"logs": logsData{
 			pageData: testPage("Logs"),
@@ -62,12 +68,6 @@ func TestPagesRender(t *testing.T) {
 				[]logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}}, 2, 20, 1, nil),
 		},
 		"configuration": testConfigPage("media-servers"),
-		"analytics": analyticsData{
-			pageData:   testPage("Analytics"),
-			RangeKey:   "24h",
-			HasClients: true,
-			HasSamples: false,
-		},
 	}
 
 	for _, page := range pages {

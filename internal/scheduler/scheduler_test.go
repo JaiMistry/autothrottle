@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"path/filepath"
+	"slices"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -234,31 +236,36 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 	}
 }
 
-// Session history feeds the Analytics timeline, so playback has to be
-// persisted as it happens — it cannot be reconstructed later from the
-// event log, which only records throttle transitions.
+// Playback is persisted as it happens, so the Dashboard can name a
+// session the event stream announced before a snapshot described it.
 func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
-	window := time.Now().Add(-time.Hour)
 
 	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
-	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatalf("ListSessions: %v", err)
-	}
-	if len(sessions) != 1 || sessions[0].Ended() {
-		t.Fatalf("expected one open session, got %+v", sessions)
+	if sessions, err := database.OpenSessions(msID); err != nil || len(sessions) != 1 {
+		t.Fatalf("expected one open session, got %+v (%v)", sessions, err)
 	}
 
 	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, false)
-	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
+	if sessions, err := database.OpenSessions(msID); err != nil || len(sessions) != 0 {
+		t.Fatalf("expected the session to be closed, got %+v (%v)", sessions, err)
+	}
+}
+
+// openKeys lists a media server's sessions still open in history.
+func openKeys(t *testing.T, database *db.DB, msID int64) []string {
+	t.Helper()
+	sessions, err := database.OpenSessions(msID)
 	if err != nil {
-		t.Fatalf("ListSessions: %v", err)
+		t.Fatal(err)
 	}
-	if len(sessions) != 1 || !sessions[0].Ended() {
-		t.Fatalf("expected the session to be closed, got %+v", sessions)
+	var keys []string
+	for _, session := range sessions {
+		keys = append(keys, session.SessionKey)
 	}
+	sort.Strings(keys)
+	return keys
 }
 
 // Reconciliation snapshots are authoritative, so a session the event
@@ -266,58 +273,33 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
-	window := time.Now().Add(-time.Hour)
 
 	s.ReplaceSessions(msID, sessionsFrom("a", "b"))
-	sessions, err := database.ListSessions(0, window, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
+	if got := openKeys(t, database, msID); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("open sessions = %v, want both from the snapshot", got)
 	}
-	if len(sessions) != 2 {
-		t.Fatalf("expected two sessions from the snapshot, got %+v", sessions)
-	}
-
 	// "a" ended, "b" continues.
 	s.ReplaceSessions(msID, sessionsFrom("b"))
-	sessions, err = database.ListSessions(0, window, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, session := range sessions {
-		switch session.SessionKey {
-		case "a":
-			if !session.Ended() {
-				t.Error("a session missing from the snapshot must be closed")
-			}
-		case "b":
-			if session.Ended() {
-				t.Error("a session still in the snapshot must stay open")
-			}
-		}
+	if got := openKeys(t, database, msID); !slices.Equal(got, []string{"b"}) {
+		t.Fatalf("open sessions = %v, want only b", got)
 	}
 }
 
 // A stopped watcher can never observe its sessions ending, so they must
-// not be left running to the right edge of every future chart.
+// not be left open forever.
 func TestClearSessionsClosesHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
 
 	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
 	s.ClearSessions(msID)
-
-	sessions, err := database.ListSessions(0, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sessions) != 1 || !sessions[0].Ended() {
-		t.Fatalf("expected the session to be closed, got %+v", sessions)
+	if got := openKeys(t, database, msID); len(got) != 0 {
+		t.Fatalf("open sessions = %v, want none", got)
 	}
 }
 
-// Analytics needs to attribute a throttle to the server that caused it.
-// The server's name is only inside the message text; the id is what a
-// query can actually use.
+// The log attributes a throttle to the server that caused it by id, not
+// by parsing the name back out of the message.
 func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -351,4 +333,50 @@ func sessionsFrom(keys ...string) []clients.Session {
 		out = append(out, clients.Session{Key: key})
 	}
 	return out
+}
+
+// A throttle period spans the whole time any downloader is throttled:
+// it opens when the first one is, survives which ones change, and
+// closes on pause as well as when playback stops.
+func TestThrottlePeriodFollowsThrottling(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, dlID := addServerAndDownloader(t, database)
+	if _, err := database.CreateMapping(msID, dlID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	periods := func() []db.Span {
+		t.Helper()
+		p, err := database.ThrottlePeriods(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	if _, ok := s.ThrottlingSince(); ok {
+		t.Fatal("throttling before anything played")
+	}
+	s.HandleSessionEvent(msID, clients.Session{Key: "a"}, true)
+	s.resolve(ctx)
+	since, ok := s.ThrottlingSince()
+	if !ok || len(periods()) != 1 {
+		t.Fatalf("playback did not open a period: since %v, periods %+v", since, periods())
+	}
+
+	// A second session changes nothing about the period.
+	s.HandleSessionEvent(msID, clients.Session{Key: "b"}, true)
+	s.resolve(ctx)
+	if again, _ := s.ThrottlingSince(); !again.Equal(since) || len(periods()) != 1 {
+		t.Errorf("a second session restarted the period")
+	}
+
+	s.SetPaused(ctx, true)
+	if _, ok := s.ThrottlingSince(); ok || periods()[0].End.IsZero() {
+		t.Errorf("pausing did not close the period: %+v", periods())
+	}
+	s.SetPaused(ctx, false)
+	if _, ok := s.ThrottlingSince(); !ok || len(periods()) != 2 {
+		t.Errorf("resuming did not open a new period: %+v", periods())
+	}
 }

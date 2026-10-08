@@ -4,7 +4,6 @@
 *.db-shm
 .env
 internal/web/static/css/tailwind.css
-internal/web/static/js/apexcharts.min.js
 node_modules/
 
 # UI design system

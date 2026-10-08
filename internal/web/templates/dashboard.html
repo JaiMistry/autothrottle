@@ -19,38 +19,35 @@
     "ActionLabel" "Go to Configuration"}}
 {{else}}
 <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-8)">
-
   {{template "dashlive" .}}
-
-  {{template "pagedlog" .Activity}}
+  {{template "throttlehistory" .History}}
 </div>
 {{end}}
 {{end}}
 
 {{/* The live half of the Dashboard, polled so throttle state, sessions
-     and playback position keep up without a refresh.
-
-     It is its own complete subtree on purpose. An earlier attempt split
-     mid-element, leaving an unclosed <div> in the fragment — every swap
-     then re-parsed a broken tree and orphaned the activity log below it.
-
-     The activity log stays outside: re-rendering it every few seconds
-     would throw away whatever page of it you were reading. */}}
+     and playback position keep up without a refresh. It is one complete
+     subtree on purpose: a fragment split mid-element re-parses a broken
+     tree on every swap. */}}
 {{define "dashlive"}}<div id="dash-live" style="display:grid;gap:var(--space-8)"
      hx-get="/dashboard/live" hx-trigger="every 5s [document.visibilityState === 'visible']"
      hx-swap="outerHTML" hx-target="this">
 
-  {{/* The hero card's border turns warn while anything is throttled —
-       the one place a card borrows a state colour. */}}
-  <section class="at-card" style="padding:20px{{if eq .Hero.Tone "warn"}};border-color:var(--warn){{end}}">
+  <section class="at-card at-hero"{{if .HeroBorder}} data-border="{{.HeroBorder}}"{{end}}>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:var(--space-8);align-items:center">
       <div style="display:grid;gap:var(--space-4)">
-        <p style="margin:0;font-size:var(--text-display);font-weight:var(--weight-bold);letter-spacing:var(--tracking-title);line-height:var(--leading-tight);text-wrap:balance;color:{{if eq .Hero.Tone "warn"}}var(--warn){{else if eq .Hero.Tone "good"}}var(--good){{else if eq .Hero.Tone "dim"}}var(--text-dim){{else}}var(--text){{end}}">{{.Hero.Statement}}</p>
-        <p style="margin:0;font-size:var(--text-body);color:var(--text-dim);max-width:58ch;text-wrap:pretty">{{.Hero.Reason}}</p>
+        <p class="at-hero-statement" data-tone="{{.Hero.Tone}}">{{.Hero.Statement}}</p>
+        {{if .Hero.Missing}}
+          <p class="at-hero-reason">Add {{.Hero.Missing}} to start throttling. AutoThrottle needs at least one of each. <a href="/configuration">Go to Configuration</a></p>
+        {{else if .Hero.Reason}}
+          <p class="at-hero-reason">{{.Hero.Reason}}</p>
+        {{else if not .Hero.Since.IsZero}}
+          {{template "throttletimer" .Hero}}
+        {{end}}
       </div>
       <div style="display:grid;gap:var(--space-4);min-width:0">
         {{template "statcard" dict "Label" "Active sessions" "Value" .ActiveSessions "Tone" .SessionTone "Footnote" .SessionFootnote}}
-        {{template "statcard" dict "Label" "Throttled downloaders" "Value" .ThrottledLabel "Tone" .ThrottledTone}}
+        {{template "statcard" dict "Label" "Throttled downloaders" "Value" .ThrottledCount "Of" (printf "%d" (len .Downloaders)) "Tone" .ThrottledTone}}
       </div>
     </div>
   </section>
@@ -59,10 +56,16 @@
     {{template "alert" dict "Tone" "warn" "Title" "Throttling is off"
       "Body" "All downloaders are currently overridden to use the configured default speeds. Sessions are still tracked, and rates re-resolve against whatever is playing the moment you resume throttling."}}
   {{end}}
-  {{if .UnreachableNote}}
-    {{template "alert" dict "Tone" "error"
-      "Title" (count .UnreachableN "backend unreachable" "backends unreachable")
-      "Body" .UnreachableNote}}
+  {{with .Unreachable}}
+    <div class="at-alert at-alert--error" role="alert">
+      <strong class="at-alert-title">{{count (len .) "backend unreachable" "backends unreachable"}}</strong>
+      <span class="at-alert-body at-unreachable">
+        <span class="at-unreachable-list">
+          {{range .}}<span class="at-unreachable-row"><span class="at-unreachable-name">{{.Name}}</span><span class="at-unreachable-kind">{{.Kind}}</span></span>{{end}}
+        </span>
+        <span>Check {{if gt (len .) 1}}their{{else}}its{{end}} connection details in <a href="/configuration">Configuration</a>.</span>
+      </span>
+    </div>
   {{end}}
 
   {{/* Both cards share the row height so their edges line up. Past two
@@ -78,7 +81,7 @@
           {{range .Downloaders}}
             {{template "downloaderrow" .}}
           {{else}}
-            <p class="at-listempty">No downloaders configured.</p>
+            <p class="at-listempty">No downloaders added yet</p>
           {{end}}
         </div>
       </div>
@@ -94,7 +97,7 @@
           {{range .Servers}}
             {{template "serverrow" .}}
           {{else}}
-            <p class="at-listempty">No media servers configured.</p>
+            <p class="at-listempty">No media servers added yet</p>
           {{end}}
         </div>
       </div>
@@ -107,6 +110,65 @@
 {{- end}}
 {{end}}
 
+{{/* Counts up from the start of the current throttle period, ticked by
+     app.js from data-throttled-since; the server renders the first
+     reading so nothing flashes before the script runs. */}}
+{{define "throttletimer"}}<p class="at-timer">
+  <span>Session running for:</span>
+  <time class="at-timer-clock" datetime="{{.SinceISO}}" data-throttled-since="{{.SinceISO}}">
+    {{- range $i, $p := .Elapsed}}{{if $i}}<span class="at-timer-colon" aria-hidden="true">:</span>{{end}}<span><span class="at-timer-n">{{index $p 0}}</span><span class="at-timer-u">{{index $p 1}}</span></span>{{end -}}
+  </time>
+</p>{{end}}
+
+{{/* Throttle History: minutes throttled per hour, a row per day, newest
+     first. All 30 days are always rendered; the 7-day view hides the rest,
+     so app.js can switch range as an animation rather than a round trip.
+     Tooltips are pure CSS. */}}
+{{define "throttlehistory"}}<section class="at-card" id="throttle-history" data-range="{{.Range}}"
+  data-total-7="{{.Total7}}" data-total-30="{{.Total30}}" data-empty-7="{{.Empty7}}" data-empty-30="{{.Empty30}}">
+  <header class="at-card-head">
+    <h2 class="at-card-title">Throttle History</h2>
+    <span class="at-card-action">
+      {{/* Not boosted: app.js switches range in place, and the links are
+           only the fallback without script. */}}
+      <div class="at-tabs at-tabs--sm" role="tablist" hx-boost="false">
+        <a role="tab" class="at-tab" href="?range=7d" data-history-range="7d" aria-selected="{{eq .Range "7d"}}">7d</a>
+        <a role="tab" class="at-tab" href="?range=30d" data-history-range="30d" aria-selected="{{eq .Range "30d"}}">30d</a>
+      </div>
+    </span>
+  </header>
+  <div class="at-history">
+    <p class="at-hm-caption"><span class="at-hm-total" aria-label="{{.TotalText}}">{{template "historytotal" .}}</span> <span class="at-hm-caption-text">{{if .Empty}}No throttled history yet{{else}}throttled in the last {{.Days}} days{{end}}</span></p>
+    <div class="at-hm-wrap">
+      <div class="at-hm" role="grid" aria-label="Minutes throttled per hour, last {{.Days}} days">
+        <span class="at-hm-corner">{{.Corner}}</span>
+        <span class="at-hm-hour">12am</span><span class="at-hm-hour at-hm-minor">3am</span><span class="at-hm-hour">6am</span><span class="at-hm-hour at-hm-minor">9am</span><span class="at-hm-hour">12pm</span><span class="at-hm-hour at-hm-minor">3pm</span><span class="at-hm-hour">6pm</span><span class="at-hm-hour at-hm-minor">9pm</span>
+        {{- range .Rows}}{{$x := ""}}{{if ge .Index 7}}{{$x = " at-hm-extra"}}{{end}}
+        {{- if .MonthBreak}}<span class="at-hm-month{{$x}}" data-row="{{.Index}}">{{.Month}}</span>{{end}}
+        <span role="rowheader" class="at-hm-day{{$x}}" data-row="{{.Index}}"{{if .Today}} data-today{{end}}>{{.Label}}</span>
+        {{- range .Cells}}
+          {{- if .Future}}<span class="at-hm-cell at-hm-s0 at-hm-future{{$x}}" aria-hidden="true"></span>
+          {{- else if .Hot}}<span role="gridcell" aria-label="{{.Label}}" class="at-hm-cell at-hm-s{{.Step}} at-tw{{$x}}"><span class="at-tip{{if .Side}} {{.Side}}{{end}}"><span class="at-tip-value">{{.Value}}</span>{{range .Spans}}<span class="at-tip-span">{{.}}</span>{{end}}<span class="at-tip-when">{{.When}}</span></span></span>
+          {{- else}}<span role="gridcell" aria-label="{{.Label}}" class="at-hm-cell at-hm-s{{.Step}}{{$x}}"></span>
+          {{- end}}
+        {{- end}}
+        {{- end}}
+      </div>
+    </div>
+    <div class="at-hm-legend">
+      <span class="at-hm-legend-scale">
+        <span class="at-mono">0</span>
+        <span class="at-hm-swatches"><span title="0 min"><span class="at-hm-swatch at-hm-s0"></span></span><span title="1–15 min"><span class="at-hm-swatch at-hm-s1"></span></span><span title="16–30 min"><span class="at-hm-swatch at-hm-s2"></span></span><span title="31–45 min"><span class="at-hm-swatch at-hm-s3"></span></span><span title="46–60 min"><span class="at-hm-swatch at-hm-s4"></span></span></span>
+        <span class="at-mono">60 min</span>
+      </span>
+    </div>
+  </div>
+</section>{{end}}
+
+{{/* The total, in fixed-width slots so app.js can count it without the
+     text after it moving. */}}
+{{define "historytotal"}}{{if .ShowH}}<span class="at-hm-slot" style="min-width:{{.HDigits}}ch">{{.TotalH}}</span>h{{end}}{{if and .ShowH .ShowM}} {{end}}{{if .ShowM}}<span class="at-hm-slot" style="min-width:{{.MDigits}}ch">{{.TotalM}}</span>m{{end}}{{end}}
+
 {{/* The pill and the pause button live in the page header, outside the
      refreshed block, so a refresh swaps them out of band. */}}
 {{define "dashpill"}}
@@ -115,11 +177,13 @@
 </span>
 {{end}}
 
+{{/* Always rendered, hidden until setup is complete, so the swap that
+     keeps it current always has something to replace. */}}
 {{define "dashactions"}}
-{{if not .Empty}}<div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}>
-  <form method="post" action="/pause-toggle">
+<div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}{{if not .Ready}} hidden{{end}}>
+  {{if .Ready}}<form method="post" action="/pause-toggle">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <button type="submit" class="at-btn{{if .Paused}} at-btn--warning{{end}}">{{if .Paused}}Resume throttling{{else}}Disable throttling{{end}}</button>
-  </form>
-</div>{{end}}
+  </form>{{end}}
+</div>
 {{end}}

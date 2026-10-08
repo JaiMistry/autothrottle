@@ -26,7 +26,7 @@ var staticFS embed.FS
 // pages would collide, since every page defines a template named
 // "content" and html/template's named templates share one namespace
 // per *template.Template instance.
-var pages = []string{"login", "setup", "dashboard", "configuration", "logs", "analytics"}
+var pages = []string{"login", "setup", "dashboard", "configuration", "logs"}
 
 // watcherManager is the watcher-lifecycle surface the web layer needs:
 // after any media-server change, reconcile the running watchers so the
@@ -130,11 +130,9 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /logs", s.logsPage)
 	protected.HandleFunc("GET /logs/rows", s.logRowsFragment)
 	protected.HandleFunc("GET /logs/panel", s.logPanelFragment)
-	protected.HandleFunc("GET /activity", s.activityFragment)
 	protected.HandleFunc("POST /logs/clear", s.clearLogs)
-	protected.HandleFunc("POST /activity/clear", s.clearActivity)
 	protected.HandleFunc("GET /dashboard/live", s.dashboardLive)
-	protected.HandleFunc("GET /analytics", s.analyticsPage)
+	protected.HandleFunc("GET /dashboard/history", s.historyCard)
 	protected.HandleFunc("POST /configuration/media-servers", s.saveMediaServer)
 	protected.HandleFunc("POST /configuration/media-servers/test", s.testMediaServerForm)
 	protected.HandleFunc("POST /configuration/media-servers/{id}/delete", s.deleteMediaServer)

@@ -22,6 +22,12 @@ type heroState struct {
 	Statement string
 	Reason    string
 	Tone      string // warn | good | dim | plain — colours the statement
+	// Missing names what setup still needs ("a media server"); the
+	// reason line then ends in a link to Configuration.
+	Missing string
+	// Since is when the current throttle period began, for the session
+	// timer that replaces the reason line while throttling.
+	Since time.Time
 }
 
 type serverRowView struct {
@@ -82,19 +88,29 @@ type dashboardData struct {
 	Fragment bool
 	pageData
 	Hero            heroState
+	HeroBorder      string // warn | good | "" — the hero card's outline
 	Overall         overallFlag
 	ActiveSessions  int
 	SessionTone     string
 	SessionFootnote string
 	ThrottledTone   string
-	ThrottledLabel  string
+	ThrottledCount  int
 	Paused          bool
-	Empty           bool
-	UnreachableNote string
-	UnreachableN    int
-	Servers         []serverRowView
-	Downloaders     []downloaderRowView
-	Activity        pagedLog
+	// Empty is a first run: nothing configured at all. Ready is the
+	// minimum for AutoThrottle to act, one media server and one
+	// downloader; in between, the page shows what is there.
+	Empty       bool
+	Ready       bool
+	Unreachable []unreachableView
+	Servers     []serverRowView
+	Downloaders []downloaderRowView
+	History     historyView
+}
+
+// unreachableView is one row of the backends-unreachable alert.
+type unreachableView struct {
+	Name string
+	Kind string // "Media server" | "Downloader"
 }
 
 // overallFlag is the StatusFlag beside the page title.
@@ -130,22 +146,15 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	if err != nil {
 		return dashboardData{}, err
 	}
-	activity, err := s.buildActivity(r)
-	if err != nil {
-		return dashboardData{}, err
-	}
-
 	paused := s.scheduler.Paused()
 	data := dashboardData{
 		pageData: s.page(r, "Dashboard", "dashboard"),
 		Paused:   paused,
-		// Without a downloader the page has one job: point at
-		// Configuration.
-		Empty:    len(downloaders) == 0,
-		Activity: activity,
+		Empty:    len(mediaServers) == 0 && len(downloaders) == 0,
+		Ready:    len(mediaServers) > 0 && len(downloaders) > 0,
 	}
 
-	var unreachable []string
+	var unreachable []unreachableView
 	totalSessions := 0
 	countsLocal := false
 	for _, ms := range mediaServers {
@@ -160,8 +169,8 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			// Configured and enabled but no live watcher: the connection
 			// is down or the type has no implementation.
 			row.State = "unreachable"
-			row.Detail = "No live connection to this server."
-			unreachable = append(unreachable, ms.Name)
+			row.Detail = "Unable to connect"
+			unreachable = append(unreachable, unreachableView{ms.Name, "Media server"})
 		default:
 			conn, known := s.watchers.Connection(ms.ID)
 			switch {
@@ -179,10 +188,8 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 					row.Detail = s.playingDetail(ms.ID, sessions)
 				}
 			case known && !conn.Connected:
-				// Nothing to report but the feed is down: say how long
-				// it has been down and whether anything is still trying.
 				row.State = "connecting"
-				row.Detail = reconnectDetail(conn, time.Now())
+				row.Detail = "No activity detected"
 			default:
 				row.State = "idle"
 				row.Detail = "No activity detected."
@@ -198,19 +205,9 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 
 	sortServers(data.Servers)
 
-	// Named for the paused reason line, which says what *would* be
-	// throttling if the override were off.
-	playingServer := ""
-	for _, row := range data.Servers {
-		if row.State == "playing" {
-			playingServer = row.Name
-			break
-		}
-	}
-
 	throttledNames := []string{}
 	unresolvedCount := 0
-	var causes []string
+	allNormal := len(downloaders) > 0
 	for _, dl := range downloaders {
 		state := s.scheduler.State(dl.ID)
 		row := downloaderRowView{Name: dl.Name, Type: dl.Type}
@@ -224,12 +221,12 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			// client are not the rates this app believes it set.
 			row.State = "unreachable"
 			row.Cause = state.Failure
-			unreachable = append(unreachable, dl.Name)
+			unreachable = append(unreachable, unreachableView{dl.Name, "Downloader"})
 			unresolvedCount++
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case !state.Known:
 			row.State = "unknown"
-			row.Cause = "no event resolved since boot"
+			row.Cause = "nothing mapped is playing"
 			unresolvedCount++
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case paused:
@@ -237,10 +234,7 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			// in force, which is the same rate as any other unthrottled
 			// moment. The reason line carries the override.
 			row.State = "paused"
-			row.Cause = "at its configured default rate — throttling is off"
-			if playingServer != "" {
-				row.Cause += fmt.Sprintf(" while %s plays", playingServer)
-			}
+			row.Cause = "throttling disabled"
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 		case state.Throttled:
 			row.State = "throttled"
@@ -251,11 +245,13 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			}
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 			throttledNames = append(throttledNames, dl.Name)
-			causes = appendUnique(causes, state.Cause)
 		default:
 			row.State = "normal"
 			row.Cause = "nothing mapped is playing"
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
+		}
+		if row.State != "normal" {
+			allNormal = false
 		}
 		data.Downloaders = append(data.Downloaders, row)
 	}
@@ -265,21 +261,32 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	data.ActiveSessions = totalSessions
 	data.SessionTone = tone(totalSessions > 0, "accent", "dim")
 	data.ThrottledTone = tone(len(throttledNames) > 0, "warn", "dim")
-	data.ThrottledLabel = fmt.Sprintf("%d of %d", len(throttledNames), len(downloaders))
-	data.Hero = buildHero(paused, totalSessions, throttledNames, causes, len(downloaders), unresolved)
-	data.Overall = overallStatus(paused, len(throttledNames), data.Empty, unresolved)
-	data.SessionFootnote = sessionFootnote(paused, totalSessions, countsLocal)
-	if len(unreachable) > 0 {
-		data.UnreachableN = len(unreachable)
-		data.UnreachableNote = fmt.Sprintf("%s is currently unreachable. Please check the configuration.",
-			strings.Join(unreachable, " / "))
+	data.ThrottledCount = len(throttledNames)
+	data.Hero = buildHero(heroInput{
+		paused: paused, sessions: totalSessions, throttled: throttledNames,
+		servers: len(mediaServers), downloaders: len(downloaders), unresolved: unresolved,
+	})
+	if since, ok := s.scheduler.ThrottlingSince(); ok && data.Hero.Tone == "warn" {
+		data.Hero.Since = since
 	}
-
+	data.Overall = overallStatus(paused, len(throttledNames), data.Empty, data.Ready, unresolved)
+	data.SessionFootnote = sessionFootnote(paused, totalSessions, countsLocal)
+	data.Unreachable = unreachable
+	switch {
+	case !data.Ready || paused:
+	case len(throttledNames) > 0:
+		data.HeroBorder = "warn"
+	case allNormal:
+		data.HeroBorder = "good"
+	}
 	return data, nil
 }
 
 func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	data, err := s.buildDashboardData(r)
+	if err == nil {
+		data.History, err = s.loadHistory(historyRange(r))
+	}
 	if err != nil {
 		slog.Error("building dashboard", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -288,48 +295,68 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "dashboard", data)
 }
 
+// SinceISO is the throttle period's start, for the timer's datetime.
+func (h heroState) SinceISO() string { return h.Since.UTC().Format(time.RFC3339) }
+
+// Elapsed is the timer's first reading: zero-padded hours, minutes and
+// seconds, each with its unit.
+func (h heroState) Elapsed() [][2]string {
+	t := int(max(0, time.Since(h.Since).Seconds()))
+	return [][2]string{
+		{fmt.Sprintf("%02d", t/3600), "hr"},
+		{fmt.Sprintf("%02d", t%3600/60), "m"},
+		{fmt.Sprintf("%02d", t%60), "s"},
+	}
+}
+
+// heroInput is what the headline is decided from.
+type heroInput struct {
+	paused      bool
+	sessions    int
+	throttled   []string
+	servers     int
+	downloaders int
+	unresolved  bool
+}
+
 // buildHero writes the sentence at the top of the page. The wording is
 // exact per state — it is the product's headline, not a status string.
-func buildHero(paused bool, sessions int, throttled, causes []string, downloaders int, unresolved bool) heroState {
+func buildHero(in heroInput) heroState {
+	var missing []string
+	if in.servers == 0 {
+		missing = append(missing, "a media server")
+	}
+	if in.downloaders == 0 {
+		missing = append(missing, "a downloader")
+	}
 	switch {
-	case paused:
+	case len(missing) > 0:
+		return heroState{
+			Statement: "Not ready to throttle",
+			Tone:      "dim",
+			Missing:   strings.Join(missing, " and "),
+		}
+	case in.paused:
 		h := heroState{Statement: "Default downloader speeds enforced", Tone: "plain"}
-		if sessions > 0 {
-			h.Reason = fmt.Sprintf("%s would normally throttle %s.",
-				count(sessions, "active session", "active sessions"),
-				count(downloaders, "downloader", "downloaders"))
-		} else {
+		if in.sessions == 0 {
 			h.Reason = "Nothing mapped is playing, so nothing would be throttled right now in any case."
 		}
 		return h
-	case len(throttled) > 0:
-		verb := "is"
-		if len(causes) > 1 {
-			verb = "are"
+	case len(in.throttled) > 0:
+		// Up to two are named; beyond that the rest are counted.
+		names := strings.Join(in.throttled, " and ")
+		if rest := len(in.throttled) - 2; rest > 0 {
+			names = fmt.Sprintf("%s, %s and %s", in.throttled[0], in.throttled[1], count(rest, "other", "others"))
 		}
-		return heroState{
-			Statement: fmt.Sprintf("%s throttled", strings.Join(throttled, " and ")),
-			Reason: fmt.Sprintf("because %s %s playing · %s",
-				strings.Join(causes, " and "), verb,
-				count(sessions, "active session", "active sessions")),
-			Tone: "warn",
-		}
-	case unresolved:
-		return heroState{
-			Statement: "State not resolved yet",
-			Reason:    "No session event has arrived since boot. Rates are whatever the downloader had before AutoThrottle started.",
-			Tone:      "dim",
-		}
+		return heroState{Statement: names + " throttled", Tone: "warn"}
+	case in.unresolved:
+		return heroState{Statement: "State not resolved yet", Reason: "Nothing mapped is playing.", Tone: "dim"}
 	default:
-		tail := fmt.Sprintf("%d downloaders are at their default rate.", downloaders)
-		if downloaders == 1 {
-			tail = "1 downloader is at its default rate."
+		reason := fmt.Sprintf("%d downloaders are at their default rate.", in.downloaders)
+		if in.downloaders == 1 {
+			reason = "1 downloader is at its default rate."
 		}
-		return heroState{
-			Statement: "Nothing is throttled",
-			Reason:    "Nothing mapped is playing. " + tail,
-			Tone:      "good",
-		}
+		return heroState{Statement: "Nothing is throttled", Reason: reason, Tone: "good"}
 	}
 }
 
@@ -353,14 +380,16 @@ func livePosition(session clients.Session, now time.Time) time.Duration {
 }
 
 // overallStatus is the flag beside the page title.
-func overallStatus(paused bool, throttled int, empty, unresolved bool) overallFlag {
+func overallStatus(paused bool, throttled int, empty, ready, unresolved bool) overallFlag {
 	switch {
 	case paused:
-		return overallFlag{Tone: "good", Label: "Not throttling", Icon: "normal"}
+		return overallFlag{Tone: "good", Label: "Throttling disabled", Icon: "normal"}
 	case throttled > 0:
 		return overallFlag{Tone: "warn", Label: "Throttling", Icon: "throttled"}
 	case empty:
 		return overallFlag{Tone: "neutral", Label: "Not configured", Icon: "empty"}
+	case !ready:
+		return overallFlag{Tone: "neutral", Label: "Setup incomplete", Icon: "empty"}
 	case unresolved:
 		return overallFlag{Tone: "neutral", Label: "Unknown", Icon: "unknown"}
 	default:
@@ -375,21 +404,13 @@ func tone(test bool, whenTrue, whenFalse string) string {
 	return whenFalse
 }
 
-// sessionFootnote qualifies the active-session count.
-//
-// "local playback exempt" is only true when nothing local is being
-// counted. A server with skip_local_playback off will happily count a
-// session playing from the LAN, and claiming otherwise under a number
-// that includes it would be a plain misstatement.
+// sessionFootnote qualifies the active-session count, which can include
+// local playback when a server does not exempt it.
 func sessionFootnote(paused bool, sessions int, countsLocal bool) string {
-	switch {
-	case paused && sessions > 0:
-		return "counted, but not acted on"
-	case countsLocal:
+	if countsLocal && !(paused && sessions > 0) {
 		return "includes local playback"
-	default:
-		return "local playback exempt"
 	}
+	return ""
 }
 
 // timecode renders a position the way a player does: h:mm:ss once past
@@ -435,38 +456,12 @@ func sessionLines(sessions []clients.Session) []sessionLineView {
 	return out
 }
 
-// reconnectDetail says how long the feed has been down and when the
-// next attempt is due — "WebSocket closed 41s ago — retrying in 30s".
-func reconnectDetail(conn clients.ConnectionState, now time.Time) string {
-	down := "just now"
-	if !conn.Since.IsZero() {
-		down = shortDuration(now.Sub(conn.Since)) + " ago"
-	}
-	if conn.RetryAt.After(now) {
-		return fmt.Sprintf("Connection closed %s — retrying in %s", down, shortDuration(conn.RetryAt.Sub(now)))
-	}
-	return fmt.Sprintf("Connection closed %s — retrying now", down)
-}
-
-// shortDuration renders a span the way a status line does: seconds
-// under a minute, then minutes, then hours.
-func shortDuration(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	}
-}
-
 // playingDetail names what is playing and where — "Andor S1E4 — Living
 // Room TV · Study iPad". Sessions sharing a title collapse onto one
 // line, which is the usual case for a household watching together.
 // Anything the server did not report is simply left out.
 func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
-	records, err := s.db.ListSessions(0, time.Now().Add(-24*time.Hour), time.Now())
+	records, err := s.db.OpenSessions(mediaServerID)
 	if err != nil {
 		return count(sessions, "session counting toward throttling", "sessions counting toward throttling")
 	}
@@ -474,9 +469,6 @@ func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
 	byTitle := map[string][]string{}
 	var order []string
 	for _, rec := range records {
-		if rec.MediaServerID != mediaServerID || rec.Ended() {
-			continue
-		}
 		if _, seen := byTitle[rec.Title]; !seen {
 			order = append(order, rec.Title)
 		}
@@ -539,18 +531,6 @@ func count(n int, one, many string) string {
 		return fmt.Sprintf("%d %s", n, one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
-}
-
-func appendUnique(list []string, v string) []string {
-	if v == "" {
-		return list
-	}
-	for _, existing := range list {
-		if existing == v {
-			return list
-		}
-	}
-	return append(list, v)
 }
 
 func (s *Server) togglePause(w http.ResponseWriter, r *http.Request) {

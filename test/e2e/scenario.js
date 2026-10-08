@@ -264,6 +264,9 @@ const transmission = {
     const t = await transmission.limits();
     check(t.down === 900 && t.up === 180, 'Transmission really is limited to 900/180 KB/s', JSON.stringify(t));
     check((await page.content()).includes(MEDIA.itemName), 'the playing title is shown');
+    const clock = () => page.$eval('.at-timer-clock', (e) => e.textContent.replace(/\s+/g, '')).catch(() => '');
+    const t1 = await clock(); await sleep(2100); const t2 = await clock();
+    check(t1 && t2 && t1 !== t2, 'a session timer counts while throttled', `${t1} → ${t2}`);
 
     const before = (await dashboard()).sessionTime;
     await sleep(6000);

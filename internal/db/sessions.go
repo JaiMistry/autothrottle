@@ -87,8 +87,8 @@ func (d *DB) CloseSession(mediaServerID int64, sessionKey string) error {
 
 // CloseSessionsForServer ends every open session for one media server.
 // Used when a server is disabled, deleted, or its watcher stops: those
-// sessions are no longer observable, so leaving them open would let
-// them run to the right edge of every chart forever.
+// sessions are no longer observable, so leaving them open would have
+// them read as playing forever.
 func (d *DB) CloseSessionsForServer(mediaServerID int64) error {
 	_, err := d.conn.Exec(
 		`UPDATE session_history
@@ -102,67 +102,15 @@ func (d *DB) CloseSessionsForServer(mediaServerID int64) error {
 	return nil
 }
 
-// CloseDanglingSessions ends sessions left open by a process that
-// stopped without closing them, and reports how many it closed.
-//
-// The honest end time is unknowable — the app was not running to
-// observe it — so this uses the last moment the app is known to have
-// been alive, which is the newest bandwidth sample. Falling back to
-// the session's own start time keeps a dangling session from being
-// credited with the entire duration of an outage, which on a home
-// server that sat powered off for a week would otherwise dominate
-// every chart it appears in.
-func (d *DB) CloseDanglingSessions() (int64, error) {
-	result, err := d.conn.Exec(
-		`UPDATE session_history
-		 SET ended_at = max(
-		     started_at,
-		     COALESCE((SELECT MAX(sampled_at) FROM bandwidth_samples), started_at)
-		 )
-		 WHERE ended_at IS NULL`,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("closing dangling sessions: %w", err)
-	}
-	return result.RowsAffected()
-}
-
-// mappedServersClause restricts a query to the media servers whose
-// playback actually throttles one downloader. A downloaderID of 0
-// means every server.
-//
-// Analytics is presented per downloader, so an unmapped server's
-// sessions did not drive that downloader's throttling and must not
-// appear alongside its chart. Note this filters on the mapping's
-// *current* state: a mapping enabled last week and disabled today
-// takes its history with it, because nothing records when a mapping
-// changed.
-func mappedServersClause(downloaderID int64) (string, []any) {
-	if downloaderID == 0 {
-		return "", nil
-	}
-	return ` AND media_server_id IN (
-		SELECT media_server_id FROM mappings
-		WHERE downloader_id = ? AND enabled = 1
-	)`, []any{downloaderID}
-}
-
-// ListSessions returns sessions overlapping [since, until], newest
-// first. A session counts as overlapping while it is still open, so an
-// in-progress session always appears in a window ending now.
-//
-// downloaderID restricts the result to servers mapped to that
-// downloader; 0 returns every server's sessions.
-func (d *DB) ListSessions(downloaderID int64, since, until time.Time) ([]SessionRecord, error) {
-	clause, args := mappedServersClause(downloaderID)
-	params := append([]any{FormatTime(until), FormatTime(since)}, args...)
-
+// OpenSessions returns a media server's sessions still in progress,
+// newest first.
+func (d *DB) OpenSessions(mediaServerID int64) ([]SessionRecord, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, media_server_id, session_key, started_at, ended_at, title, device
 		 FROM session_history
-		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`+clause+`
+		 WHERE media_server_id = ? AND ended_at IS NULL
 		 ORDER BY started_at DESC`,
-		params...,
+		mediaServerID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing sessions: %w", err)
@@ -178,26 +126,6 @@ func (d *DB) ListSessions(downloaderID int64, since, until time.Time) ([]Session
 		out = append(out, s)
 	}
 	return out, rows.Err()
-}
-
-// SessionSummary counts sessions in a window and how many distinct
-// media servers they came from — the "6 sessions across 2 servers"
-// figure, without making the caller aggregate a full list to get it.
-// downloaderID scopes it the same way ListSessions does.
-func (d *DB) SessionSummary(downloaderID int64, since, until time.Time) (sessions int64, servers int64, err error) {
-	clause, args := mappedServersClause(downloaderID)
-	params := append([]any{FormatTime(until), FormatTime(since)}, args...)
-
-	err = d.conn.QueryRow(
-		`SELECT COUNT(*), COUNT(DISTINCT media_server_id)
-		 FROM session_history
-		 WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)`+clause,
-		params...,
-	).Scan(&sessions, &servers)
-	if err != nil {
-		return 0, 0, fmt.Errorf("summarising sessions: %w", err)
-	}
-	return sessions, servers, nil
 }
 
 // PruneSessionHistory deletes sessions that ended before the cutoff.

@@ -2,7 +2,6 @@ package clients
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,43 +65,6 @@ func SetQBittorrentLimits(ctx context.Context, baseURL, username, password strin
 		return fmt.Errorf("setting upload limit: %w", err)
 	}
 	return nil
-}
-
-// QBittorrentRates reads qBittorrent's current global transfer rates in
-// bytes per second, for the bandwidth sampler. These are the live
-// instantaneous rates the WebUI's status bar shows, not a session
-// total.
-func QBittorrentRates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
-	baseURL = strings.TrimRight(baseURL, "/")
-
-	client, err := qbittorrentClient(ctx, baseURL, username, password)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v2/transfer/info", nil)
-	if err != nil {
-		return 0, 0, fmt.Errorf("building request: %w", err)
-	}
-	req.Header.Set("Referer", baseURL)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, 0, fmt.Errorf("connecting to %s: %w", baseURL, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Errorf("server responded with unexpected status %d", resp.StatusCode)
-	}
-
-	var info struct {
-		DownloadSpeed int64 `json:"dl_info_speed"`
-		UploadSpeed   int64 `json:"up_info_speed"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return 0, 0, fmt.Errorf("decoding transfer info: %w", err)
-	}
-	return info.DownloadSpeed, info.UploadSpeed, nil
 }
 
 // qbittorrentClient returns an HTTP client ready to call the WebUI API:

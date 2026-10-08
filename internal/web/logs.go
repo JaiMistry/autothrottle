@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -18,8 +17,7 @@ import (
 const logsWindow = 200
 
 const (
-	logsPerPageDefault     = 20
-	activityPerPageDefault = 10
+	logsPerPageDefault = 20
 )
 
 type logsData struct {
@@ -165,48 +163,6 @@ func (s *Server) pageOfEvents(filter db.EventFilter, perPage, page, total int) (
 	return logRows(events, servers, downloaders), page, nil
 }
 
-// activityFragment serves the Dashboard's recent-activity card.
-func (s *Server) activityFragment(w http.ResponseWriter, r *http.Request) {
-	log, err := s.buildActivity(r)
-	if err != nil {
-		slog.Error("building recent activity", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	s.renderFragment(w, "dashboard", "pagedlog", log)
-}
-
-func (s *Server) buildActivity(r *http.Request) (pagedLog, error) {
-	perPage := intParam(r, "per", activityPerPageDefault, 10, 50)
-	page := intParam(r, "page", 1, 1, 1_000_000)
-
-	total, err := s.db.CountEvents(db.EventFilter{})
-	if err != nil {
-		return pagedLog{}, err
-	}
-	if total > logsWindow {
-		total = logsWindow
-	}
-	rows, page, err := s.pageOfEvents(db.EventFilter{}, perPage, page, total)
-	if err != nil {
-		return pagedLog{}, err
-	}
-
-	log := newPagedLog("Recent activity", "activity-card", "/activity", rows, total, perPage, page, url.Values{})
-	// The Dashboard's copy refreshes itself; only the card moves, so
-	// nothing above or below it shifts while you are reading.
-	log.LiveEndpoint = fmt.Sprintf("/activity?per=%d", perPage)
-	log.LiveTarget = "#activity-card"
-	log.EmptyTitle = "No events yet"
-	log.EmptyNote = "Throttle state changes and connection failures land here, each with the media server that caused it."
-	log.ExtraHref = "/logs"
-	log.ExtraLabel = "All logs"
-	log.ClearEndpoint = "/activity/clear"
-	log.ClearTarget = "#activity-card"
-	log.CSRFToken = s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context()))
-	return log, nil
-}
-
 func intParam(r *http.Request, name string, fallback, min, max int) int {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {
@@ -229,14 +185,6 @@ func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logPanelFragment(w, r)
-}
-
-// clearActivity is the same for the Dashboard's copy of the card.
-func (s *Server) clearActivity(w http.ResponseWriter, r *http.Request) {
-	if !s.clearEvents(w) {
-		return
-	}
-	s.activityFragment(w, r)
 }
 
 func (s *Server) clearEvents(w http.ResponseWriter) bool {

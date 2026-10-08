@@ -257,15 +257,15 @@
     <table class="at-matrix">
       <thead>
         <tr>
-          <th>Media server / Downloader →</th>
-          {{range .Downloaders}}<th>{{.Name}}</th>{{end}}
+          <th scope="col">Media server</th>
+          {{range .Downloaders}}<th scope="col">{{.Name}}</th>{{end}}
         </tr>
       </thead>
       <tbody>
       {{$on := .MappingOn}}{{$dls := .Downloaders}}
       {{range $ms := .MediaServers}}
         <tr>
-          <td>{{$ms.Name}}</td>
+          <th scope="row">{{$ms.Name}}</th>
           {{range $dl := $dls}}
             {{$enabled := index $on (mapkey $ms.ID $dl.ID)}}
             <td>

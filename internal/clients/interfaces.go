@@ -117,12 +117,6 @@ type RateLimiter interface {
 	SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error
 }
 
-// RateReporter reads a download client's current transfer rates, in
-// bytes per second, for the bandwidth sampler.
-type RateReporter interface {
-	Rates(ctx context.Context, baseURL, username, password string) (downloadBytesPerSec, uploadBytesPerSec int64, err error)
-}
-
 // SupportedDownloaderType reports whether this build can control a
 // download client type.
 func SupportedDownloaderType(dlType string) bool { return RateLimiterFor(dlType) != nil }
@@ -139,48 +133,24 @@ func TestDownloader(ctx context.Context, dlType, baseURL, username, password str
 	}
 }
 
-// QBittorrent implements RateLimiter and RateReporter against
-// qBittorrent's WebUI API.
+// QBittorrent implements RateLimiter against qBittorrent's WebUI API.
 type QBittorrent struct{}
 
 func (QBittorrent) SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	return SetQBittorrentLimits(ctx, baseURL, username, password, downloadLimitKBps, uploadLimitKBps)
 }
 
-func (QBittorrent) Rates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
-	return QBittorrentRates(ctx, baseURL, username, password)
-}
-
-// Transmission implements RateLimiter and RateReporter against
-// Transmission's JSON-RPC API.
+// Transmission implements RateLimiter against Transmission's JSON-RPC API.
 type Transmission struct{}
 
 func (Transmission) SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	return SetTransmissionLimits(ctx, baseURL, username, password, downloadLimitKBps, uploadLimitKBps)
 }
 
-func (Transmission) Rates(ctx context.Context, baseURL, username, password string) (int64, int64, error) {
-	return TransmissionRates(ctx, baseURL, username, password)
-}
-
 // RateLimiterFor resolves a downloader's type to its implementation.
 // Returns nil for an unsupported type; callers report that as a
 // configuration error rather than silently doing nothing.
 func RateLimiterFor(downloaderType string) RateLimiter {
-	switch downloaderType {
-	case "qbittorrent":
-		return QBittorrent{}
-	case "transmission":
-		return Transmission{}
-	default:
-		return nil
-	}
-}
-
-// RateReporterFor resolves a downloader's type to its rate-reading
-// implementation. Nil means "no bandwidth data available for this
-// type" — the sampler skips it rather than treating it as an error.
-func RateReporterFor(downloaderType string) RateReporter {
 	switch downloaderType {
 	case "qbittorrent":
 		return QBittorrent{}

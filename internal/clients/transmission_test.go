@@ -202,21 +202,6 @@ func TestSetTransmissionLimitsEnablesAndDisables(t *testing.T) {
 	}
 }
 
-func TestTransmissionRatesDecodesSessionStats(t *testing.T) {
-	stub, srv := newTransmissionStub(t, `{"downloadSpeed":123456,"uploadSpeed":7890,"activeTorrentCount":3}`)
-
-	down, up, err := TransmissionRates(context.Background(), srv.URL, "", "")
-	if err != nil {
-		t.Fatalf("TransmissionRates: %v", err)
-	}
-	if down != 123456 || up != 7890 {
-		t.Errorf("rates = %d/%d, want 123456/7890", down, up)
-	}
-	if m := stub.requests[len(stub.requests)-1].Method; m != "session-stats" {
-		t.Errorf("method = %q, want session-stats", m)
-	}
-}
-
 func TestDownloaderResolvers(t *testing.T) {
 	for _, dlType := range []string{"qbittorrent", "transmission"} {
 		if !SupportedDownloaderType(dlType) {
@@ -224,9 +209,6 @@ func TestDownloaderResolvers(t *testing.T) {
 		}
 		if RateLimiterFor(dlType) == nil {
 			t.Errorf("RateLimiterFor(%q) = nil", dlType)
-		}
-		if RateReporterFor(dlType) == nil {
-			t.Errorf("RateReporterFor(%q) = nil", dlType)
 		}
 	}
 

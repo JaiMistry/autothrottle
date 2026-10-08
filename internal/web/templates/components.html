@@ -50,7 +50,7 @@
 {{/* Args: Label, Value, Unit, Tone, Footnote */}}
 {{define "statcard"}}<div class="at-stat">
   <div class="at-stat-label">{{.Label}}</div>
-  <div class="at-stat-value"{{if .Tone}} data-tone="{{.Tone}}"{{end}}>{{.Value}}{{if .Unit}}<span class="at-stat-unit">{{.Unit}}</span>{{end}}</div>
+  <div class="at-stat-value"{{if .Tone}} data-tone="{{.Tone}}"{{end}}>{{.Value}}{{if .Of}}<span class="at-stat-of"> of </span>{{.Of}}{{end}}</div>
   {{if .Footnote}}<div class="at-stat-foot">{{.Footnote}}</div>{{end}}
 </div>{{end}}
 
@@ -163,7 +163,7 @@
 {{define "logrow"}}<div class="at-logrow" data-level="{{.Level}}">
   <span class="at-logrow-time">{{.Time}}</span>
   <span class="at-logrow-level">{{template "badge" dict "Tone" (levelTone .Level) "Label" .Level}}</span>
-  <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{.Downloader}}{{if and .Downloader .Server}} ← {{end}}{{.Server}}</span>{{end}}</span>
+  <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{with .Server}}<span class="at-logrow-tag">{{.}}</span>{{end}}{{if and .Downloader .Server}}<span class="at-logrow-arrow" aria-label="throttles">→</span>{{end}}{{with .Downloader}}<span class="at-logrow-tag">{{.}}</span>{{end}}</span>{{end}}</span>
 </div>{{end}}
 
 {{/* One downloader's live state as a flag. Paused reads as Normal: the
@@ -175,23 +175,10 @@
 {{- else if eq . "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown" "Size" "sm"}}
 {{- else}}{{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates" "Size" "sm"}}{{end}}{{end}}
 
-{{/* Args: Shape (line|dashed|area|hatch), Color, Label */}}
-{{/* Tone names a palette colour and is applied as a class, because a
-     var() reference cannot survive a style attribute — see .at-swatch.
-     Color stays for the literal hexes the charts use, which the
-     escaper is happy to write. */}}
-{{define "legenditem"}}<span class="at-legenditem">
-  <span class="at-swatch at-swatch--{{.Shape}}{{if .Tone}} at-swatch--{{.Tone}}{{end}}"{{if .Color}} style="{{if eq .Shape "line"}}border-top-color:{{.Color}}{{else if eq .Shape "dashed"}}border-top-color:{{.Color}}{{else if eq .Shape "area"}}background:color-mix(in srgb,{{.Color}} 35%,transparent){{else}}outline-color:{{.Color}};background:repeating-linear-gradient(45deg,{{.Color}} 0 1.4px,transparent 1.4px 5px){{end}}"{{end}}></span>
-  {{.Label}}
-</span>{{end}}
-
 {{/* PagedLog. A fixed page size so the card never grows downward:
      choose how many rows, step through with arrows. Clear deletes the
      events. */}}
-{{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}"
-  {{- if and .LiveEndpoint (eq .Page 1)}}
-  hx-get="{{.LiveEndpoint}}" hx-trigger="every 5s [document.visibilityState === 'visible']"
-  hx-target="{{.LiveTarget}}" hx-swap="outerHTML"{{end}}>
+{{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}">
   <header class="at-card-head">
     <h2 class="at-card-title">{{.Title}}</h2>
     <span class="at-card-action">
@@ -202,21 +189,13 @@
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button class="at-btn at-btn--ghost at-btn--xs" type="submit" {{if eq .Total 0}}disabled{{end}}>Clear</button>
       </form>{{end}}
-      {{/* The target and swap are spelled out because htmx inherits them
-           from ancestors, and this card sets both so it can refresh
-           itself. A boosted link inheriting them navigates *into the
-           card*: the whole Logs page — shell, sidebar and all — was
-           being swapped inside the Dashboard's activity card. These are
-           the defaults a boosted link would otherwise have. */}}
-      {{if .ExtraLabel}}<a href="{{.ExtraHref}}" class="at-btn at-btn--ghost at-btn--xs"
-         hx-target="body" hx-swap="innerHTML">{{.ExtraLabel}}</a>{{end}}
     </span>
   </header>
   <div style="display:grid">
     {{if not .Events}}
       {{/* Same treatment the Logs page gives an empty log, so clearing
            one does not land on a different-looking page. */}}
-      {{template "emptystate" dict "Title" (or .EmptyTitle "No events yet") "Body" .EmptyNote}}
+      {{template "emptystate" dict "Title" "No events yet"}}
     {{else}}
       {{range .Events}}{{template "logrow" .}}{{end}}
     {{end}}

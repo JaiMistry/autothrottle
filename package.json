@@ -4,7 +4,6 @@
   "description": "Build-time only: compiles the Tailwind CSS. Never installed or run at container runtime.",
   "devDependencies": {
     "@tailwindcss/cli": "^4",
-    "tailwindcss": "^4",
-    "apexcharts": "^4"
+    "tailwindcss": "^4"
   }
 }

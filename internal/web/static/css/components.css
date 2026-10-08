@@ -364,7 +364,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-stat-value[data-tone="good"] { color: var(--good); }
 .at-stat-value[data-tone="critical"] { color: var(--critical); }
 .at-stat-value[data-tone="dim"] { color: var(--text-faint); }
-.at-stat-unit { font-size: var(--text-caption); font-weight: var(--weight-medium); color: var(--text-faint); margin-left: 5px; }
+.at-stat-of { color: var(--text-faint); font-weight: var(--weight-medium); }
 .at-stat-foot { font-size: var(--text-label); color: var(--text-faint); margin-top: var(--space-2); }
 
 /* ── Button ───────────────────────────────────────────────────────── */
@@ -677,12 +677,21 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 .at-logrow-level { flex: 0 0 auto; display: inline-flex; min-width: 46px; }
 .at-logrow-msg { flex: 1 1 200px; min-width: 0; color: var(--text-dim); text-wrap: pretty; }
 .at-logrow[data-level="error"] .at-logrow-msg { color: var(--text); }
+/* Attribution reads cause → effect: the server, then the downloader it
+   throttled, each in its own tag. */
 .at-logrow-cause {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  vertical-align: baseline;
   font-family: var(--font-mono);
   font-size: var(--text-label);
-  color: var(--text-faint);
-  margin-left: 8px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
+.at-logrow-tag { background: var(--fill-neutral); border-radius: var(--radius-xs); padding: 1px 6px; }
+.at-logrow-arrow { color: var(--text-faint); }
 
 /* Every live number gets tabular figures: without them, a swapped rate
    visibly jitters as digit widths change, and this page polls. */
@@ -1037,7 +1046,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 
-/* Configuration's sections and the Analytics range selector. Wraps to a
+/* Configuration's sections, the Logs filter and the history range. Wraps to a
    second row when the container is too narrow — a tab that scrolls out
    of sight is a tab nobody finds. */
 .at-tabs {
@@ -1165,71 +1174,6 @@ html[data-theme-mode="system"] .at-themetoggle-label[data-mode="system"],
 html[data-theme-mode="light"] .at-themetoggle-label[data-mode="light"],
 html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: inline; }
 
-/* ── ChartCard ───────────────────────────────────────────────────── */
-
-/* Frame for an ApexCharts canvas: caption, optional control, legend.
-   The chart body is a slot — this system draws no charts of its own. */
-.at-chartcard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--pad-card-lg);
-  display: grid;
-  gap: var(--space-6);
-}
-.at-chartcard-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-6);
-  flex-wrap: wrap;
-}
-.at-chartcard-titles { display: grid; gap: 3px; }
-.at-chartcard-title { margin: 0; font-size: var(--text-ui); font-weight: var(--weight-bold); }
-.at-chartcard-caption { font-size: var(--text-caption); color: var(--text-faint); }
-.at-chartcard-body { min-width: 0; }
-.at-chartcard-legend {
-  display: flex;
-  gap: var(--space-8);
-  flex-wrap: wrap;
-  font-size: var(--text-label);
-  color: var(--text-dim);
-}
-
-/* Legend swatch: solid line, dashed line, filled area, or hatched —
-   the last one for absent data, which is a different category from a
-   value being present and must not read as a paler version of it. */
-.at-legenditem { display: inline-flex; align-items: center; gap: var(--space-3); }
-/* The colour comes from a class, never from an inline style. Go's
-   html/template refuses to write a var() reference into a style
-   attribute — it substitutes ZgotmplZ, the browser drops the whole
-   declaration, and every swatch falls back to the default below. That
-   is why the legend once drew upload, the limit and the throttle band
-   in the accent colour while the chart drew them green and amber. */
-.at-swatch { width: 16px; flex-shrink: 0; --swatch: var(--accent); }
-/* These mirror the exact values charts.js draws with. The chart darkens
-   green and amber on a light ground for legibility, so a legend naming
-   the raw token would advertise a shade the chart never uses. Change
-   one and change the other. */
-.at-swatch--good { --swatch: #1f9d55; }
-.at-swatch--warn { --swatch: #c98410; }
-.at-swatch--faint { --swatch: var(--text-faint); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .at-swatch--good { --swatch: #4ade80; }
-  :root:not([data-theme="light"]) .at-swatch--warn { --swatch: #f0b132; }
-}
-:root[data-theme="dark"] .at-swatch--good { --swatch: #4ade80; }
-:root[data-theme="dark"] .at-swatch--warn { --swatch: #f0b132; }
-.at-swatch--line { height: 0; border-top: 2px solid var(--swatch); }
-.at-swatch--dashed { height: 0; border-top: 2px dashed var(--swatch); }
-.at-swatch--area { height: 8px; border-radius: 2px; background: color-mix(in srgb, var(--swatch) 35%, transparent); }
-.at-swatch--hatch {
-  height: 8px;
-  outline: 1px dashed var(--swatch);
-  outline-offset: -1px;
-  background: repeating-linear-gradient(45deg, var(--swatch) 0 1.4px, transparent 1.4px 5px);
-}
-
 /* ── Login ───────────────────────────────────────────────────────── */
 
 /* The sign-in failure reads centred, unlike alerts elsewhere: there is
@@ -1309,25 +1253,32 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 /* A cell is a control, not a checkbox: it states which of the two
    things it is doing rather than making the reader decode a tick. */
 .at-matrix { border-collapse: collapse; font-size: var(--text-ui); min-width: 460px; }
-.at-matrix th:first-child {
-  text-align: left;
-  padding: 0 16px 10px 0;
+.at-matrix th, .at-matrix td { line-height: normal; }
+.at-matrix thead th { text-align: left; vertical-align: bottom; }
+.at-matrix thead th:first-child {
+  padding: 0 24px 10px 0;
   font-size: var(--text-label);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
   color: var(--text-faint);
   font-weight: var(--weight-semibold);
 }
-.at-matrix th + th {
-  text-align: left;
+.at-matrix thead th + th {
   padding: 0 14px 10px 0;
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--text);
   white-space: nowrap;
 }
-.at-matrix td:first-child { padding: 10px 16px 10px 0; border-top: 1px solid var(--border); white-space: nowrap; }
-.at-matrix td + td { padding: 8px 14px 8px 0; border-top: 1px solid var(--border); }
+.at-matrix tbody th {
+  text-align: left;
+  padding: 10px 24px 10px 0;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+.at-matrix td { padding: 8px 14px 8px 0; border-top: 1px solid var(--border); }
 .at-matrix-cell {
   cursor: pointer;
   border: 1px solid var(--border);
@@ -1351,14 +1302,171 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
    moving through the sign-in, never shifts the form around it. */
 .at-plexsignin { min-height: 96px; }
 
-/* Session tooltip body. The title above it is ApexCharts' own class, so
-   only the lines under it need styling to match the themed box. */
-.at-charttip {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding: 6px 10px 7px;
-  font-size: var(--text-caption);
+/* ── Dashboard hero ──────────────────────────────────────────────── */
+
+/* The one card that borrows a state colour for its outline: warn while
+   anything is throttled, good while every downloader runs free. */
+.at-hero { padding: 20px; }
+.at-hero[data-border="warn"] { border-color: var(--warn); }
+.at-hero[data-border="good"] { border-color: var(--good); }
+.at-hero-statement {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-title);
+  line-height: var(--leading-tight);
+  text-wrap: balance;
   color: var(--text);
 }
-.at-charttip-dur { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.at-hero-statement[data-tone="warn"] { color: var(--warn); }
+.at-hero-statement[data-tone="good"] { color: var(--good); }
+.at-hero-statement[data-tone="dim"] { color: var(--text-dim); }
+.at-hero-reason { margin: 0; font-size: var(--text-body); color: var(--text-dim); max-width: 58ch; text-wrap: pretty; }
+
+/* Session timer: every part zero-padded, so nothing shifts as it ticks. */
+.at-timer {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
+  font-size: var(--text-body);
+  color: var(--text-dim);
+}
+.at-timer-clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.at-timer-n { font-size: var(--text-ui); font-weight: var(--weight-semibold); color: var(--text); }
+.at-timer-u { font-size: var(--text-caption); color: var(--text-dim); }
+.at-timer-colon { color: var(--text-faint); }
+
+/* Backends unreachable: one hairline row per backend. */
+.at-unreachable { display: grid; gap: var(--space-3); margin-top: var(--space-2); }
+.at-unreachable-list { display: grid; gap: 1px; border-top: 1px solid color-mix(in srgb, var(--critical) 25%, transparent); }
+.at-unreachable-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--critical) 25%, transparent);
+}
+.at-unreachable-name { color: var(--text); font-weight: var(--weight-semibold); }
+.at-unreachable-kind {
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-faint);
+  font-weight: var(--weight-semibold);
+}
+
+.at-listempty { margin: 0; padding: var(--space-8) 0; font-size: var(--text-caption); color: var(--text-faint); text-align: center; }
+
+/* ── Throttle History ────────────────────────────────────────────── */
+
+.at-history { display: grid; gap: var(--space-6); }
+.at-hm-caption { margin: -6px 0 0; font-size: var(--text-caption); color: var(--text-faint); }
+.at-hm-total {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--warn);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-ui);
+  white-space: nowrap;
+}
+.at-hm-slot { display: inline-block; text-align: right; transition: min-width var(--dur-base) var(--ease-out); }
+.at-hm-wrap { overflow: hidden; }
+.at-hm {
+  display: grid;
+  grid-template-columns: 40px repeat(24, minmax(0, 1fr));
+  align-items: center;
+  gap: 2px;
+}
+.at-hm-corner, .at-hm-hour, .at-hm-month, .at-hm-day {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-badge);
+  line-height: 1;
+}
+.at-hm-corner { color: var(--text-dim); font-weight: var(--weight-semibold); padding-bottom: 6px; align-self: end; }
+.at-hm-hour {
+  grid-column: span 3;
+  color: var(--text-faint);
+  white-space: nowrap;
+  padding: 0 0 4px 3px;
+  border-left: 1px solid var(--border);
+  align-self: end;
+}
+.at-hm-month { grid-column: 1 / -1; color: var(--text-dim); font-weight: var(--weight-semibold); padding: 8px 0 3px; }
+.at-hm-day { color: var(--text-faint); white-space: nowrap; }
+.at-hm-day[data-today] { color: var(--text); font-weight: var(--weight-semibold); }
+/* One cell height for both ranges, so the first 7 rows of 30 days are
+   identical to the 7-day view and the range can animate between them. */
+.at-hm-cell { height: 16px; border-radius: 2px; }
+.at-hm-future { opacity: 0.5; }
+#throttle-history[data-range="7d"] .at-hm-extra { display: none; }
+@media (max-width: 520px) {
+  .at-hm { gap: 1px; }
+  .at-hm-minor { visibility: hidden; }
+}
+
+/* The one fill table: the grid and the legend both use it. Hours
+   AutoThrottle was not running share the 0 fill. */
+.at-hm-s0 { background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
+.at-hm-s1 { background: color-mix(in srgb, var(--warn) 26%, var(--surface)); }
+.at-hm-s2 { background: color-mix(in srgb, var(--warn) 48%, var(--surface)); }
+.at-hm-s3 { background: color-mix(in srgb, var(--warn) 72%, var(--surface)); }
+.at-hm-s4 { background: var(--warn); }
+
+/* Tooltips are pure CSS, and only on cells with time throttled. */
+.at-tw { position: relative; }
+.at-tw:hover { z-index: 2; }
+.at-tw > .at-tip {
+  display: grid;
+  gap: 2px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 100ms ease-out, visibility 0s linear 100ms;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
+  white-space: nowrap;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 14px rgb(0 0 0 / .14);
+  font-size: var(--text-label);
+  line-height: 1.35;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+}
+.at-tw > .at-tip.l { left: 0; transform: none; }
+.at-tw > .at-tip.r { left: auto; right: 0; transform: none; }
+.at-tw:hover > .at-tip { opacity: 1; visibility: visible; transition: opacity 150ms ease-in 60ms, visibility 0s linear 60ms; }
+@media (prefers-reduced-motion: reduce) { .at-tw > .at-tip, .at-tw:hover > .at-tip { transition: none; } }
+.at-tip-value { font-weight: var(--weight-semibold); color: var(--warn); }
+.at-tip-span { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.at-tip-when { color: var(--text-faint); }
+
+.at-hm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-8);
+  row-gap: 6px;
+  font-size: var(--text-label);
+  color: var(--text-faint);
+}
+.at-hm-legend-scale { display: inline-flex; align-items: center; gap: 6px; }
+.at-hm-swatches { display: inline-flex; gap: 2px; }
+.at-hm-swatches > span { line-height: 0; }
+.at-hm-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }

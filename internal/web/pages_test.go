@@ -183,3 +183,66 @@ func TestUpdateCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestHeroStatements(t *testing.T) {
+	cases := []struct {
+		name string
+		in   heroInput
+		want heroState
+	}{
+		{"nothing configured past a downloader", heroInput{downloaders: 1}, heroState{Statement: "Not ready to throttle", Tone: "dim", Missing: "a media server"}},
+		{"paused while playing", heroInput{paused: true, sessions: 2, servers: 1, downloaders: 2}, heroState{Statement: "Default downloader speeds enforced", Tone: "plain"}},
+		{"paused, nothing playing", heroInput{paused: true, servers: 1, downloaders: 2}, heroState{Statement: "Default downloader speeds enforced", Tone: "plain", Reason: "Nothing mapped is playing, so nothing would be throttled right now in any case."}},
+		{"two throttled", heroInput{throttled: []string{"qBittorrent", "Transmission"}, servers: 1, downloaders: 2}, heroState{Statement: "qBittorrent and Transmission throttled", Tone: "warn"}},
+		{"three throttled", heroInput{throttled: []string{"A", "B", "C"}, servers: 1, downloaders: 3}, heroState{Statement: "A, B and 1 other throttled", Tone: "warn"}},
+		{"five throttled", heroInput{throttled: []string{"A", "B", "C", "D", "E"}, servers: 1, downloaders: 5}, heroState{Statement: "A, B and 3 others throttled", Tone: "warn"}},
+		{"just booted", heroInput{unresolved: true, servers: 1, downloaders: 2}, heroState{Statement: "State not resolved yet", Tone: "dim", Reason: "Nothing mapped is playing."}},
+		{"idle", heroInput{servers: 1, downloaders: 2}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "2 downloaders are at their default rate."}},
+		{"idle, one", heroInput{servers: 1, downloaders: 1}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "1 downloader is at its default rate."}},
+	}
+	for _, c := range cases {
+		if got := buildHero(c.in); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+}
+
+// Setup incomplete is the full Dashboard, not the first-run empty state:
+// what is there is shown, and the pause control is not offered.
+func TestDashboardSetupIncomplete(t *testing.T) {
+	app := newApp(t)
+	app.downloader("qBit")
+	body := app.get("/").Body.String()
+	for _, want := range []string{"Not ready to throttle", "Add a media server to start throttling.", "No media servers added yet", "Setup incomplete", "Throttle History"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("setup-incomplete Dashboard is missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Nothing configured yet") || strings.Contains(body, "Disable throttling") {
+		t.Error("setup incomplete rendered the first-run state or the pause control")
+	}
+}
+
+// While throttling, the reason line becomes a timer that counts from the
+// start of the period, and the log names cause and effect in tags.
+func TestDashboardTimerAndLogTags(t *testing.T) {
+	app := newApp(t)
+	ms := app.mediaServer("Plex", "jellyfin", "http://plex.lan")
+	app.watchers.running[ms] = true
+	dl := app.downloader("qBit")
+	app.setMapping(ms, dl, true)
+	app.sched.HandleSessionEvent(ms, clients.Session{Key: "s"}, true)
+	waitFor(t, "throttling", func() bool { return app.sched.State(dl).Throttled })
+
+	live := app.get("/dashboard/live").Body.String()
+	if !strings.Contains(live, "data-throttled-since=") || !strings.Contains(live, "Session running for:") {
+		t.Errorf("no session timer while throttled: %.400s", live)
+	}
+	logs := app.get("/logs").Body.String()
+	if !strings.Contains(logs, `<span class="at-logrow-tag">Plex</span><span class="at-logrow-arrow" aria-label="throttles">→</span><span class="at-logrow-tag">qBit</span>`) {
+		t.Error("the throttle event does not read Plex → qBit")
+	}
+	if card := app.get("/dashboard/history?range=30d").Body.String(); !strings.Contains(card, `data-range="30d"`) {
+		t.Error("the history card does not honour ?range=30d")
+	}
+}

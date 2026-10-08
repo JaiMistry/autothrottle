@@ -46,6 +46,12 @@ type Scheduler struct {
 	// never has to hit the database for it.
 	paused bool
 
+	// throttlingSince is when the current throttle period began: the
+	// moment at least one downloader became throttled, zero while none
+	// is. historyMu serialises the period records that follow it.
+	throttlingSince time.Time
+	historyMu       sync.Mutex
+
 	// limiterFor resolves a downloader type to its rate-limit client.
 	// A field rather than a direct call so tests can substitute a fake
 	// and never touch a real download client.
@@ -180,17 +186,6 @@ func (s *Scheduler) ActiveSessions(mediaServerID int64) []clients.Session {
 	return out
 }
 
-// AppliedLimits reports the rate pair last successfully pushed to a
-// downloader, and whether that pair is the throttled one. The
-// bandwidth sampler records it alongside each sample so analytics can
-// show observed throughput against the ceiling in force at the time.
-func (s *Scheduler) AppliedLimits(downloaderID int64) (throttled bool, downloadKBps, uploadKBps int64, known bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, known := s.applied[downloaderID]
-	return state.throttled, state.downloadLimit, state.uploadLimit, known
-}
-
 // State returns everything the Dashboard needs about one downloader.
 func (s *Scheduler) State(downloaderID int64) DownloaderState {
 	s.mu.Lock()
@@ -218,8 +213,8 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Unlock()
 
 	// Nothing is watching this server any more, so its open sessions
-	// can never be observed ending. Left open they would run to the
-	// right edge of every future chart.
+	// can never be observed ending; left open, they would read as
+	// still playing.
 	if err := s.db.CloseSessionsForServer(mediaServerID); err != nil {
 		slog.Error("scheduler: closing session history", "media_server_id", mediaServerID, "error", err)
 	}
@@ -359,10 +354,8 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 	s.ResolveAsync()
 }
 
-// recordSession persists a session's start or end for the Analytics
-// page. Failures are logged and swallowed: history is a reporting
-// concern, and losing a row must never stop throttling from being
-// applied, which is the job that actually matters.
+// recordSession persists a session's start or end. Failures are logged
+// and swallowed: losing a history row must never stop throttling.
 func (s *Scheduler) recordSession(mediaServerID int64, session clients.Session, active bool) {
 	var err error
 	if active {
@@ -380,9 +373,8 @@ type resolution struct {
 	downloader      db.Downloader
 	throttled       bool
 	causeServerName string
-	// causeServerID makes the cause queryable. The name alone only
-	// exists inside the event's message text, which analytics would
-	// have to parse back out of prose to attribute a throttle.
+	// causeServerID attributes the throttle event to its server, for
+	// the log's cause tags.
 	causeServerID int64
 }
 
@@ -470,6 +462,52 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	for _, r := range toApply {
 		s.applyState(ctx, r)
 	}
+	s.recordThrottlePeriod()
+}
+
+// recordThrottlePeriod opens or closes the throttle period when
+// throttling as a whole starts or stops. Which downloaders are
+// throttled can change inside a period without starting a new one.
+func (s *Scheduler) recordThrottlePeriod() {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+
+	s.mu.Lock()
+	throttling := false
+	for _, state := range s.applied {
+		if state.throttled && state.failure == "" {
+			throttling = true
+			break
+		}
+	}
+	was := !s.throttlingSince.IsZero()
+	now := time.Now()
+	switch {
+	case throttling && !was:
+		s.throttlingSince = now
+	case !throttling && was:
+		s.throttlingSince = time.Time{}
+	}
+	s.mu.Unlock()
+
+	var err error
+	switch {
+	case throttling && !was:
+		err = s.db.OpenThrottlePeriod(now)
+	case !throttling && was:
+		err = s.db.CloseThrottlePeriod(now)
+	}
+	if err != nil {
+		slog.Error("scheduler: recording throttle history", "error", err)
+	}
+}
+
+// ThrottlingSince reports when the current throttle period began, for
+// the Dashboard's session timer. ok is false while nothing is throttled.
+func (s *Scheduler) ThrottlingSince() (since time.Time, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.throttlingSince, !s.throttlingSince.IsZero()
 }
 
 func (s *Scheduler) applyState(ctx context.Context, r resolution) {

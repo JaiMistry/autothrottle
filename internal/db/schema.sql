@@ -48,58 +48,50 @@ CREATE INDEX IF NOT EXISTS idx_mappings_media_server ON mappings(media_server_id
 CREATE INDEX IF NOT EXISTS idx_mappings_downloader ON mappings(downloader_id);
 CREATE INDEX IF NOT EXISTS idx_events_occurred_at ON events(occurred_at);
 
--- Key/value store for runtime-adjustable settings (retention windows,
--- poll intervals, the pause-all override). Values are stored as text
--- and parsed by internal/settings, which owns the keys and defaults.
+-- Key/value store; today it holds only the pause-all override, owned
+-- by internal/settings.
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
--- Raw bandwidth samples, one row per downloader per sampling tick.
--- throttled and the limit pair are recorded alongside the observed
--- rates so analytics can show actual throughput against the ceiling
--- that was in force at the time, without re-deriving it from events.
-CREATE TABLE IF NOT EXISTS bandwidth_samples (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sampled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    downloader_id INTEGER NOT NULL REFERENCES downloaders(id) ON DELETE CASCADE,
-    download_bytes_per_sec INTEGER NOT NULL,
-    upload_bytes_per_sec INTEGER NOT NULL,
-    throttled INTEGER NOT NULL DEFAULT 0,
-    download_limit_kbps INTEGER NOT NULL DEFAULT 0,
-    upload_limit_kbps INTEGER NOT NULL DEFAULT 0
-);
-
--- Hourly aggregates of the above. Raw samples are pruned aggressively;
--- these are cheap enough to keep for months, so long-range analytics
--- stays available without an unbounded samples table.
-CREATE TABLE IF NOT EXISTS bandwidth_rollups_hourly (
-    hour TEXT NOT NULL,
-    downloader_id INTEGER NOT NULL REFERENCES downloaders(id) ON DELETE CASCADE,
-    sample_count INTEGER NOT NULL,
-    avg_download_bytes_per_sec INTEGER NOT NULL,
-    avg_upload_bytes_per_sec INTEGER NOT NULL,
-    max_download_bytes_per_sec INTEGER NOT NULL,
-    max_upload_bytes_per_sec INTEGER NOT NULL,
-    throttled_sample_count INTEGER NOT NULL,
-    PRIMARY KEY (hour, downloader_id)
-);
-
 CREATE INDEX IF NOT EXISTS idx_events_level ON events(level);
-CREATE INDEX IF NOT EXISTS idx_samples_sampled_at ON bandwidth_samples(sampled_at);
-CREATE INDEX IF NOT EXISTS idx_samples_downloader ON bandwidth_samples(downloader_id, sampled_at);
-CREATE INDEX IF NOT EXISTS idx_rollups_hour ON bandwidth_rollups_hourly(hour);
+
+-- Throughput was sampled for an Analytics page that no longer exists.
+DROP TABLE IF EXISTS bandwidth_samples;
+DROP TABLE IF EXISTS bandwidth_rollups_hourly;
+
+-- When AutoThrottle was running: one row per process run, its heartbeat
+-- moved forward every minute. The gaps between runs are what the
+-- Dashboard's throttle history shows as "not running", rather than as
+-- hours in which nothing was throttled.
+CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+);
+
+-- Spans during which at least one downloader was throttled. A NULL
+-- ended_at is the period in progress, or one the process died during,
+-- which the next start closes at the previous run's last heartbeat.
+CREATE TABLE IF NOT EXISTS throttle_periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_runs_last_seen ON runs(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_throttle_periods_started ON throttle_periods(started_at);
 
 -- Session history: one row per playback session, opened when it starts
 -- counting toward throttling and closed when it stops.
 --
 -- The scheduler tracks active sessions in memory because that is what
--- resolving throttle state needs; this table exists so the Analytics
--- page can answer "what was playing, and when" after the fact. A NULL
--- ended_at means still playing — or that the process died while it
--- was, which CloseDanglingSessions resolves at startup.
+-- resolving throttle state needs; this table lets the Dashboard name
+-- what is playing before a snapshot has described it. A NULL ended_at
+-- means still playing — or that the process died while it was, which
+-- CloseDanglingSessions resolves at startup.
 CREATE TABLE IF NOT EXISTS session_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     media_server_id INTEGER NOT NULL REFERENCES media_servers(id) ON DELETE CASCADE,

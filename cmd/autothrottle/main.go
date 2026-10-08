@@ -24,7 +24,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/retention"
-	"github.com/JaiMistry/autothrottle/internal/sampler"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 	"github.com/JaiMistry/autothrottle/internal/version"
@@ -75,15 +74,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Sessions that were playing when the process last stopped are
-	// still marked open. Nothing observed them ending, so close them
-	// before anything reads history — otherwise they read as playing
-	// right now, and every downloader they map to looks throttled for
-	// the whole outage.
-	if closed, err := database.CloseDanglingSessions(); err != nil {
-		logger.Error("closing sessions left open by the previous run", "error", err)
-	} else if closed > 0 {
-		logger.Info("closed sessions left open by the previous run", "sessions", closed)
+	// Recorded before anything reads history: this also closes the
+	// sessions and throttle period the previous run left open, at its
+	// last heartbeat, so a stopped process never reads as one that was
+	// throttling for the whole time it was down.
+	runID, err := database.StartRun(time.Now())
+	if err != nil {
+		logger.Error("recording this run", "error", err)
+		os.Exit(1)
 	}
 
 	// Fixed, like the data path: the host port is the port mapping's
@@ -102,7 +100,6 @@ func main() {
 
 	sched := scheduler.New(database, encryptionKey, settings.New(database))
 	watchers := watcher.NewManager(database, encryptionKey, sched)
-	samples := sampler.New(database, encryptionKey, sched)
 	maintenance := retention.New(database)
 
 	srv, err := web.New(database, authenticator, encryptionKey, sched, watchers)
@@ -144,10 +141,8 @@ func main() {
 		sched.ResolveAsync()
 	}()
 
-	// Bandwidth sampling and housekeeping are independent of playback,
-	// so they run on their own timers rather than off session events.
-	go samples.Run(ctx)
 	go maintenance.Run(ctx)
+	go heartbeat(ctx, database, runID)
 
 	go func() {
 		logger.Info("listening", "addr", addr, "auth_disabled", authenticator.Disabled())
@@ -166,6 +161,26 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 		os.Exit(1)
+	}
+}
+
+// heartbeat keeps this run's last-seen time current, so the throttle
+// history can tell the hours AutoThrottle was down from hours in which
+// nothing was throttled.
+func heartbeat(ctx context.Context, database *db.DB, runID int64) {
+	beat := func() {
+		if err := database.Heartbeat(runID, time.Now()); err != nil {
+			slog.Error("recording heartbeat", "error", err)
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			beat()
+			return
+		case <-time.After(settings.HeartbeatInterval):
+			beat()
+		}
 	}
 }
 

@@ -21,21 +21,16 @@ const (
 	// list is re-read to correct anything the live feed missed.
 	SessionReconcileInterval = 60 * time.Second
 
-	// BandwidthSampleInterval is how often each downloader's transfer
-	// rates are recorded.
-	BandwidthSampleInterval = 60 * time.Second
+	// HeartbeatInterval is how often a running process records that it
+	// is still alive, which bounds how precisely the throttle history
+	// knows when it stopped.
+	HeartbeatInterval = time.Minute
 
-	// BandwidthRawRetention keeps full-resolution samples a little over
-	// a week, so a 7-day view is full resolution end to end.
-	BandwidthRawRetention = 8 * 24 * time.Hour
-
-	// BandwidthRollupRetention keeps the hourly aggregates.
-	BandwidthRollupRetention = 90 * 24 * time.Hour
-
-	// EventRetention keeps the event log and session history.
+	// EventRetention keeps the event log, session history and throttle
+	// history.
 	EventRetention = 90 * 24 * time.Hour
 
-	// MaintenanceInterval is how often retention and rollups run.
+	// MaintenanceInterval is how often retention runs.
 	MaintenanceInterval = time.Hour
 )
 
