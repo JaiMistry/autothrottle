@@ -44,3 +44,19 @@ func TestSeedingMappingsForNewEntries(t *testing.T) {
 		t.Fatalf("seeding overwrote an explicit choice: %+v", mappings)
 	}
 }
+
+// Names sort as people read them: "qBittorrent" is not after every
+// capitalised name.
+func TestListsSortCaseInsensitively(t *testing.T) {
+	d := newTestDB(t)
+	for _, name := range []string{"Transmission", "qBittorrent"} {
+		addTestDownloader(t, d, name)
+	}
+	dls, err := d.ListDownloaders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dls[0].Name != "qBittorrent" {
+		t.Errorf("downloaders in order %s, %s", dls[0].Name, dls[1].Name)
+	}
+}

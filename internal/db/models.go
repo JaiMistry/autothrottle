@@ -59,7 +59,7 @@ func (d *DB) CreateMediaServer(m MediaServer) (int64, error) {
 }
 
 func (d *DB) ListMediaServers() ([]MediaServer, error) {
-	rows, err := d.conn.Query(`SELECT id, name, type, url, credential_encrypted, skip_local_playback, enabled, created_at, updated_at FROM media_servers ORDER BY name`)
+	rows, err := d.conn.Query(`SELECT id, name, type, url, credential_encrypted, skip_local_playback, enabled, created_at, updated_at FROM media_servers ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (d *DB) CreateDownloader(dl Downloader) (int64, error) {
 func (d *DB) ListDownloaders() ([]Downloader, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, name, type, url, credential_encrypted, default_download_limit, default_upload_limit,
-		 backup_download_limit, backup_upload_limit, enabled, created_at, updated_at FROM downloaders ORDER BY name`)
+		 backup_download_limit, backup_upload_limit, enabled, created_at, updated_at FROM downloaders ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
