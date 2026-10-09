@@ -82,7 +82,7 @@ func RequireAuth(a *Authenticator, sessions *SessionManager) func(http.Handler) 
 			}
 			cookie, err := r.Cookie(cookieName)
 			if err != nil || !sessions.Valid(cookie.Value) {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				http.Redirect(w, r, loginURL(r), http.StatusSeeOther)
 				return
 			}
 			ctx := context.WithValue(r.Context(), sessionTokenKey, cookie.Value)
@@ -123,7 +123,8 @@ func RequireCSRF(a *Authenticator, csrf *CSRF) func(http.Handler) http.Handler {
 type LoginFailure func(w http.ResponseWriter, r *http.Request, status int, message string)
 
 // LoginHandler handles POST /login: rate-limited credential check,
-// session creation, redirect to the dashboard.
+// session creation, then back to the page that asked for it, or the
+// Dashboard.
 func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimiter, fail LoginFailure) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
@@ -146,7 +147,7 @@ func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimi
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, SafeNext(r.FormValue("next")), http.StatusSeeOther)
 	}
 }
 

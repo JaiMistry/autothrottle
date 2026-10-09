@@ -68,7 +68,10 @@ func TestPagesRender(t *testing.T) {
 				[]logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}}, 2, 20, 1, nil),
 		},
 		"configuration": testConfigPage("connections"),
-		"notfound":      testPage("Page not found"),
+		"notfound": notFoundData{
+			pageData: pageData{Title: "Page not found", Version: "test", Asset: func(p string) string { return p }},
+			SignedIn: true, Time: "14:12:21", Method: "GET", Path: "/nope",
+		},
 	}
 
 	for _, page := range pages {

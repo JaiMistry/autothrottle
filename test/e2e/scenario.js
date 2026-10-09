@@ -444,9 +444,31 @@ const transmission = {
     check((await page.title()) === 'Logs', 'the tab is named after the page', await page.title());
     const missing = await page.goto(APP + '/no-such-page', { waitUntil: 'networkidle2' });
     check(missing.status() === 404 && (await page.title()) === 'Page not found', 'an unknown address gets the 404 page', `${missing.status()} ${await page.title()}`);
-    await settle(() => page.click('.at-empty-action a'));
+    check((await page.$$('.at-shell')).length === 0 && (await text('.at-nf-msg')) === 'no route for GET /no-such-page',
+      'it stands alone and names the address', await text('.at-nf-msg'));
+    await settle(() => page.click('.at-nf-actions .at-btn--primary'));
     check(at() === '/' && (await page.title()) === 'AutoThrottle' && (await page.$$('.at-shell')).length === 1,
       'and its button goes back to the Dashboard', `${at()} ${await page.title()}`);
+
+    section('Signed out');
+    const anon = await (await browser.createBrowserContext()).newPage();
+    await anon.setViewport({ width: 1440, height: 1000 });
+    const anonAt = () => new URL(anon.url()).pathname + new URL(anon.url()).search;
+    const lost = await anon.goto(APP + '/no-such-page', { waitUntil: 'networkidle2' });
+    const anonButtons = await anon.$$eval('.at-nf-actions a', (as) => as.map((a) => a.textContent.trim()));
+    check(lost.status() === 404 && JSON.stringify(anonButtons) === '["Log in"]', 'a dead link signed out gets the 404 with only Log in', `${lost.status()} ${JSON.stringify(anonButtons)}`);
+    await Promise.all([anon.waitForNavigation(), anon.click('.at-nf-actions a')]);
+    await anon.type('[name=username]', 'admin');
+    await anon.type('[name=password]', 'e2e-password');
+    await Promise.all([anon.waitForNavigation(), anon.click('button[type=submit]')]);
+    check(anonAt() === '/no-such-page' && (await anon.$$('.at-nf-actions a')).length === 2, 'signing in from it comes back to the same address', anonAt());
+    const anon2 = await (await browser.createBrowserContext()).newPage();
+    await anon2.goto(APP + '/logs?level=warn', { waitUntil: 'networkidle2' });
+    check(new URL(anon2.url()).pathname === '/login', 'a real page signed out asks for a sign-in first', anon2.url());
+    await anon2.type('[name=username]', 'admin');
+    await anon2.type('[name=password]', 'e2e-password');
+    await Promise.all([anon2.waitForNavigation(), anon2.click('button[type=submit]')]);
+    check(new URL(anon2.url()).pathname + new URL(anon2.url()).search === '/logs?level=warn', 'and lands on that page after', anon2.url());
     check(pageErrors.length === 0, 'no JavaScript errors on any page', pageErrors.join(' | '));
   } catch (e) {
     check(false, 'the scenario ran to the end', e.stack);

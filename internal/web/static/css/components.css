@@ -1586,3 +1586,51 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 @media (prefers-reduced-motion: reduce) {
   .at-st-tip, .at-st-tip.on, .at-sheet, .at-sheet.open, .at-sheet-scrim { transition: none; }
 }
+
+/* ── 404 ─────────────────────────────────────────────────────────── */
+
+/* Standalone, like Login: no shell, and nothing to navigate from but
+   its own buttons. */
+.at-login:has(.at-nf) { padding: 40px; }
+.at-nf { width: min(620px, 100%); display: grid; gap: 26px; }
+.at-nf-head { display: grid; gap: 10px; }
+.at-nf-code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 112px;
+  font-weight: var(--weight-bold);
+  line-height: .9;
+  letter-spacing: -0.03em;
+}
+.at-nf-title { margin: 0; font-size: var(--text-display); font-weight: var(--weight-bold); line-height: var(--leading-tight); }
+.at-nf-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-metric);
+  font-weight: var(--weight-bold);
+}
+.at-nf-up { color: var(--accent); }
+.at-nf-down { color: var(--good); }
+.at-nf-sep { color: var(--text-faint); font-weight: var(--weight-regular); }
+.at-nf-log { padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.at-nf-time, .at-nf-msg { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-caption); }
+.at-nf-time { color: var(--text-faint); }
+/* A long mistyped address wraps rather than pushing the card wide. */
+.at-nf-msg { min-width: 0; overflow-wrap: anywhere; }
+.at-nf-lvl {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--fill-warn);
+  color: var(--warn);
+}
+.at-nf-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.at-nf-actions .at-btn { padding: 8px 16px; line-height: 1.5; }
+.at-nf-actions .at-btn--primary { border-color: var(--accent); }
+.at-nf-actions .at-btn:not(.at-btn--primary) { background: var(--surface); }
+.at-nf-actions .at-btn:not(.at-btn--primary):hover { background: var(--border); }

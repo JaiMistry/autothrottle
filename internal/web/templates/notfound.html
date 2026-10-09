@@ -1,13 +1,26 @@
 {{define "content"}}
-<header class="at-page-head">
-  <div style="display:grid;gap:var(--space-2)">
-    <h1 class="at-page-title">Page not found</h1>
+{{/* The request, told in the app's own terms: nothing moving, and a
+     log line for the address that went nowhere. */}}
+<div class="at-nf">
+  <div class="at-nf-head">
+    <span class="at-nf-code">404</span>
+    <h1 class="at-nf-title">Nothing here to throttle</h1>
   </div>
-</header>
-
-{{template "emptystate" dict
-  "Title" "Nothing at this address"
-  "Body" "The link may be mistyped, or the page may have moved."
-  "ActionHref" "/"
-  "ActionLabel" "Go to Dashboard"}}
+  <div class="at-nf-rate" aria-label="Upload 0 KB/s, download 0 KB/s">
+    <span class="at-nf-up">↑ 0 KB/s</span><span class="at-nf-sep" aria-hidden="true">/</span><span class="at-nf-down">↓ 0 KB/s</span>
+  </div>
+  <div class="at-card at-nf-log">
+    <span class="at-nf-time">{{.Time}}</span>
+    <span class="at-nf-lvl">WARN</span>
+    <span class="at-nf-msg">no route for {{.Method}} {{.Path}}</span>
+  </div>
+  <div class="at-nf-actions">
+    {{if .SignedIn}}
+    <a class="at-btn at-btn--primary" href="/">Go to Dashboard</a>
+    <a class="at-btn" href="/logs">Open Logs</a>
+    {{else}}
+    <a class="at-btn at-btn--primary" href="{{.LoginURL}}">Log in</a>
+    {{end}}
+  </div>
+</div>
 {{end}}

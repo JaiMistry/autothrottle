@@ -266,19 +266,46 @@ func TestTabTitles(t *testing.T) {
 	expectBody(t, fresh.get("/setup"), "<title>Set up</title>")
 }
 
-// An unknown address gets the app's own page, signed in, with a way
-// back, and still answers 404.
+// An unknown address gets the 404, signed in or not; a real page asks
+// for a sign-in first, and signing in comes back to it.
 func TestNotFoundPage(t *testing.T) {
 	app := newApp(t)
 	rec := app.get("/no-such-page")
 	expectStatus(t, rec, http.StatusNotFound)
-	expectBody(t, rec, "Nothing at this address")
-	expectBody(t, rec, `href="/"`)
-	expectBody(t, rec, `class="at-shell"`)
-
-	// Signed out, it is the sign-in page first, as for any other address.
-	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
-	if rec := signedOut.get("/no-such-page"); rec.Code != http.StatusSeeOther {
-		t.Errorf("signed out: %d", rec.Code)
+	for _, want := range []string{"Nothing here to throttle", "no route for GET /no-such-page", ">WARN<", `href="/">Go to Dashboard`, `href="/logs">Open Logs`} {
+		expectBody(t, rec, want)
 	}
+	if strings.Contains(rec.Body.String(), "at-shell") || strings.Contains(rec.Body.String(), ">Log in<") {
+		t.Error("the signed-in 404 has the app shell or a Log in button")
+	}
+	// A method no page answers is a 404 too.
+	expectStatus(t, app.post("/no-such-page", nil), http.StatusNotFound)
+
+	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	rec = signedOut.get("/config/servers/9?x=1")
+	expectStatus(t, rec, http.StatusNotFound)
+	expectBody(t, rec, "no route for GET /config/servers/9")
+	expectBody(t, rec, `href="/login?next=%2Fconfig%2Fservers%2F9%3Fx%3D1">Log in`)
+	if strings.Contains(rec.Body.String(), "Open Logs") {
+		t.Error("the signed-out 404 offers Logs")
+	}
+	// Real pages never reach it signed out.
+	expectRedirect(t, signedOut.get("/logs"), "/login?next=%2Flogs")
+}
+
+// Signing in returns to the page that asked for it, and only ever to a
+// page of this app.
+func TestLoginReturnsToTheRequestedPage(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	expectBody(t, app.get("/login?next=%2Flogs%3Flevel%3Dwarn"), `name="next" value="/logs?level=warn"`)
+	if strings.Contains(app.get("/login?next=https://evil.example").Body.String(), `name="next"`) {
+		t.Error("the login page carried an outside address")
+	}
+	rec := app.do("POST", "/login", url.Values{"username": {testUser}, "password": {"wrong"}, "next": {"/logs"}})
+	expectBody(t, rec, `name="next" value="/logs"`)
+
+	rec = app.do("POST", "/login", url.Values{"username": {testUser}, "password": {testPass}, "next": {"/logs?level=warn"}})
+	expectRedirect(t, rec, "/logs?level=warn")
+	rec = app.do("POST", "/login", url.Values{"username": {testUser}, "password": {testPass}, "next": {"//evil.example"}})
+	expectRedirect(t, rec, "/")
 }

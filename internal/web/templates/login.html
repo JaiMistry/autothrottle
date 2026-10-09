@@ -12,6 +12,7 @@
          keeps the box model identical to the design's. */}}
     <div>
     <form method="post" action="/login" class="at-stack">
+      {{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
       {{/* Deliberately generic: naming which half was wrong would leak
            which accounts exist. */}}
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
