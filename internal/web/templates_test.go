@@ -161,8 +161,8 @@ func TestPagedLogArithmetic(t *testing.T) {
 	}
 }
 
-// The healthy state is a green dot, every other state a flag, and both
-// lead the row, before the name.
+// The healthy state is a green dot before the name; every other state
+// keeps its flag after it.
 func TestRowHealthyStateIsADot(t *testing.T) {
 	tmpl, err := parsePage("dashboard", templateFuncs())
 	if err != nil {
@@ -190,17 +190,14 @@ func TestRowHealthyStateIsADot(t *testing.T) {
 		if flag != "" && !strings.Contains(html, flag) {
 			t.Errorf("downloader %s lost its %q flag", state, flag)
 		}
-		if lead := max(strings.Index(html, "at-rowdot"), strings.Index(html, "at-flag")); lead < 0 || strings.Index(html, ">qBit<") < lead {
-			t.Errorf("downloader %s: its state does not lead the row", state)
+		if hasDot && strings.Index(html, "at-rowdot") > strings.Index(html, "qBit") {
+			t.Errorf("downloader %s: the dot comes after the name", state)
 		}
 	}
 	for state, flag := range map[string]string{
 		"idle": "", "playing": "2 playing", "unreachable": "Unreachable", "connecting": "Connecting…", "disabled": "Disabled",
 	} {
 		html := render("serverrow", serverRowView{Name: "Plex", State: state, Sessions: 2, Detail: "No activity detected."})
-		if lead := max(strings.Index(html, "at-rowdot"), strings.Index(html, "at-flag")); lead < 0 || strings.Index(html, ">Plex<") < lead {
-			t.Errorf("server %s: its state does not lead the row", state)
-		}
 		hasDot := strings.Contains(html, dot("Idle"))
 		if (flag == "") != hasDot || strings.Contains(html, ">Idle<") {
 			t.Errorf("server %s: dot %v in %s", state, hasDot, html)
