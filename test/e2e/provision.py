@@ -13,6 +13,7 @@ it runs on a bare CI runner.
 """
 import base64
 import hashlib
+import http.client
 import json
 import os
 import pathlib
@@ -85,8 +86,9 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
     req.add_header("X-Emby-Authorization", auth)
     if token:
         req.add_header("X-Emby-Token", token)
-    # A server can report itself ready and still answer 503 for a few
-    # seconds while it finishes starting, so that alone is retried.
+    # A server can report itself ready and still answer 503, or drop the
+    # connection, for a few seconds while it finishes starting, so those
+    # alone are retried.
     for attempt in range(30):
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
@@ -94,6 +96,10 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
                 return json.loads(body) if body.strip() else None
         except urllib.error.HTTPError as e:
             if e.code != 503 or attempt == 29:
+                raise
+            time.sleep(2)
+        except (ConnectionResetError, http.client.RemoteDisconnected):
+            if attempt == 29:
                 raise
             time.sleep(2)
 

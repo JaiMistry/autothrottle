@@ -103,12 +103,11 @@ func TestRetryIfFailing(t *testing.T) {
 	s.resolveNow()
 
 	client.bringUp()
-	n := client.attempts()
 	s.RetryIfFailing(dlID)
 	eventually(t, "the re-apply", func() bool { return s.State(dlID).Failure == "" })
 
 	// Nothing to do for one that is fine.
-	n = client.attempts()
+	n := client.attempts()
 	s.RetryIfFailing(dlID)
 	time.Sleep(50 * time.Millisecond)
 	if client.attempts() != n {
