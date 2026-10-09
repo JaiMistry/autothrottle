@@ -17,6 +17,19 @@ var schemaSQL string
 // DB wraps a SQLite connection with the app's data access methods.
 type DB struct {
 	conn *sql.DB
+	// onEvents runs after the event log changes, so an open Logs page
+	// can show it. Set once, before anything writes.
+	onEvents func()
+}
+
+// OnEventsChanged registers fn to run whenever an event is written or
+// the log is cleared.
+func (d *DB) OnEventsChanged(fn func()) { d.onEvents = fn }
+
+func (d *DB) eventsChanged() {
+	if d.onEvents != nil {
+		d.onEvents()
+	}
 }
 
 // Open opens (creating if needed) the SQLite database at path and

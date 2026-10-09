@@ -23,6 +23,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 	"github.com/JaiMistry/autothrottle/internal/retention"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 	"github.com/JaiMistry/autothrottle/internal/settings"
@@ -108,6 +109,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Open pages hear about changes as they happen rather than polling.
+	hub := srv.Live()
+	sched.SetNotifier(hub)
+	watchers.SetNotifier(hub)
+	database.OnEventsChanged(func() { hub.Notify(live.Logs) })
+
 	httpServer := &http.Server{
 		Addr:         addr,
 		Handler:      srv.Router(),
@@ -115,6 +122,9 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	// Open streams never finish on their own, so shutdown would wait
+	// out its whole timeout on them; ending them first lets it be quick.
+	httpServer.RegisterOnShutdown(hub.Close)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

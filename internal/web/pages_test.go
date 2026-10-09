@@ -66,7 +66,7 @@ func TestClearDeletesTheLogAndKeepsRefreshing(t *testing.T) {
 		t.Fatalf("%d events survived Clear", len(events))
 	}
 	// The empty panel still carries its refresh, so the next event shows up.
-	expectBody(t, rec, `hx-trigger="every 5s`)
+	expectBody(t, rec, `data-live="logs"`)
 	expectBody(t, rec, "No events yet")
 
 	app.events(1, "info")

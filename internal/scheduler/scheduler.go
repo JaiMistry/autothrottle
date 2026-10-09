@@ -18,6 +18,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
@@ -51,6 +52,9 @@ type Scheduler struct {
 	// is. historyMu serialises the period records that follow it.
 	throttlingSince time.Time
 	historyMu       sync.Mutex
+
+	// notify tells open pages when what they show has changed.
+	notify live.Notifier
 
 	// limiterFor resolves a downloader type to its rate-limit client.
 	// A field rather than a direct call so tests can substitute a fake
@@ -95,6 +99,10 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		paused: store.Paused(),
 	}
 }
+
+// SetNotifier makes the scheduler announce changes to open pages. Set
+// once, before anything runs.
+func (s *Scheduler) SetNotifier(n live.Notifier) { s.notify = n }
 
 // SetPaused toggles the manual dashboard override, which forces every
 // downloader back to its default rate regardless of
@@ -146,7 +154,8 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 	// device or duration. Overwriting wholesale would blank the row's
 	// identity every time its timecode moved. Emby and Jellyfin send
 	// full sessions, so for them this is a no-op.
-	if prev, known := s.live[mediaServerID][session.Key]; known {
+	prev, known := s.live[mediaServerID][session.Key]
+	if known {
 		if session.Title == "" {
 			session.Title = prev.Title
 		}
@@ -164,6 +173,32 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 		}
 	}
 	s.live[mediaServerID][session.Key] = session
+	if !known || detailChanged(prev, session) {
+		live.Notify(s.notify, live.Dashboard)
+	}
+}
+
+// positionDrift is how far a reported position may stray from where
+// the page's own clock has it before the page is told: it runs the
+// timecode forward itself between reports, so a report that agrees
+// with it is not news.
+const positionDrift = 2500 * time.Millisecond
+
+// detailChanged reports whether a session's new description differs
+// from the old in anything the Dashboard shows. Position counts only
+// when it is off from where steady playback would have taken it — a
+// seek, a stall — since sockets report it every second or so.
+func detailChanged(prev, next clients.Session) bool {
+	if prev.Title != next.Title || prev.Device != next.Device || prev.Duration != next.Duration ||
+		prev.Paused != next.Paused || prev.Local != next.Local {
+		return true
+	}
+	expected := prev.Position
+	if !prev.Paused && !prev.PositionAt.IsZero() && !next.PositionAt.IsZero() {
+		expected += next.PositionAt.Sub(prev.PositionAt)
+	}
+	drift := next.Position - expected
+	return drift > positionDrift || drift < -positionDrift
 }
 
 // ActiveSessions describes what is currently playing on one media
@@ -211,6 +246,7 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	delete(s.active, mediaServerID)
 	delete(s.live, mediaServerID)
 	s.mu.Unlock()
+	live.Notify(s.notify, live.Dashboard)
 
 	// Nothing is watching this server any more, so its open sessions
 	// can never be observed ending; left open, they would read as
@@ -242,12 +278,21 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	// has no title until a snapshot supplies one.
 	s.mu.Lock()
 	unchanged := sameSessionSet(s.active[mediaServerID], next)
+	shown := !unchanged || len(s.live[mediaServerID]) != len(detail)
+	for key, session := range detail {
+		if prev, ok := s.live[mediaServerID][key]; !ok || detailChanged(prev, session) {
+			shown = true
+		}
+	}
 	if len(detail) == 0 {
 		delete(s.live, mediaServerID)
 	} else {
 		s.live[mediaServerID] = detail
 	}
 	s.mu.Unlock()
+	if shown {
+		live.Notify(s.notify, live.Dashboard)
+	}
 
 	for _, session := range sessions {
 		if session.Title != "" || session.Device != "" {
@@ -349,6 +394,9 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 		delete(s.live[mediaServerID], session.Key)
 	}
 	s.mu.Unlock()
+	// Shown now, before the downloaders answer: the session appears the
+	// moment it starts, and the throttle follows when resolve has run.
+	live.Notify(s.notify, live.Dashboard)
 
 	s.recordSession(mediaServerID, session, active)
 	s.ResolveAsync()
@@ -448,12 +496,12 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	// Forget downloaders that are gone or switched off, so a later
 	// re-enable re-applies its rates from scratch rather than being
 	// short-circuited by state remembered from before.
-	live := make(map[int64]bool, len(toApply))
+	kept := make(map[int64]bool, len(toApply))
 	for _, r := range toApply {
-		live[r.downloader.ID] = true
+		kept[r.downloader.ID] = true
 	}
 	for id := range s.applied {
-		if !live[id] {
+		if !kept[id] {
 			delete(s.applied, id)
 		}
 	}
@@ -463,6 +511,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		s.applyState(ctx, r)
 	}
 	s.recordThrottlePeriod()
+	live.Notify(s.notify, live.Dashboard)
 }
 
 // recordThrottlePeriod opens or closes the throttle period when
@@ -499,6 +548,9 @@ func (s *Scheduler) recordThrottlePeriod() {
 	}
 	if err != nil {
 		slog.Error("scheduler: recording throttle history", "error", err)
+	}
+	if throttling != was {
+		live.Notify(s.notify, live.History)
 	}
 }
 

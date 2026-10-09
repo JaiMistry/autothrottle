@@ -169,5 +169,6 @@ func (d *DB) DeleteAllEvents() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	d.eventsChanged()
 	return res.RowsAffected()
 }

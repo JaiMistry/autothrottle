@@ -131,6 +131,11 @@ const transmission = {
   page.setDefaultTimeout(30000);
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
+  // Every fetch of the Dashboard's live block, to tell pushed updates
+  // from polling.
+  let liveFetches = 0;
+  page.on('request', (r) => { if (r.url().includes('/dashboard/live')) liveFetches++; });
+  const stream = () => page.evaluate(() => document.documentElement.dataset.liveStream || '');
 
   const at = () => new URL(page.url()).pathname;
   const text = (sel) => page.$eval(sel, (e) => e.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
@@ -269,13 +274,45 @@ const transmission = {
     check(!!idle, 'the Dashboard says nothing is throttled', JSON.stringify(await dashboard()));
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited');
 
+    section('Live stream');
+    const opened = await until('the stream to open', async () => (await stream()) === 'open', 15000);
+    check(!!opened, 'the Dashboard opens a live stream', await stream());
+    liveFetches = 0;
+    await sleep(12000);
+    check(liveFetches === 0, 'with the stream up and nothing happening, the Dashboard does not poll', `${liveFetches} fetches in 12s`);
+    // A tab in the background lets its stream go, and picks it up again.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    check((await stream()) === 'closed', 'a hidden tab closes its stream', await stream());
+    liveFetches = 0;
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const reopened = await until('the stream to reopen', async () => (await stream()) === 'open', 15000);
+    check(!!reopened && liveFetches >= 1, 'coming back reopens it and catches up at once', `${await stream()}, ${liveFetches} fetches`);
+
     section('Playback starts — watched live, no reloads');
     const player = startPlayer();
-    const throttled = await until('throttling', async () => {
-      const d = await dashboard();
-      return d.downloaders.every((s) => s === 'throttled') ? d : null;
-    });
+    // The moment qBittorrent is actually limited, then the moment the
+    // page says so: the gap is this app's own latency, push included.
+    let appliedAt = 0;
+    while (!appliedAt) {
+      if ((await qbittorrent.limits()).down === 1500 * 1024) appliedAt = Date.now();
+      else await sleep(100);
+    }
+    let shownAt = 0;
+    while (!shownAt && Date.now() - appliedAt < 30000) {
+      if ((await dashboard()).downloaders.every((s) => s === 'throttled')) shownAt = Date.now();
+      else await sleep(100);
+    }
+    const throttled = shownAt ? await dashboard() : null;
     check(!!throttled, 'both clients show as throttled without a reload', JSON.stringify(await dashboard()));
+    check(shownAt && shownAt - appliedAt < 1500, 'the page shows the throttle within 1.5s of it landing', `${shownAt - appliedAt}ms`);
+    console.log(`        (${shownAt - appliedAt}ms after qBittorrent was limited)`);
+    console.log(`      (shown ${shownAt - appliedAt}ms after it landed)`);
     check(/throttled/.test((await dashboard()).hero), 'the headline says what is throttled');
     const q = await qbittorrent.limits();
     check(q.down === 1500 * 1024 && q.up === 300 * 1024, 'qBittorrent really is limited to 1500/300 KB/s', JSON.stringify(q));
@@ -299,6 +336,9 @@ const transmission = {
       ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 60000);
     check(!!reasserted, 'a restart re-applies the throttle the client lost');
     await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
+    // The page that was open across the restart reconnects by itself.
+    const rejoined = await until('the stream to come back', async () => (await stream()) === 'open', 30000);
+    check(!!rejoined, 'the open page reconnects its stream after the restart', await stream());
     await navigate('/');
     check(at() === '/', 'the browser is still signed in after the restart', at());
     const resumed = await until('the Dashboard to show it', async () =>
@@ -313,6 +353,24 @@ const transmission = {
     check(p1 === p2, 'the timecode holds still while paused', `${p1} → ${p2}`);
     check((await dashboard()).downloaders.every((s) => s === 'throttled'), 'a pause keeps the throttle on');
     await player.resume();
+
+    section('Without the stream');
+    // A proxy that will not pass the stream: the page falls back to
+    // polling and still keeps up.
+    const blocked = await browser.newPage();
+    await blocked.setViewport({ width: 1440, height: 1000 });
+    await blocked.setRequestInterception(true);
+    let blockedFetches = 0;
+    blocked.on('request', (r) => {
+      if (r.url().includes('/events')) return r.abort();
+      if (r.url().includes('/dashboard/live')) blockedFetches++;
+      r.continue();
+    });
+    await blocked.goto(APP + '/', { waitUntil: 'networkidle2' });
+    await sleep(11000);
+    const state = await blocked.evaluate(() => document.documentElement.dataset.liveStream || '');
+    check(state !== 'open' && blockedFetches >= 2, 'with the stream blocked, the Dashboard polls instead', `${state}, ${blockedFetches} fetches in 11s`);
+    await blocked.close();
 
     section('Disable throttling');
     await settle(() => page.click('form[action="/pause-toggle"] button'));

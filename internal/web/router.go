@@ -12,6 +12,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 )
 
@@ -50,6 +51,7 @@ type Server struct {
 	plex          plexSignIn
 	assets        *staticAssets
 	startedAt     time.Time
+	live          *live.Hub
 }
 
 // parsePage builds one page's template set: the shared layout, the
@@ -93,6 +95,7 @@ func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byt
 		watchers:      watchers,
 		assets:        newStaticAssets(staticSub),
 		startedAt:     time.Now(),
+		live:          live.NewHub(),
 	}, nil
 }
 
@@ -132,6 +135,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /logs/panel", s.logPanelFragment)
 	protected.HandleFunc("POST /logs/clear", s.clearLogs)
 	protected.HandleFunc("GET /dashboard/live", s.dashboardLive)
+	protected.HandleFunc("GET /events", s.liveEvents)
 	protected.HandleFunc("GET /dashboard/history", s.historyCard)
 	protected.HandleFunc("GET /configuration/media-servers/new", s.sheetForm("server"))
 	protected.HandleFunc("GET /configuration/media-servers/{id}/edit", s.sheetForm("server"))

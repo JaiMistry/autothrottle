@@ -2,13 +2,15 @@ package watcher
 
 import (
 	"context"
-	"github.com/JaiMistry/autothrottle/internal/clients"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 )
 
 // fakeSink stands in for the scheduler. Watchers started here dial a
@@ -225,4 +227,52 @@ func keysOf(sessions []clients.Session) []string {
 		out = append(out, session.Key)
 	}
 	return out
+}
+
+type heard struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (h *heard) Notify(live.Topic) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.n++
+}
+
+func (h *heard) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.n
+}
+
+// A watcher starting or stopping changes what the Dashboard says about
+// its server, so it is announced without waiting for a session event.
+func TestHealthChangesAreAnnounced(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	key := make([]byte, 32)
+	m := NewManager(database, key, &fakeSink{})
+	h := &heard{}
+	m.SetNotifier(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	m.Start(ctx)
+
+	time.Sleep(2*healthCheckInterval + 500*time.Millisecond)
+	if h.count() != 0 {
+		t.Fatalf("announced %d changes with nothing running", h.count())
+	}
+	addServer(t, database, key, "Plex", "http://plex-h.invalid:32400", true)
+	m.Reconcile()
+	deadline := time.Now().Add(3 * healthCheckInterval)
+	for h.count() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("a watcher starting was never announced")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

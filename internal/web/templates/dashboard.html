@@ -33,7 +33,7 @@
      target and swap: boosted, they would load the next page into this
      block, shell and sidebar included. */}}
 {{define "dashlive"}}<div id="dash-live" style="display:grid;gap:var(--space-8)"
-     hx-get="/dashboard/live" hx-trigger="every 5s [document.visibilityState === 'visible']"
+     hx-get="/dashboard/live" hx-trigger="live, every 5s [atLivePoll(this)]" data-live="dashboard"
      hx-swap="outerHTML" hx-target="this" hx-disinherit="*">
 
   <section class="at-card at-hero"{{if .HeroBorder}} data-border="{{.HeroBorder}}"{{end}}>

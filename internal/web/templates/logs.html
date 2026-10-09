@@ -27,7 +27,7 @@
      the page updating the moment it was cleared. */}}
 <div id="log-panel"
   {{- if and .LivePanel (eq .Log.Page 1)}}
-  hx-get="{{.LivePanel}}" hx-trigger="every 5s [document.visibilityState === 'visible']"
+  hx-get="{{.LivePanel}}" hx-trigger="live, every 5s [atLivePoll(this)]" data-live="logs"
   hx-target="#log-panel" hx-swap="outerHTML"{{end}}>
   <div class="at-tabs at-tabs--sm at-tabs--fill" role="tablist" style="margin-bottom:var(--space-8)">
     {{template "logtab" dict "Label" "All" "Level" "" "Count" .CountAll "Active" (eq .Level "") "Q" $q "Per" $per}}

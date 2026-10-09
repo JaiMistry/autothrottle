@@ -19,12 +19,14 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/crypto"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
@@ -65,7 +67,13 @@ type Manager struct {
 	mu      sync.Mutex
 	root    context.Context
 	running map[int64]handle
+
+	notify live.Notifier
 }
+
+// SetNotifier makes the manager announce connection changes to open
+// pages. Set once, before Start.
+func (m *Manager) SetNotifier(n live.Notifier) { m.notify = n }
 
 func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
 	return &Manager{
@@ -84,6 +92,44 @@ func (m *Manager) Start(ctx context.Context) {
 	m.root = ctx
 	m.mu.Unlock()
 	m.Reconcile()
+	if m.notify != nil {
+		go m.watchHealth(ctx)
+	}
+}
+
+// healthCheckInterval is how often watchHealth looks. It reads memory
+// only, so it can be frequent.
+const healthCheckInterval = 2 * time.Second
+
+// watchHealth announces when a watcher starts, stops, connects or
+// drops. Those states live inside each watcher's reconnect loop, so
+// they are compared from here rather than threaded out of every client.
+func (m *Manager) watchHealth(ctx context.Context) {
+	last := m.health()
+	t := time.NewTicker(healthCheckInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if now := m.health(); !maps.Equal(now, last) {
+				last = now
+				live.Notify(m.notify, live.Dashboard)
+			}
+		}
+	}
+}
+
+// health is whether each running watcher is connected.
+func (m *Manager) health() map[int64]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[int64]bool, len(m.running))
+	for id, h := range m.running {
+		out[id] = h.watcher.Connection().Connected
+	}
+	return out
 }
 
 // Reconcile brings the running watcher set in line with the database.

@@ -14,6 +14,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/clients"
 	"github.com/JaiMistry/autothrottle/internal/db"
+	"github.com/JaiMistry/autothrottle/internal/live"
 	"github.com/JaiMistry/autothrottle/internal/scheduler"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
@@ -105,6 +106,10 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	}))
 	t.Cleanup(qbit.Close)
 
+	// Wired as the real binary wires them, so a change reaches the stream.
+	sched.SetNotifier(srv.Live())
+	database.OnEventsChanged(func() { srv.Live().Notify(live.Logs) })
+
 	return &testApp{t: t, srv: srv, db: database, sched: sched, watchers: watchers, handler: srv.Router(), qbit: qbit}
 }
 
@@ -117,6 +122,8 @@ func (a *testApp) restart() {
 		a.t.Fatal(err)
 	}
 	a.srv, a.handler = srv, srv.Router()
+	a.sched.SetNotifier(srv.Live())
+	a.db.OnEventsChanged(func() { srv.Live().Notify(live.Logs) })
 }
 
 var csrfField = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)

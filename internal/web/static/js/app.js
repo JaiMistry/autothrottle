@@ -868,6 +868,119 @@
   document.addEventListener("DOMContentLoaded", syncAfterRender);
 })();
 
+/* ── Live updates ───────────────────────────────────────────────
+   One event stream per tab names what changed — "dashboard", "logs",
+   "history" — and the parts of the page showing it fetch their own
+   fragment, the same request their timed refresh makes. The stream is
+   open only while the tab is visible and the page has something live
+   on it; without it, the old five-second poll takes over, so a proxy
+   that will not pass a stream costs a few seconds and nothing else. */
+(function () {
+  var source = null;
+  var up = false;
+  var everOpened = false;
+  var retry = 0;
+  var retryTimer = null;
+  // When each live block last refreshed, by id. Blocks that swap
+  // wholesale come back as new elements, so it cannot live on them.
+  var refreshedAt = {};
+  // Even with the stream up, refresh now and then in case a signal was
+  // lost, and whenever the stream is down, as often as before.
+  var SAFETY = 30000;
+
+  function blocks() { return document.querySelectorAll("[data-live]"); }
+  // Whether the stream is up, on the root element where anyone checking
+  // why a page is or is not updating can see it.
+  function mark(state) { document.documentElement.setAttribute("data-live-stream", state); }
+  function visible() { return document.visibilityState === "visible"; }
+
+  // The filter on each live block's own poll.
+  window.atLivePoll = function (el) {
+    if (!visible()) return false;
+    if (!up) return true;
+    return Date.now() - (refreshedAt[el.id] || 0) >= SAFETY;
+  };
+
+  function refresh(topics) {
+    blocks().forEach(function (el) {
+      var mine = el.getAttribute("data-live").split(" ");
+      if (!topics || mine.some(function (t) { return topics[t]; })) htmx.trigger(el, "live");
+    });
+    if ((!topics || topics.history) && window.atRefreshHistory) window.atRefreshHistory();
+  }
+
+  // A burst of changes (a session starting, then each downloader
+  // throttling) becomes one refresh.
+  var pending = {};
+  var flushTimer = null;
+  function queue(topic) {
+    pending[topic] = true;
+    if (!flushTimer) flushTimer = setTimeout(function () {
+      flushTimer = null;
+      var topics = pending;
+      pending = {};
+      refresh(topics);
+    }, 150);
+  }
+
+  function open() {
+    if (source || retryTimer || !visible() || !blocks().length || !window.EventSource) return;
+    source = new EventSource("/events");
+    source.onopen = function () {
+      up = true;
+      mark("open");
+      retry = 0;
+      // Anything that changed while the stream was down was missed.
+      if (everOpened) refresh(null);
+      everOpened = true;
+    };
+    source.onmessage = function (e) { queue(e.data); };
+    source.onerror = function () {
+      up = false;
+      mark("down");
+      // The browser retries a dropped stream by itself. One it has
+      // given up on (a sign-in redirect, a proxy refusing the type) is
+      // retried here, backing off, while the poll covers the gap.
+      if (source && source.readyState === EventSource.CLOSED) {
+        source = null;
+        retry = Math.min(retry + 1, 6);
+        retryTimer = setTimeout(function () { retryTimer = null; open(); }, 2500 * Math.pow(2, retry - 1));
+      }
+    };
+  }
+
+  function close() {
+    if (source) source.close();
+    source = null;
+    up = false;
+    everOpened = false;
+    mark("closed");
+  }
+
+  function sync() {
+    if (visible() && blocks().length) open();
+    else close();
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    var wasOpen = !!source;
+    sync();
+    // Coming back to the tab: catch up straight away.
+    if (visible() && !wasOpen && blocks().length) refresh(null);
+  });
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var el = e.detail.elt;
+    if (el && el.id && el.hasAttribute && el.hasAttribute("data-live")) refreshedAt[el.id] = Date.now();
+  });
+  // Boosted navigation swaps the page without reloading the script.
+  document.body.addEventListener("htmx:afterSettle", sync);
+  document.addEventListener("DOMContentLoaded", function () {
+    blocks().forEach(function (el) { refreshedAt[el.id] = Date.now(); });
+    sync();
+  });
+  window.addEventListener("pagehide", close);
+})();
+
 /* ── Session timer and Throttle History ─────────────────────────────
    The timer counts up from data-throttled-since, reading it on every
    tick so the Dashboard's refresh can move it. The history card holds
@@ -996,9 +1109,13 @@
 
   // The hour in progress keeps filling, so the card refreshes itself —
   // but not while the pointer is reading a tooltip, or mid-animation.
-  setInterval(function () {
+  // A period starting or ending refreshes it at once, through the live
+  // stream.
+  function refreshHistory() {
     var card = document.getElementById("throttle-history");
     if (!card || animating || document.visibilityState !== "visible" || card.matches(":hover") || !window.htmx) return;
     htmx.ajax("GET", "/dashboard/history?range=" + card.dataset.range, { target: "#throttle-history", swap: "outerHTML" });
-  }, 60000);
+  }
+  window.atRefreshHistory = refreshHistory;
+  setInterval(refreshHistory, 60000);
 })();

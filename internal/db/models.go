@@ -213,6 +213,14 @@ func (d *DB) DeleteMapping(id int64) error {
 // "now", which is every real caller; setting it explicitly exists for
 // tests that need an event dated into the past.
 func (d *DB) InsertEvent(e Event) error {
+	err := d.insertEvent(e)
+	if err == nil {
+		d.eventsChanged()
+	}
+	return err
+}
+
+func (d *DB) insertEvent(e Event) error {
 	if e.OccurredAt == "" {
 		_, err := d.conn.Exec(
 			`INSERT INTO events (level, message, mapping_id, media_server_id, downloader_id) VALUES (?, ?, ?, ?, ?)`,
