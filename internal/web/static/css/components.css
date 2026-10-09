@@ -259,6 +259,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
     border-bottom: 1px solid var(--border);
   }
   .at-theme-bar { display: none; }
+  /* With the theme bar gone the column has two rows, not three. Left at
+     three, main took the first and the footer the stretching middle
+     one, where it sat centred halfway down any short page. */
+  .at-main-col { grid-template-rows: 1fr auto; }
   .at-main { padding: var(--space-8) 16px var(--space-9); }
   .at-foot { padding: 10px 16px 16px; }
 
