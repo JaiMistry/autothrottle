@@ -101,11 +101,10 @@
   <div class="at-serverrow-main">
     <div class="at-serverrow-head">
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
-      {{if eq .State "disabled"}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{else}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{end}}
       {{if eq .State "playing"}}{{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d playing" .Sessions)}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
       {{else if eq .State "connecting"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting…"}}
-      {{else if eq .State "disabled"}}
+      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
       {{else}}{{template "statusflag" dict "Tone" "good" "Icon" "idle" "Label" "Idle"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
@@ -140,10 +139,9 @@
   <div class="at-dlrow">
     <div class="at-dlrow-head">
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
-      {{if eq .State "disabled"}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{else}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{end}}
-      {{if eq .State "disabled"}}{{/* the badge says it */}}
-      {{else if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
+      {{if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
+      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
       {{else if eq .State "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown"}}
       {{else}}{{/* normal and paused read the same: throttling off means
                    the configured default rate is in force, which is the
