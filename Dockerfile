@@ -9,7 +9,7 @@ COPY internal/web/static ./internal/web/static
 # @imports ./tokens/*.css, which only resolve from their real location.
 RUN npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o /out/tailwind.css --minify
 
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.26.9-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
