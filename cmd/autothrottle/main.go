@@ -49,6 +49,12 @@ func main() {
 		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
 		os.Exit(1)
 	}
+	// Not fatal: a directory this process may write but not chmod (owned
+	// by someone else, mounted from a share) still works, just less
+	// privately.
+	if err := restrictDataDir(dataDir); err != nil {
+		logger.Warn("could not restrict the data directory to its owner", "dir", dataDir, "error", err)
+	}
 	dbPath := filepath.Join(dataDir, "autothrottle.db")
 	database, err := db.Open(dbPath)
 	if err != nil {

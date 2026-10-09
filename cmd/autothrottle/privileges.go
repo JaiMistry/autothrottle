@@ -96,3 +96,34 @@ func chownTree(dir string, uid, gid int) error {
 		return nil
 	})
 }
+
+// restrictDataDir keeps the data directory to its owner. The database
+// holds the account's password hash and every connection's encrypted
+// credential, and the key that decrypts them sits beside it; none of it
+// is anyone else's business on a shared host. The umask covers what
+// SQLite creates later (its -wal and -shm files appear on demand).
+func restrictDataDir(dataDir string) error {
+	syscall.Umask(0o077)
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		return fmt.Errorf("restricting %s: %w", dataDir, err)
+	}
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", dataDir, err)
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			if err := os.Chmod(filepath.Join(dataDir, e.Name()), info.Mode().Perm()&0o700); err != nil {
+				return fmt.Errorf("restricting %s: %w", e.Name(), err)
+			}
+		}
+	}
+	return nil
+}

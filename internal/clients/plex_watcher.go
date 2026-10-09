@@ -75,7 +75,8 @@ func (w *PlexWatcher) connectAndListen(ctx context.Context) error {
 
 	c, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
-		return fmt.Errorf("dialing %s: %w", w.BaseURL, err)
+		// The token is in the URL, and so in the error.
+		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))
 	}
 	defer func() { _ = c.CloseNow() }()
 

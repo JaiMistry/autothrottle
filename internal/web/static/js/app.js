@@ -590,20 +590,44 @@
     // and changing it back counts as unchanged.
     if (form.hasAttribute("data-editing") && form.__savedValues === undefined) {
       form.__savedValues = formValues(form);
+      form.__savedUrl = val("url");
+      form.__savedUser = val("username");
     }
+    // A saved credential is only ever sent to the address, and with the
+    // username, it was saved for; change either and it must be typed
+    // again. The server holds to the same rule.
+    var stored = form.getAttribute("data-hascredential") === "1";
+    var moved = stored && form.hasAttribute("data-editing") &&
+      (!sameOrigin(form.__savedUrl, val("url")) || (form.__savedUser !== undefined && form.__savedUser !== val("username")));
+    form.querySelectorAll("[data-keep-hint]").forEach(function (hint) {
+      hint.textContent = moved ? "Enter it again for the new address or username." : "Leave blank to keep the existing value.";
+    });
     var ok = !!form.querySelector('.at-testresult[data-state="connected"]') ||
       (form.hasAttribute("data-editing") && formValues(form) === form.__savedValues);
     require.split(",").forEach(function (need) {
       if (need === "credential") {
         // A stored credential counts, and so does a token Plex just
         // handed over — neither is typed into a visible field.
-        ok = ok && (!!val("token") || !!val("api_token") || !!val("plex_token") ||
-                    form.getAttribute("data-hascredential") === "1");
+        ok = ok && (!!val("token") || !!val("api_token") || !!val("plex_token") || (stored && !moved));
       } else {
         ok = ok && !!val(need);
       }
     });
+    // A downloader's credentials are optional, but saved ones cannot
+    // follow it to a new address unannounced.
+    if (moved && form.querySelector('[name="password"]') && !val("password")) ok = false;
     submit.disabled = !ok;
+  }
+
+  // Same scheme, host and port: what decides whether a saved credential
+  // may be used with an edited address.
+  function sameOrigin(a, b) {
+    try {
+      var x = new URL(a), y = new URL(b);
+      return x.protocol === y.protocol && x.host.toLowerCase() === y.host.toLowerCase();
+    } catch (e) {
+      return a === b;
+    }
   }
 
   function gateAllSubmits() {

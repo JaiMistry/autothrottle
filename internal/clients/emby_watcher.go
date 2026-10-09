@@ -135,7 +135,8 @@ func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
 
 	c, _, err := websocket.Dial(ctx, w.webSocketURL(), nil)
 	if err != nil {
-		return fmt.Errorf("dialing %s: %w", w.BaseURL, err)
+		// The API key is in the URL, and so in the error.
+		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))
 	}
 	defer func() { _ = c.CloseNow() }()
 

@@ -611,7 +611,7 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	}
 
 	if err := limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
-		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, err))
+		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, clients.Redact(err)))
 		return
 	}
 

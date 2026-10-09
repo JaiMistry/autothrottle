@@ -115,6 +115,22 @@ func noStoreHTML(next http.Handler) http.Handler {
 	})
 }
 
+// securityHeaders goes on every response. nosniff keeps a browser from
+// reading a response as anything but its declared type; the referrer
+// policy keeps this app's addresses — often a private IP and port — out
+// of the requests its outside links make (GitHub, Plex's help pages).
+// Framing is left alone on purpose: the session cookie is SameSite=Lax,
+// so another site's frame never arrives signed in, and dashboards that
+// embed self-hosted apps in a frame keep working.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
 
@@ -175,5 +191,5 @@ func (s *Server) Router() http.Handler {
 		mux.Handle("/static/", http.StripPrefix("/static/", s.assets))
 	}
 
-	return mux
+	return securityHeaders(mux)
 }

@@ -75,5 +75,11 @@ func (d *DB) migrate() error {
 			return fmt.Errorf("migrating: %w", err)
 		}
 	}
+	// Sessions were once stored as the token itself. Those rows can no
+	// longer match anything, and they are exactly what should not sit in
+	// the file, so they go; anyone signed in then signs in once more.
+	if _, err := d.conn.Exec(`DELETE FROM sessions WHERE length(token) <> 64`); err != nil {
+		return fmt.Errorf("migrating sessions: %w", err)
+	}
 	return nil
 }

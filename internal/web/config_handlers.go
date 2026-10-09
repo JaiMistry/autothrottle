@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -418,6 +419,10 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		credentialEncrypted = existing.CredentialEncrypted
+		if token == "" && credentialEncrypted != "" && !sameOrigin(existing.URL, rawURL) {
+			s.renderConfigError(w, r, "Enter the token again for the new address. A saved token is only ever sent to the address it was saved for.")
+			return
+		}
 	}
 	if token != "" {
 		encrypted, err := crypto.Encrypt(s.encryptionKey, token)
@@ -483,8 +488,11 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // storedMediaServerCredential returns the credential already saved for
-// the server this form is editing, if there is one.
-func (s *Server) storedMediaServerCredential(r *http.Request) (string, bool) {
+// the server this form is editing, if there is one and the form still
+// points at the address it was saved for. A saved token is never sent
+// anywhere else: otherwise anyone signed in could read it out by
+// pointing the address at a machine of their own and pressing Test.
+func (s *Server) storedMediaServerCredential(r *http.Request, rawURL string) (string, bool) {
 	idStr := r.FormValue("id")
 	if idStr == "" {
 		return "", false
@@ -494,7 +502,7 @@ func (s *Server) storedMediaServerCredential(r *http.Request) (string, bool) {
 		return "", false
 	}
 	ms, err := s.db.GetMediaServer(id)
-	if err != nil || ms.CredentialEncrypted == "" {
+	if err != nil || ms.CredentialEncrypted == "" || !sameOrigin(ms.URL, rawURL) {
 		return "", false
 	}
 	token, err := crypto.Decrypt(s.encryptionKey, ms.CredentialEncrypted)
@@ -504,6 +512,48 @@ func (s *Server) storedMediaServerCredential(r *http.Request) (string, bool) {
 	return token, true
 }
 
+// storedDownloaderCredential is the same for a downloader: its saved
+// password, when the form keeps the saved username and address.
+func (s *Server) storedDownloaderCredential(r *http.Request, rawURL, username string) (string, bool) {
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		return "", false
+	}
+	dl, err := s.db.GetDownloader(id)
+	if err != nil || !dl.CredentialEncrypted.Valid || !sameOrigin(dl.URL, rawURL) {
+		return "", false
+	}
+	storedUser, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
+	if err != nil || storedUser != username || password == "" {
+		return "", false
+	}
+	return password, true
+}
+
+// sameOrigin reports whether two URLs reach the same scheme, host and
+// port, so a credential saved for one may be used with the other. A
+// different path on the same server — behind a reverse proxy, say — is
+// still the same server.
+func sameOrigin(a, b string) bool {
+	ua, errA := url.Parse(strings.TrimSpace(a))
+	ub, errB := url.Parse(strings.TrimSpace(b))
+	if errA != nil || errB != nil || ua.Host == "" || ub.Host == "" {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if p := u.Port(); p != "" {
+			return p
+		}
+		if strings.EqualFold(u.Scheme, "https") {
+			return "443"
+		}
+		return "80"
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) &&
+		strings.EqualFold(ua.Hostname(), ub.Hostname()) &&
+		port(ua) == port(ub)
+}
+
 // probe runs one connection test and writes its result.
 func (s *Server) probe(w http.ResponseWriter, r *http.Request, kind probeKind, target, okMessage string, test func(context.Context) error) {
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
@@ -511,7 +561,7 @@ func (s *Server) probe(w http.ResponseWriter, r *http.Request, kind probeKind, t
 	started := time.Now()
 	if err := test(ctx); err != nil {
 		field, hint := classifyProbeError(kind, err)
-		s.writeTestResult(w, testResult{Target: target, Message: err.Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
+		s.writeTestResult(w, testResult{Target: target, Message: clients.Redact(err).Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return
 	}
 	s.writeTestResult(w, testResult{OK: true, Target: target, Message: okMessage, Elapsed: time.Since(started)})
@@ -530,7 +580,7 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	// "keep what is stored", so the test uses the stored one rather than
 	// demanding it be retyped.
 	if token == "" {
-		if stored, ok := s.storedMediaServerCredential(r); ok {
+		if stored, ok := s.storedMediaServerCredential(r, rawURL); ok {
 			token = stored
 		}
 	}
@@ -587,10 +637,6 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		s.renderConfigError(w, r, "Name, URL, and a supported type are required.")
 		return
 	}
-	if (username == "") != (password == "") {
-		s.renderConfigError(w, r, "Both username and password are required to set downloader credentials.")
-		return
-	}
 
 	var id int64
 	if idStr := r.FormValue("id"); idStr != "" {
@@ -620,7 +666,11 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.FormValue("clear_credentials") == "on":
 		credentialEncrypted = sql.NullString{}
-	case username != "" && password != "":
+	case password != "":
+		if username == "" {
+			s.renderConfigError(w, r, "Enter the username that goes with the password.")
+			return
+		}
 		encrypted, err := credential.Encrypt(s.encryptionKey, username, password)
 		if err != nil {
 			slog.Error("encrypting downloader credential", "error", err)
@@ -628,6 +678,16 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		credentialEncrypted = sql.NullString{String: encrypted, Valid: true}
+	case credentialEncrypted.Valid:
+		// A blank password keeps the saved one — for the saved username,
+		// at the saved address, and nowhere else.
+		if _, ok := s.storedDownloaderCredential(r, rawURL, username); !ok {
+			s.renderConfigError(w, r, "Enter the password again. A saved password is only ever used with the username and address it was saved for.")
+			return
+		}
+	case username != "":
+		s.renderConfigError(w, r, "Enter the password that goes with the username.")
+		return
 	}
 
 	dl := db.Downloader{
@@ -700,6 +760,13 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
+	// Editing: a blank password means the saved one, for the saved
+	// username and address only.
+	if password == "" {
+		if stored, ok := s.storedDownloaderCredential(r, rawURL, username); ok {
+			password = stored
+		}
+	}
 
 	s.probe(w, r, probeDownloader, rawURL, "Successfully connected.", func(ctx context.Context) error {
 		if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {

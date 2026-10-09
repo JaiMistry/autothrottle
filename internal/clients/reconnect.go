@@ -33,7 +33,9 @@ func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connect
 		}
 		connectedAt := time.Now()
 		tracker.markConnected(connectedAt)
-		err := connect(ctx)
+		// Redacted here as well as where it is made: this is where every
+		// watcher's error is logged and kept for the Dashboard.
+		err := Redact(connect(ctx))
 		if ctx.Err() != nil {
 			return
 		}

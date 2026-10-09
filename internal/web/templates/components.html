@@ -237,6 +237,6 @@
     <span class="at-field-label">{{.Label}}{{if .Help}}<a class="at-helplink" href="{{.Help}}" target="_blank" rel="noreferrer" title="{{.HelpLabel}}" aria-label="{{.HelpLabel}}">?</a>{{end}}</span>
     <input class="at-input at-input--mono" type="password" name="{{or .Name "token"}}" autocomplete="off"
            placeholder="{{if .HasCredential}}••••••••{{else}}{{.Placeholder}}{{end}}">
-    {{if .HasCredential}}<span class="at-field-hint">Leave blank to keep the existing value.</span>{{end}}
+    {{if .HasCredential}}<span class="at-field-hint" data-keep-hint>Leave blank to keep the existing value.</span>{{end}}
   </label>
 </div>{{end}}
