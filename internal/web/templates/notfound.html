@@ -1,0 +1,13 @@
+{{define "content"}}
+<header class="at-page-head">
+  <div style="display:grid;gap:var(--space-2)">
+    <h1 class="at-page-title">Page not found</h1>
+  </div>
+</header>
+
+{{template "emptystate" dict
+  "Title" "Nothing at this address"
+  "Body" "The link may be mistyped, or the page may have moved."
+  "ActionHref" "/"
+  "ActionLabel" "Go to Dashboard"}}
+{{end}}

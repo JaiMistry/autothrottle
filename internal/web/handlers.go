@@ -41,3 +41,11 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Title: "Log in", Version: version.Label(), Asset: s.assets.URL}
 	s.render(w, "login", data)
 }
+
+// notFound is the page for an address that leads nowhere, inside the
+// app's own shell so the way back is right there.
+func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	s.render(w, "notfound", s.page(r, "Page not found", ""))
+}

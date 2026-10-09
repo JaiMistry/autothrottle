@@ -27,7 +27,7 @@ var staticFS embed.FS
 // pages would collide, since every page defines a template named
 // "content" and html/template's named templates share one namespace
 // per *template.Template instance.
-var pages = []string{"login", "setup", "dashboard", "configuration", "logs"}
+var pages = []string{"login", "setup", "dashboard", "configuration", "logs", "notfound"}
 
 // watcherManager is the watcher-lifecycle surface the web layer needs:
 // after any media-server change, reconcile the running watchers so the
@@ -154,6 +154,8 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("POST /configuration/plex-signin", s.startPlexSignIn)
 	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
 	protected.HandleFunc("POST /configuration/plex-signin/cancel", s.cancelPlexSignIn)
+	// Least specific, so it only answers what nothing above does.
+	protected.HandleFunc("/", s.notFound)
 
 	// Wraps "/" only. "/static/" is a more specific pattern registered
 	// below, so hashed assets keep their immutable headers.

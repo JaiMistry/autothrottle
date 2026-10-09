@@ -246,3 +246,39 @@ func TestDashboardTimerAndLogTags(t *testing.T) {
 		t.Error("the history card does not honour ?range=30d")
 	}
 }
+
+// Each screen's browser tab: the page's own name, and the app's name
+// alone on the Dashboard.
+func TestTabTitles(t *testing.T) {
+	app := newApp(t)
+	for path, want := range map[string]string{
+		"/":                           "<title>AutoThrottle</title>",
+		"/configuration":              "<title>Configuration</title>",
+		"/configuration?tab=mappings": "<title>Configuration</title>",
+		"/logs":                       "<title>Logs</title>",
+		"/no-such-page":               "<title>Page not found</title>",
+	} {
+		expectBody(t, app.get(path), want)
+	}
+	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	expectBody(t, signedOut.get("/login"), "<title>Log in</title>")
+	fresh := newAppWith(t, nil)
+	expectBody(t, fresh.get("/setup"), "<title>Set up</title>")
+}
+
+// An unknown address gets the app's own page, signed in, with a way
+// back, and still answers 404.
+func TestNotFoundPage(t *testing.T) {
+	app := newApp(t)
+	rec := app.get("/no-such-page")
+	expectStatus(t, rec, http.StatusNotFound)
+	expectBody(t, rec, "Nothing at this address")
+	expectBody(t, rec, `href="/"`)
+	expectBody(t, rec, `class="at-shell"`)
+
+	// Signed out, it is the sign-in page first, as for any other address.
+	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	if rec := signedOut.get("/no-such-page"); rec.Code != http.StatusSeeOther {
+		t.Errorf("signed out: %d", rec.Code)
+	}
+}

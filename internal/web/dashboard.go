@@ -148,7 +148,8 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	}
 	paused := s.scheduler.Paused()
 	data := dashboardData{
-		pageData: s.page(r, "Dashboard", "dashboard"),
+		// The app's own name: the Dashboard is its home screen.
+		pageData: s.page(r, "AutoThrottle", "dashboard"),
 		Paused:   paused,
 		Empty:    len(mediaServers) == 0 && len(downloaders) == 0,
 		Ready:    len(mediaServers) > 0 && len(downloaders) > 0,
