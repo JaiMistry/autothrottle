@@ -46,8 +46,8 @@ type historyCell struct {
 	Hot    bool // throttled at least a minute: the only cells with a tooltip
 	Step   int  // 0–4, the fill
 	Side   string
-	Value  string   // "42 min throttled so far"
-	Spans  []string // "9:18 PM – 10:00 PM"
+	Value  string   // "2hr 35m throttled", the whole of each period through this hour
+	Spans  []string // "8:12 PM – 10:47 PM"
 	When   string   // "Fri 2 Oct"
 	Label  string   // the cell's aria-label
 }
@@ -107,7 +107,11 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				continue
 			}
 
-			var throttled time.Duration
+			// The fill is this hour's share; the tooltip names each period
+			// through it whole, so two hours of playback reads as two hours
+			// on every cell it covers rather than as a run of 60s.
+			var throttled, whole time.Duration
+			stillGoing := false
 			for _, p := range periods {
 				end, ongoing := p.End, p.End.IsZero()
 				if ongoing {
@@ -118,8 +122,9 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 					continue
 				}
 				throttled += o
-				from, to := later(p.Start, a), earlier(end, b)
-				cell.Spans = append(cell.Spans, clockRange(from, to, ongoing && to.Equal(end)))
+				whole += end.Sub(p.Start)
+				stillGoing = stillGoing || ongoing
+				cell.Spans = append(cell.Spans, clockRange(p.Start, end, ongoing))
 			}
 			if i < 7 {
 				total7 += throttled
@@ -134,7 +139,10 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 			cell.Step = stepOf(minutes)
 			if minutes > 0 {
 				cell.Hot = true
-				cell.Value = fmt.Sprintf("%d min throttled%s", minutes, soFar)
+				if stillGoing {
+					soFar = " so far"
+				}
+				cell.Value = throttledLabel(int(math.Round(whole.Minutes()))) + " throttled" + soFar
 				cell.Label = strings.Join(append(append([]string{cell.Value}, cell.Spans...), when), " · ")
 				if i < 7 {
 					v.Empty7 = false
@@ -200,6 +208,14 @@ func clockRange(from, to time.Time, ongoing bool) string {
 		end = to.In(time.Local).Format("3:04 PM")
 	}
 	return from.In(time.Local).Format("3:04 PM") + " – " + end
+}
+
+// throttledLabel is "42 min" under an hour and "2hr 35m" from there.
+func throttledLabel(minutes int) string {
+	if minutes < 60 {
+		return fmt.Sprintf("%d min", minutes)
+	}
+	return totalLabel(minutes)
 }
 
 // totalLabel is "18hr 15m", or "0hr 0m" with nothing throttled.

@@ -28,18 +28,20 @@ func TestHistoryCells(t *testing.T) {
 		t.Fatalf("rows labelled %q / %q, corner %q", today.Label, yday.Label, v.Corner)
 	}
 
+	// The fill is the hour's 40 minutes; the tooltip names each period
+	// whole, so the one running on past the hour counts in full.
 	c := yday.Cells[20]
-	if !c.Hot || c.Step != 3 || c.Value != "40 min throttled" || c.Side != "r" {
+	if !c.Hot || c.Step != 3 || c.Value != "1hr 30m throttled" || c.Side != "r" {
 		t.Errorf("Thu 20:00 = %+v", c)
 	}
-	if want := []string{"8:10 PM – 8:30 PM", "8:40 PM – 9:00 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
-		t.Errorf("spans = %q, want each clipped to the hour", c.Spans)
+	if want := []string{"8:10 PM – 8:30 PM", "8:40 PM – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+		t.Errorf("spans = %q, want each period whole", c.Spans)
 	}
-	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "40 min throttled · 8:10 PM") {
+	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "1hr 30m throttled · 8:10 PM") {
 		t.Errorf("when %q, label %q", c.When, c.Label)
 	}
-	if yday.Cells[21].Step != 4 {
-		t.Errorf("50 minutes is step %d, want 4", yday.Cells[21].Step)
+	if next := yday.Cells[21]; next.Step != 4 || next.Value != "1hr 10m throttled" || next.Spans[0] != "8:40 PM – 9:50 PM" {
+		t.Errorf("Thu 21:00 = %+v", next)
 	}
 
 	live := today.Cells[21]
@@ -81,6 +83,11 @@ func TestTotalLabel(t *testing.T) {
 	for minutes, want := range map[int]string{0: "0hr 0m", 45: "0hr 45m", 180: "3hr 0m", 1095: "18hr 15m"} {
 		if got := totalLabel(minutes); got != want {
 			t.Errorf("totalLabel(%d) = %q, want %q", minutes, got, want)
+		}
+	}
+	for minutes, want := range map[int]string{1: "1 min", 59: "59 min", 60: "1hr 0m", 155: "2hr 35m"} {
+		if got := throttledLabel(minutes); got != want {
+			t.Errorf("throttledLabel(%d) = %q, want %q", minutes, got, want)
 		}
 	}
 }
