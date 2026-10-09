@@ -16,7 +16,7 @@ func mediaServerForm(name, msType, rawURL, key string) url.Values {
 func TestAddMediaServer(t *testing.T) {
 	app := newApp(t)
 	rec := app.post("/configuration/media-servers", mediaServerForm("Living Room", "jellyfin", "http://jf.lan:8096", "secret-key"))
-	expectRedirect(t, rec, "/configuration?tab=media-servers")
+	expectRedirect(t, rec, "/configuration?tab=connections")
 
 	servers, _ := app.db.ListMediaServers()
 	if len(servers) != 1 || servers[0].Name != "Living Room" || !servers[0].Enabled {
@@ -80,7 +80,7 @@ func TestEditingKeepsTheStoredCredential(t *testing.T) {
 	// and the key left blank, which means "keep what's saved".
 	form := mediaServerForm("JF renamed", "jellyfin", "http://jf.lan", "")
 	form.Set("id", fmt.Sprint(servers[0].ID))
-	expectRedirect(t, app.post("/configuration/media-servers", form), "/configuration?tab=media-servers")
+	expectRedirect(t, app.post("/configuration/media-servers", form), "/configuration?tab=connections")
 
 	after, _ := app.db.GetMediaServer(servers[0].ID)
 	if after.Name != "JF renamed" {
@@ -97,7 +97,7 @@ func TestDeletingAServerRemovesItsMappings(t *testing.T) {
 	dl := app.downloader("qBit")
 	app.setMapping(ms, dl, true)
 
-	expectRedirect(t, app.post(fmt.Sprintf("/configuration/media-servers/%d/delete", ms), nil), "/configuration?tab=media-servers")
+	expectRedirect(t, app.post(fmt.Sprintf("/configuration/media-servers/%d/delete", ms), nil), "/configuration?tab=connections")
 	if mappings, _ := app.db.ListMappings(); len(mappings) != 0 {
 		t.Errorf("%d mappings outlived their server", len(mappings))
 	}
@@ -111,7 +111,7 @@ func TestAddDownloader(t *testing.T) {
 		"default_download_limit": {"0"}, "default_upload_limit": {"0"},
 		"backup_download_limit": {"1500"}, "backup_upload_limit": {"300"},
 	}
-	expectRedirect(t, app.post("/configuration/downloaders", form), "/configuration?tab=downloaders")
+	expectRedirect(t, app.post("/configuration/downloaders", form), "/configuration?tab=connections")
 
 	dls, _ := app.db.ListDownloaders()
 	if len(dls) != 1 || dls[0].BackupDownloadLimit != 1500 || dls[0].BackupUploadLimit != 300 {
@@ -216,10 +216,10 @@ func TestConnectionTest(t *testing.T) {
 // default, one saved without noticing was silently never used.
 func TestNewEntriesStartEnabled(t *testing.T) {
 	app := newApp(t)
-	for _, tab := range []string{"media-servers", "downloaders"} {
-		body := app.get("/configuration?tab=" + tab).Body.String()
+	for _, path := range []string{"/configuration/media-servers/new", "/configuration/downloaders/new"} {
+		body := app.get(path).Body.String()
 		if !strings.Contains(body, `name="enabled" checked`) {
-			t.Errorf("%s: the Enabled box starts unticked for a new entry", tab)
+			t.Errorf("%s: the Enabled box starts unticked for a new entry", path)
 		}
 	}
 	// Editing still shows the entry's real state.
@@ -227,9 +227,72 @@ func TestNewEntriesStartEnabled(t *testing.T) {
 	ms, _ := app.db.GetMediaServer(id)
 	ms.Enabled = false
 	_ = app.db.UpdateMediaServer(ms)
-	body := app.get(fmt.Sprintf("/configuration?tab=media-servers&edit=%d", id)).Body.String()
+	body := app.get(fmt.Sprintf("/configuration/media-servers/%d/edit", id)).Body.String()
 	if strings.Contains(body, `name="enabled" checked`) {
 		t.Error("editing a disabled server shows it as enabled")
+	}
+	if !strings.Contains(body, fmt.Sprintf(`id="del-ms-%d"`, id)) {
+		t.Error("the edit drawer has no delete confirmation")
+	}
+	expectStatus(t, app.get("/configuration/media-servers/999/edit"), http.StatusNotFound)
+}
+
+// Media servers and downloaders were tabs of their own; old links, edit
+// links included, open the same thing on Connections.
+func TestOldTabLinksLandOnConnections(t *testing.T) {
+	app := newApp(t)
+	id := app.downloader("qBit")
+	body := app.get("/configuration?tab=media-servers").Body.String()
+	if !strings.Contains(body, `href="/configuration?tab=connections">Connections`) || !strings.Contains(body, `aria-selected="true" href="/configuration?tab=connections"`) {
+		t.Error("the old media servers tab did not land on Connections")
+	}
+	if strings.Contains(body, `class="at-sheet open"`) {
+		t.Error("a plain tab link opened the drawer")
+	}
+	body = app.get(fmt.Sprintf("/configuration?tab=downloaders&edit=%d", id)).Body.String()
+	if !strings.Contains(body, `class="at-sheet open"`) || !strings.Contains(body, `id="dl-form"`) {
+		t.Error("an old edit link did not open the downloader in the drawer")
+	}
+}
+
+// From the drawer, a save swaps the tables out of band and closes the
+// drawer; a refused one lands above the form and leaves it alone.
+func TestDrawerSave(t *testing.T) {
+	app := newApp(t)
+	app.htmx = true
+	rec := app.post("/configuration/media-servers", mediaServerForm("Living Room", "jellyfin", "http://jf.lan:8096", "k"))
+	expectStatus(t, rec, http.StatusOK)
+	if rec.Header().Get("HX-Trigger") != "at-sheet-close" || rec.Header().Get("HX-Reswap") != "none" {
+		t.Errorf("headers = %v", rec.Header())
+	}
+	expectBody(t, rec, `id="connections" class="at-connections" hx-swap-oob="true"`)
+	expectBody(t, rec, "Living Room")
+
+	rec = app.post("/configuration/media-servers", mediaServerForm("Living Room", "emby", "http://emby.lan", "k"))
+	expectStatus(t, rec, http.StatusOK)
+	if rec.Header().Get("HX-Retarget") != "#sheet-error" {
+		t.Errorf("a refused save went to %q", rec.Header().Get("HX-Retarget"))
+	}
+	expectBody(t, rec, "already exists")
+}
+
+// Each name carries a dot for its state, labelled for anyone who can't
+// hover it.
+func TestConnectionStatusDots(t *testing.T) {
+	app := newApp(t)
+	off := app.mediaServer("Off", "jellyfin", "http://off.lan")
+	ms, _ := app.db.GetMediaServer(off)
+	ms.Enabled = false
+	_ = app.db.UpdateMediaServer(ms)
+	app.downloader("qBit")
+	body := app.get("/configuration?tab=connections").Body.String()
+	for _, want := range []string{
+		`aria-label="Disabled. Not watched for playback"`,
+		`aria-label="Unknown. State not resolved yet"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s", want)
+		}
 	}
 }
 

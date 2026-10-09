@@ -26,7 +26,7 @@ func testConfigPage(tab string) configPageData {
 		pageData:     testPage("Configuration"),
 		Tab:          tab,
 		MediaServers: []mediaServerView{{ID: 1, Name: "Plex", Type: "plex", URL: "http://x", Enabled: true, Sessions: 2}},
-		Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, State: "normal"}},
+		Downloaders:  []downloaderView{{ID: 1, Name: "qb", Type: "qbittorrent", URL: "http://y", Enabled: true, Dot: statusDot{"good", "Default rates", "Nothing mapped is playing"}}},
 		MappingOn:    map[string]bool{"1:1": true},
 		About:        aboutView{Commit: "a3f9c21", BuiltNote: "built 12 Aug 2026", Runtime: "go1.26 · linux/amd64 · docker", BootNote: "last restart: 16 Aug 2026, 09:41", BootUnix: 1755337260000},
 		Uptime:       "0d : 00h : 00m : 00s",
@@ -67,7 +67,7 @@ func TestPagesRender(t *testing.T) {
 			Log: newPagedLog("Events", "log-card", "/logs/rows",
 				[]logRowView{{Time: "12:00:00", Level: "error", Message: "boom"}}, 2, 20, 1, nil),
 		},
-		"configuration": testConfigPage("media-servers"),
+		"configuration": testConfigPage("connections"),
 	}
 
 	for _, page := range pages {
@@ -86,9 +86,19 @@ func TestPagesRender(t *testing.T) {
 	}
 
 	tmpl, _ := parsePage("configuration", funcs)
-	for _, tab := range []string{"downloaders", "mappings", "about"} {
+	for _, tab := range []string{"mappings", "about"} {
 		if err := tmpl.ExecuteTemplate(io.Discard, "layout", testConfigPage(tab)); err != nil {
 			t.Errorf("rendering configuration tab %s: %v", tab, err)
+		}
+	}
+	// The drawer open on each form, adding and editing.
+	for _, sheet := range []string{"server", "downloader"} {
+		for _, id := range []int64{0, 1} {
+			data := testConfigPage("connections")
+			data.Sheet, data.EditMediaServerID, data.EditDownloaderID = sheet, id, id
+			if err := tmpl.ExecuteTemplate(io.Discard, "layout", data); err != nil {
+				t.Errorf("rendering the %s drawer (id %d): %v", sheet, id, err)
+			}
 		}
 	}
 }

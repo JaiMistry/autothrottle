@@ -163,6 +163,16 @@ const transmission = {
       canSave: await page.$eval(`${formSel} [data-submit]`, (b) => !b.disabled),
     };
   }
+  // Add and edit forms open in a drawer over the Connections tables.
+  async function openSheet(trigger) {
+    if (!page.url().includes('tab=connections')) await navigate('/configuration?tab=connections');
+    await settle(() => page.click(trigger));
+    await page.waitForSelector('#sheet.open');
+    await sleep(300); // let it finish sliding in before clicking inside it
+  }
+  const addServer = '.at-addrow[hx-get="/configuration/media-servers/new"]';
+  const addDownloader = '.at-addrow[hx-get="/configuration/downloaders/new"]';
+  const sheetOpen = () => page.$eval('#sheet', (e) => e.classList.contains('open'));
   // Names in the saved-entries table, not anywhere on the page: the type
   // dropdown also names the server type.
   const savedNames = () => page.$$eval('tbody tr td:first-child', (cells) => cells.map((c) => c.innerText.trim()));
@@ -189,7 +199,7 @@ const transmission = {
     check((await page.content()).includes('Nothing configured yet'), 'the empty Dashboard says nothing is configured');
 
     section('Media server');
-    await navigate('/configuration?tab=media-servers');
+    await openSheet(addServer);
     await page.select('#ms-form [name=type]', MEDIA.kind);
     await fill('#ms-form [name=name]', NAME);
     await fill('#ms-form [name=url]', MEDIA.internal);
@@ -203,14 +213,22 @@ const transmission = {
     check(result.state === 'connected' && result.canSave, 'the right API key passes and allows saving', JSON.stringify(result));
     await submit('#ms-form');
     check((await savedNames()).includes(NAME), 'the server is saved', JSON.stringify(await savedNames()));
+    await sleep(300);
+    check(!(await sheetOpen()), 'saving closes the drawer');
 
+    await openSheet(addServer);
     await page.select('#ms-form [name=type]', MEDIA.kind);
     await fill('#ms-form [name=name]', `${NAME} again`);
     await fill('#ms-form [name=url]', MEDIA.internal + '/');
     await fill(keyField, MEDIA.apiKey);
     await testConnection('#ms-form');
     await submit('#ms-form');
-    check((await text('.at-alert')).includes('already added'), 'adding the same server twice is refused with a reason', await text('.at-alert'));
+    check((await text('#sheet-error .at-alert')).includes('already added'), 'adding the same server twice is refused with a reason', await text('#sheet-error .at-alert'));
+    check(await sheetOpen() && (await page.$eval('#ms-form [name=name]', (e) => e.value)) === `${NAME} again`,
+      'the refusal leaves the drawer open with what was typed');
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    check(!(await sheetOpen()), 'Esc closes the drawer');
     check((await savedNames()).filter((n) => n.startsWith(NAME)).length === 1, 'and nothing was added');
 
     section('Download clients');
@@ -218,7 +236,7 @@ const transmission = {
       ['qBittorrent', 'qbittorrent', env.qbittorrent, 1500, 300],
       ['Transmission', 'transmission', env.transmission, 900, 180],
     ]) {
-      await navigate('/configuration?tab=downloaders');
+      await openSheet(addDownloader);
       await page.select('#dl-form [name=type]', type);
       await fill('#dl-form [name=name]', name);
       await fill('#dl-form [name=url]', conf.internal);
@@ -318,8 +336,8 @@ const transmission = {
     // The player runs on this machine, so the server sees a private
     // address: local playback.
     async function setExempt(on) {
-      await navigate('/configuration?tab=media-servers');
-      await settle(() => page.click('a[href*="tab=media-servers&edit="]'));
+      await navigate('/configuration?tab=connections');
+      await openSheet('button[hx-get^="/configuration/media-servers/"][hx-get$="/edit"]');
       const box = await page.$('#ms-form [name=skip_local_playback]');
       if ((await box.evaluate((b) => b.checked)) !== on) await box.click();
       const r = await testConnection('#ms-form');
@@ -349,6 +367,17 @@ const transmission = {
       (await page.$$eval('.at-logrow', (r) => r.length)) > 0 ? true : null);
     check(!!relogged, 'a new event appears without a reload after clearing');
     await p2player.stop();
+
+    section('Delete');
+    await navigate('/configuration?tab=connections');
+    const transmissionRow = await page.$$eval('button[hx-get^="/configuration/downloaders/"][hx-get$="/edit"]',
+      (bs) => bs.find((b) => b.closest('tr').innerText.includes('Transmission')).getAttribute('hx-get'));
+    await openSheet(`button[hx-get="${transmissionRow}"]`);
+    await page.click('#sheet .at-sheet-bar .at-btn--critical');
+    await page.waitForSelector('dialog[open]');
+    check((await text('dialog[open] .at-dialog-title')) === 'Delete Transmission?', 'Delete asks first, naming what goes', await text('dialog[open] .at-dialog-title'));
+    await settle(() => page.click('dialog[open] .at-btn--danger'));
+    check(!(await savedNames()).includes('Transmission') && !(await page.$('#sheet.open')), 'confirming removes it and closes the drawer', JSON.stringify(await savedNames()));
 
     section('Navigation');
     await navigate('/');

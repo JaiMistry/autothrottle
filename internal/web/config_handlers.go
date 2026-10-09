@@ -28,6 +28,7 @@ type mediaServerView struct {
 	// Sessions is the live count, so the table answers "is this server
 	// doing anything" without a trip to the Dashboard.
 	Sessions int
+	Dot      statusDot
 }
 
 type downloaderView struct {
@@ -40,29 +41,49 @@ type downloaderView struct {
 	DefaultDownloadLimit, DefaultUploadLimit int64
 	BackupDownloadLimit, BackupUploadLimit   int64
 	Enabled                                  bool
-	// State is the downloader's live throttle state, for the table's
-	// "Now" column.
-	State string
+	Dot                                      statusDot
 }
 
-// downloaderState collapses the scheduler's view into the one word the
-// tables and rows render. A failed apply reads Unreachable, never
-// Normal: the rates on the client are not the rates this app believes
-// it set.
-func (s *Server) downloaderState(dl db.Downloader) string {
+// statusDot is the dot before a name in the Connections tables, and
+// the two lines of the hover card it opens.
+type statusDot struct {
+	Tone   string // good | warn | critical | faint
+	Label  string
+	Detail string
+}
+
+func (s *Server) serverDot(ms db.MediaServer, sessions int) statusDot {
+	switch {
+	case !ms.Enabled:
+		return statusDot{"faint", "Disabled", "Not watched for playback"}
+	case s.watchers != nil && !s.watchers.Running(ms.ID):
+		return statusDot{"critical", "Unreachable", "Unable to connect"}
+	case sessions > 0:
+		return statusDot{"good", "Connected", count(sessions, "active session", "active sessions")}
+	default:
+		return statusDot{"good", "Connected", "No activity detected"}
+	}
+}
+
+// downloaderDot reads the scheduler's view of one downloader. A failed
+// apply reads Unreachable, never Default rates: the rates on the client
+// are not the rates this app believes it set.
+func (s *Server) downloaderDot(dl db.Downloader) statusDot {
 	switch state := s.scheduler.State(dl.ID); {
 	case !dl.Enabled:
-		return "disabled"
+		return statusDot{"faint", "Disabled", "Excluded from throttling"}
 	case state.Failure != "":
-		return "unreachable"
+		return statusDot{"critical", "Unreachable", "Unable to connect"}
 	case !state.Known:
-		return "unknown"
+		return statusDot{"faint", "Unknown", "State not resolved yet"}
 	case s.scheduler.Paused():
-		return "paused"
+		return statusDot{"good", "Default rates", "Throttling disabled"}
+	case state.Throttled && state.Cause != "":
+		return statusDot{"warn", "Throttled", state.Cause + " is playing"}
 	case state.Throttled:
-		return "throttled"
+		return statusDot{"warn", "Throttled", "A mapped server is playing"}
 	default:
-		return "normal"
+		return statusDot{"good", "Default rates", "Nothing mapped is playing"}
 	}
 }
 
@@ -99,6 +120,11 @@ type configPageData struct {
 	EditDownloaderID  int64
 	EditDownloader    downloaderView
 	FormError         string
+	// Sheet is what the drawer holds: "server", "downloader", or
+	// nothing when it is shut.
+	Sheet string
+	// OOB marks the Connections tables for an out-of-band swap.
+	OOB bool
 }
 
 func toMediaServerView(ms db.MediaServer) mediaServerView {
@@ -153,13 +179,14 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 	for _, ms := range mediaServers {
 		view := toMediaServerView(ms)
 		view.Sessions = s.scheduler.ActiveSessionCount(ms.ID)
+		view.Dot = s.serverDot(ms, view.Sessions)
 		msViews = append(msViews, view)
 	}
 
 	dlViews := make([]downloaderView, 0, len(downloaders))
 	for _, dl := range downloaders {
 		view := s.toDownloaderView(dl)
-		view.State = s.downloaderState(dl)
+		view.Dot = s.downloaderDot(dl)
 		dlViews = append(dlViews, view)
 	}
 
@@ -183,8 +210,16 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 	}, nil
 }
 
-func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, tab, message string) {
-	data, err := s.buildConfigPageData(r, tab)
+func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, message string) {
+	// From the drawer, the error lands above the form and leaves it, and
+	// any test it passed, exactly as they were.
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Retarget", "#sheet-error")
+		w.Header().Set("HX-Reswap", "innerHTML")
+		s.renderFragment(w, "configuration", "sheeterror", message)
+		return
+	}
+	data, err := s.buildConfigPageData(r, "connections")
 	if err != nil {
 		slog.Error("building configuration page after form error", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -196,9 +231,19 @@ func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, tab, 
 }
 
 func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
-	tab := r.URL.Query().Get("tab")
-	if tab == "" {
-		tab = "media-servers"
+	q := r.URL.Query()
+	tab := q.Get("tab")
+	// Media servers and downloaders were separate tabs once; their links,
+	// edit links included, land on Connections.
+	var sheet string
+	switch tab {
+	case "media-servers":
+		sheet = "server"
+	case "downloaders":
+		sheet = "downloader"
+	}
+	if tab == "" || sheet != "" {
+		tab = "connections"
 	}
 
 	data, err := s.buildConfigPageData(r, tab)
@@ -207,35 +252,84 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if id, err := strconv.ParseInt(q.Get("edit"), 10, 64); err == nil && sheet != "" {
+		if !s.fillSheet(&data, sheet, id) {
+			data.Sheet = ""
+		}
+	}
+	s.render(w, "configuration", data)
+}
 
+// fillSheet loads the drawer's form: blank for an id of 0, otherwise the
+// entry being edited. It reports false when there is no such entry.
+func (s *Server) fillSheet(data *configPageData, sheet string, id int64) bool {
+	data.Sheet = sheet
 	// A new server or downloader starts switched on. Left at the zero
 	// value, the box rendered unticked, so anyone who didn't notice it
 	// saved one that was never watched or throttled, with no error
 	// anywhere to say why nothing happened.
-	data.EditMediaServer.Enabled = true
-	data.EditDownloader.Enabled = true
+	data.EditMediaServer = mediaServerView{Name: "Plex", Enabled: true}
 	// A new entry is named after its type until someone names it.
-	data.EditMediaServer.Name = "Plex"
-	data.EditDownloader.Name = "qBittorrent"
-
-	if editID := r.URL.Query().Get("edit"); editID != "" {
-		if id, err := strconv.ParseInt(editID, 10, 64); err == nil {
-			switch tab {
-			case "media-servers":
-				if ms, err := s.db.GetMediaServer(id); err == nil {
-					data.EditMediaServerID = ms.ID
-					data.EditMediaServer = toMediaServerView(ms)
-				}
-			case "downloaders":
-				if dl, err := s.db.GetDownloader(id); err == nil {
-					data.EditDownloaderID = dl.ID
-					data.EditDownloader = s.toDownloaderView(dl)
-				}
-			}
-		}
+	data.EditDownloader = downloaderView{Name: "qBittorrent", Enabled: true}
+	if id == 0 {
+		return true
 	}
+	switch sheet {
+	case "server":
+		ms, err := s.db.GetMediaServer(id)
+		if err != nil {
+			return false
+		}
+		data.EditMediaServerID, data.EditMediaServer = ms.ID, toMediaServerView(ms)
+	case "downloader":
+		dl, err := s.db.GetDownloader(id)
+		if err != nil {
+			return false
+		}
+		data.EditDownloaderID, data.EditDownloader = dl.ID, s.toDownloaderView(dl)
+	}
+	return true
+}
 
-	s.render(w, "configuration", data)
+// sheetForm serves the drawer's add or edit form on its own.
+func (s *Server) sheetForm(sheet string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var id int64
+		if raw := r.PathValue("id"); raw != "" {
+			parsed, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				http.Error(w, "bad id", http.StatusBadRequest)
+				return
+			}
+			id = parsed
+		}
+		data := configPageData{pageData: s.page(r, "Configuration", "configuration")}
+		if !s.fillSheet(&data, sheet, id) {
+			http.NotFound(w, r)
+			return
+		}
+		s.renderFragment(w, "configuration", "sheetbody", data)
+	}
+}
+
+// savedConnection answers a successful save. From the drawer, the
+// tables are swapped out of band and the drawer is told to close, so it
+// slides shut over the updated list; a plain form post is redirected.
+func (s *Server) savedConnection(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("HX-Request") != "true" {
+		http.Redirect(w, r, "/configuration?tab=connections", http.StatusSeeOther)
+		return
+	}
+	data, err := s.buildConfigPageData(r, "connections")
+	if err != nil {
+		slog.Error("rebuilding connections after save", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.OOB = true
+	w.Header().Set("HX-Trigger", "at-sheet-close")
+	w.Header().Set("HX-Reswap", "none")
+	s.renderFragment(w, "configuration", "connections", data)
 }
 
 func parseInt64Form(r *http.Request, name string) int64 {
@@ -284,7 +378,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 	enabled := r.FormValue("enabled") == "on"
 
 	if name == "" || rawURL == "" || !clients.SupportedMediaServerType(msType) {
-		s.renderConfigError(w, r, "media-servers", "Name, URL, and a supported type are required.")
+		s.renderConfigError(w, r, "Name, URL, and a supported type are required.")
 		return
 	}
 
@@ -299,7 +393,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if clash := s.duplicateMediaServer(id, name, rawURL); clash != "" {
-		s.renderConfigError(w, r, "media-servers", clash)
+		s.renderConfigError(w, r, clash)
 		return
 	}
 
@@ -323,7 +417,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		credentialEncrypted = encrypted
 	}
 	if credentialEncrypted == "" {
-		s.renderConfigError(w, r, "media-servers", "A token is required.")
+		s.renderConfigError(w, r, "A token is required.")
 		return
 	}
 
@@ -358,8 +452,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyConfigChange(true)
-
-	http.Redirect(w, r, "/configuration?tab=media-servers", http.StatusSeeOther)
+	s.savedConnection(w, r)
 }
 
 func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +467,7 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyConfigChange(true)
-	http.Redirect(w, r, "/configuration?tab=media-servers", http.StatusSeeOther)
+	http.Redirect(w, r, "/configuration?tab=connections", http.StatusSeeOther)
 }
 
 // storedMediaServerCredential returns the credential already saved for
@@ -479,11 +572,11 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	enabled := r.FormValue("enabled") == "on"
 
 	if name == "" || rawURL == "" || !clients.SupportedDownloaderType(dlType) {
-		s.renderConfigError(w, r, "downloaders", "Name, URL, and a supported type are required.")
+		s.renderConfigError(w, r, "Name, URL, and a supported type are required.")
 		return
 	}
 	if (username == "") != (password == "") {
-		s.renderConfigError(w, r, "downloaders", "Both username and password are required to set downloader credentials.")
+		s.renderConfigError(w, r, "Both username and password are required to set downloader credentials.")
 		return
 	}
 
@@ -498,7 +591,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if clash := s.duplicateDownloader(id, name, rawURL); clash != "" {
-		s.renderConfigError(w, r, "downloaders", clash)
+		s.renderConfigError(w, r, clash)
 		return
 	}
 
@@ -556,8 +649,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyConfigChange(false)
-
-	http.Redirect(w, r, "/configuration?tab=downloaders", http.StatusSeeOther)
+	s.savedConnection(w, r)
 }
 
 func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
@@ -572,7 +664,7 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyConfigChange(false)
-	http.Redirect(w, r, "/configuration?tab=downloaders", http.StatusSeeOther)
+	http.Redirect(w, r, "/configuration?tab=connections", http.StatusSeeOther)
 }
 
 func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {

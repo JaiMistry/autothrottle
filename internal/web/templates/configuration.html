@@ -10,205 +10,24 @@
 </header>
 
 <div class="at-tabs" role="tablist" style="margin-bottom:var(--space-9)">
-  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "media-servers"}}true{{else}}false{{end}}" href="/configuration?tab=media-servers">Media Servers</a>
-  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "downloaders"}}true{{else}}false{{end}}" href="/configuration?tab=downloaders">Downloaders</a>
+  <a class="at-tab" role="tab" aria-selected="{{if eq $tab "connections"}}true{{else}}false{{end}}" href="/configuration?tab=connections">Connections</a>
   <a class="at-tab" role="tab" aria-selected="{{if eq $tab "mappings"}}true{{else}}false{{end}}" href="/configuration?tab=mappings">Mappings</a>
   <a class="at-tab" role="tab" aria-selected="{{if eq $tab "about"}}true{{else}}false{{end}}" href="/configuration?tab=about">About</a>
 </div>
 
 {{if .FormError}}{{template "alert" dict "Tone" "error" "Title" "That didn't save" "Body" .FormError}}<div style="height:var(--space-6)"></div>{{end}}
 
-{{if eq $tab "media-servers"}}
-<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-9)">
-  <section class="at-card">
-    <div class="at-tablewrap">
-      <table class="at-table">
-        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Local exempt</th><th>Sessions</th><th>Status</th><th class="at-col-actions">Actions</th></tr></thead>
-        <tbody>
-        {{range .MediaServers}}
-          <tr>
-            <td>{{.Name}}</td>
-            <td class="at-cell--mono at-cell--dim">{{.Type}}</td>
-            <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
-            <td class="at-cell--dim">{{if .SkipLocalPlayback}}Yes{{else}}No{{end}}</td>
-            <td class="at-cell--mono">{{.Sessions}}</td>
-            <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{end}}</td>
-            <td>
-              <span class="at-rowactions">
-                <a class="at-btn at-btn--xs" href="/configuration?tab=media-servers&edit={{.ID}}">Edit</a>
-                <form method="post" action="/configuration/media-servers/{{.ID}}/test" data-testtarget="{{.URL}}"
-                      hx-post="/configuration/media-servers/{{.ID}}/test" hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">
-                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
-                  <button class="at-btn at-btn--xs" type="submit">Test</button>
-                </form>
-                <button class="at-btn at-btn--xs at-btn--danger" type="button"
-                        onclick="document.getElementById('del-ms-{{.ID}}').showModal()">Delete</button>
-              </span>
-            </td>
-          </tr>
-          {{/* The result lands under the row it belongs to, never in the
-               form. Nothing is rendered until a test runs, so an untested
-               list carries no reserved gaps. */}}
-          <tr><td colspan="7" class="at-testcell"><div id="ms-test-{{.ID}}"></div></td></tr>
-        {{else}}
-          <tr><td colspan="7" class="at-table-empty" style="border-bottom:0">No media servers yet.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
-    {{/* Outside the table on purpose: a <dialog> is not valid inside
-         <tbody>, and the parser hoists it out anyway — landing it above
-         the rows, where its own buttons come first in the document. */}}
-    {{range .MediaServers}}{{template "deletedialog" dict "ID" (printf "del-ms-%d" .ID) "Name" .Name "Action" (printf "/configuration/media-servers/%d/delete" .ID) "CSRF" $csrf
-      "Body" "Its mappings are removed too. History entries are kept."}}
-    {{end}}
-  </section>
-
-  <section class="at-card" style="width:520px;max-width:100%">
-    <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
-    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServerID}} data-editing{{end}}{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
-      <input type="hidden" name="csrf_token" value="{{$csrf}}">
-      {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
-      <label class="at-field"><span class="at-field-label">Name</span>
-        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}"{{if not .EditMediaServerID}} data-autoname="{{.EditMediaServer.Name}}"{{end}} required></label>
-      <label class="at-field"><span class="at-field-label">Type</span>
-        <select class="at-select" name="type">
-          <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
-          <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
-          <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
-        </select></label>
-      <label class="at-field"><span class="at-field-label">URL</span>
-        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
-        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      {{/* Plex takes either a pasted token or its own sign-in; Emby and
-           Jellyfin only take an API key. Each input has its own name and
-           the server picks by type, so a hidden blank field can never
-           win over the value the user actually supplied. */}}
-      <div data-credgroup="plex" class="at-stack">
-        <div class="at-tabs at-tabs--sm" role="tablist">
-          <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>
-          <button type="button" class="at-tab" role="tab" aria-selected="false" data-credtab="signin">Sign in with Plex</button>
-        </div>
-        <div data-credpane="token">
-          {{template "credentialfield" dict "Label" "X-Plex-Token" "Name" "token"
-            "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"
-            "Help" "https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
-            "HelpLabel" "Plex support: finding an authentication token (X-Plex-Token)"}}
-        </div>
-        <div data-credpane="signin" hidden>
-          <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
-        </div>
-      </div>
-      <div data-credgroup="apikey" hidden>
-        {{template "credentialfield" dict "Label" "API key" "Name" "api_token"
-          "HasCredential" .EditMediaServer.HasCredential "Placeholder" "API key"}}
-      </div>
-      <label class="at-check-label">
-        <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
-        <span class="at-check-text">
-          <span>Ignore local network playback</span>
-        </span>
-      </label>
-      <label class="at-check-label">
-        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditMediaServer.Enabled}}checked{{end}}>
-        <span class="at-check-text"><span>Enabled</span></span>
-      </label>
-      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
-        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
-        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/media-servers/test" hx-include="#ms-form"
-                hx-target="#ms-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
-        {{if .EditMediaServerID}}<a href="/configuration?tab=media-servers" class="at-btn at-btn--ghost">Cancel</a>{{end}}
-      </div>
-      <div id="ms-form-test"></div>
-    </form>
-  </section>
-</div>
-
-{{else if eq $tab "downloaders"}}
-<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-9)">
-  <section class="at-card">
-    <div class="at-tablewrap">
-      <table class="at-table">
-        <thead><tr><th>Name</th><th>URL</th><th>Default rate</th><th>Throttled rate</th><th>Status</th><th class="at-col-actions">Actions</th></tr></thead>
-        <tbody>
-        {{range .Downloaders}}
-          <tr>
-            <td>{{.Name}}</td>
-            <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
-            <td>{{template "ratefigure" dict "Down" .DefaultDownloadLimit "Up" .DefaultUploadLimit}}</td>
-            <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
-            <td>{{if .Enabled}}{{template "badge" dict "Tone" "good" "Label" "enabled"}}{{else}}{{template "badge" dict "Tone" "info" "Label" "disabled"}}{{end}}</td>
-            <td>
-              <span class="at-rowactions">
-                <a class="at-btn at-btn--xs" href="/configuration?tab=downloaders&edit={{.ID}}">Edit</a>
-                <form method="post" action="/configuration/downloaders/{{.ID}}/test" data-testtarget="{{.URL}}"
-                      hx-post="/configuration/downloaders/{{.ID}}/test" hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">
-                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
-                  <button class="at-btn at-btn--xs" type="submit">Test</button>
-                </form>
-                <button class="at-btn at-btn--xs at-btn--danger" type="button"
-                        onclick="document.getElementById('del-dl-{{.ID}}').showModal()">Delete</button>
-              </span>
-            </td>
-          </tr>
-          <tr><td colspan="6" class="at-testcell"><div id="dl-test-{{.ID}}"></div></td></tr>
-        {{else}}
-          <tr><td colspan="6" class="at-table-empty" style="border-bottom:0">No downloaders yet.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
-    {{/* Outside the table, for the same reason as the media servers. */}}
-    {{range .Downloaders}}{{template "deletedialog" dict "ID" (printf "del-dl-%d" .ID) "Name" .Name "Action" (printf "/configuration/downloaders/%d/delete" .ID) "CSRF" $csrf
-      "Body" "Its mappings are removed too. History entries are kept. The client keeps whatever rate limits are currently set on it."}}
-    {{end}}
-  </section>
-
-  <section class="at-card" style="width:520px;max-width:100%">
-    <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
-    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloaderID}} data-editing{{end}}{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} class="at-stack">
-      <input type="hidden" name="csrf_token" value="{{$csrf}}">
-      {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
-      <label class="at-field"><span class="at-field-label">Name</span>
-        <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}"{{if not .EditDownloaderID}} data-autoname="{{.EditDownloader.Name}}"{{end}} required></label>
-      <label class="at-field"><span class="at-field-label">Type</span>
-        <select class="at-select" name="type">
-          <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
-          <option value="transmission" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
-        </select></label>
-      <label class="at-field"><span class="at-field-label">URL</span>
-        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required>
-        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      <div style="display:grid;gap:var(--space-6);grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
-        <label class="at-field"><span class="at-field-label">Username</span>
-          <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>
-        {{template "credentialfield" dict "Label" "Password" "Name" "password" "HasCredential" .EditDownloader.HasCredential "Placeholder" ""}}
-      </div>
-      {{template "ratepair" dict "Legend" "Default rates" "Tone" "default"
-        "Hint" "Applied when nothing" "HintTail" "is playing."
-        "HintLabel" "Applied when nothing mapped is playing." "HintID" "hint-default-rates"
-        "DownName" "default_download_limit" "UpName" "default_upload_limit"
-        "Down" .EditDownloader.DefaultDownloadLimit "Up" .EditDownloader.DefaultUploadLimit}}
-      {{template "ratepair" dict "Legend" "Throttled rates" "Tone" "warn"
-        "Hint" "Applied while a" "HintTail" "server is playing."
-        "HintLabel" "Applied while a mapped server is playing." "HintID" "hint-throttled-rates"
-        "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
-        "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
-        "Note" "Rates are KB/s. 0 means unlimited, and the field says so as you type."}}
-      <label class="at-check-label">
-        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
-        <span class="at-check-text"><span>Enabled</span></span>
-      </label>
-      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
-        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditDownloaderID}}Save changes{{else}}Add downloader{{end}}</button>
-        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/downloaders/test" hx-include="#dl-form"
-                hx-target="#dl-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
-        {{if .EditDownloaderID}}<a href="/configuration?tab=downloaders" class="at-btn at-btn--ghost">Cancel</a>{{end}}
-      </div>
-      <div id="dl-form-test"></div>
-    </form>
-  </section>
-</div>
+{{if eq $tab "connections"}}
+{{template "connections" .}}
+{{/* One hover card for every status dot. Fixed and outside the tables,
+     so their horizontal scroll can't clip it on the first or last row. */}}
+<span class="at-st-tip" role="tooltip" aria-hidden="true"><span class="at-st-tip-label"></span><span class="at-st-tip-detail"></span></span>
+{{/* The drawer stays mounted, so it has something to slide from, and
+     keeps its content while it slides out. */}}
+<div class="at-sheet-scrim{{if .Sheet}} open{{end}}" data-sheet-close></div>
+<aside class="at-sheet{{if .Sheet}} open{{end}}" id="sheet" aria-label="Connection details"{{if not .Sheet}} inert{{end}}>
+  <div id="sheet-body" class="at-sheet-body">{{if .Sheet}}{{template "sheetbody" .}}{{end}}</div>
+</aside>
 
 {{else if eq $tab "mappings"}}
 {{if and .MediaServers .Downloaders}}
@@ -423,3 +242,215 @@
     </div>
   </div>
 </dialog>{{end}}
+
+{{/* Both tables, as one block: a save swaps it whole, out of band, while
+     the drawer slides shut. */}}
+{{define "connections"}}{{$csrf := .CSRFToken}}
+<div id="connections" class="at-connections"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">Media servers<span class="at-card-count">{{len .MediaServers}}</span></h2></header>
+    <div class="at-tablewrap">
+      <table class="at-table">
+        <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Local exempt</th><th>Sessions</th><th class="at-col-actions">Actions</th></tr></thead>
+        <tbody>
+        {{range .MediaServers}}
+          <tr>
+            <td><span class="at-named">{{template "statusdot" .Dot}}{{.Name}}</span></td>
+            <td class="at-cell--mono at-cell--dim">{{.Type}}</td>
+            <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
+            <td class="at-cell--dim">{{if .SkipLocalPlayback}}Yes{{else}}No{{end}}</td>
+            <td class="at-cell--mono">{{.Sessions}}</td>
+            <td>
+              <span class="at-rowactions">
+                <button type="button" class="at-btn at-btn--xs" data-sheet-open
+                        hx-get="/configuration/media-servers/{{.ID}}/edit" hx-target="#sheet-body" hx-swap="innerHTML">Edit</button>
+                <form method="post" action="/configuration/media-servers/{{.ID}}/test" data-testtarget="{{.URL}}"
+                      hx-post="/configuration/media-servers/{{.ID}}/test" hx-target="#ms-test-{{.ID}}" hx-swap="innerHTML">
+                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                  <button class="at-btn at-btn--xs" type="submit">Test</button>
+                </form>
+              </span>
+            </td>
+          </tr>
+          {{/* The result lands under the row it belongs to. Nothing is
+               rendered until a test runs, so an untested list carries no
+               reserved gaps. */}}
+          <tr><td colspan="6" class="at-testcell"><div id="ms-test-{{.ID}}"></div></td></tr>
+        {{else}}
+          <tr><td colspan="6" class="at-table-empty" style="border-bottom:0">No media servers yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="at-addrow" data-sheet-open
+            hx-get="/configuration/media-servers/new" hx-target="#sheet-body" hx-swap="innerHTML"><span aria-hidden="true">+</span>Add media server</button>
+  </section>
+
+  <section class="at-card">
+    <header class="at-card-head"><h2 class="at-card-title">Downloaders<span class="at-card-count">{{len .Downloaders}}</span></h2></header>
+    <div class="at-tablewrap">
+      <table class="at-table">
+        <thead><tr><th>Name</th><th>URL</th><th>Default rate</th><th>Throttled rate</th><th class="at-col-actions">Actions</th></tr></thead>
+        <tbody>
+        {{range .Downloaders}}
+          <tr>
+            <td><span class="at-named">{{template "statusdot" .Dot}}{{.Name}}</span></td>
+            <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
+            <td>{{template "ratefigure" dict "Down" .DefaultDownloadLimit "Up" .DefaultUploadLimit}}</td>
+            <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
+            <td>
+              <span class="at-rowactions">
+                <button type="button" class="at-btn at-btn--xs" data-sheet-open
+                        hx-get="/configuration/downloaders/{{.ID}}/edit" hx-target="#sheet-body" hx-swap="innerHTML">Edit</button>
+                <form method="post" action="/configuration/downloaders/{{.ID}}/test" data-testtarget="{{.URL}}"
+                      hx-post="/configuration/downloaders/{{.ID}}/test" hx-target="#dl-test-{{.ID}}" hx-swap="innerHTML">
+                  <input type="hidden" name="csrf_token" value="{{$csrf}}">
+                  <button class="at-btn at-btn--xs" type="submit">Test</button>
+                </form>
+              </span>
+            </td>
+          </tr>
+          <tr><td colspan="5" class="at-testcell"><div id="dl-test-{{.ID}}"></div></td></tr>
+        {{else}}
+          <tr><td colspan="5" class="at-table-empty" style="border-bottom:0">No downloaders yet.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="at-addrow" data-sheet-open
+            hx-get="/configuration/downloaders/new" hx-target="#sheet-body" hx-swap="innerHTML"><span aria-hidden="true">+</span>Add downloader</button>
+  </section>
+</div>{{end}}
+
+{{/* The dot carries its state in its label; the hover card only shows
+     the same two lines to a pointer. Args: Tone, Label, Detail */}}
+{{define "statusdot"}}<span class="at-st" tabindex="0" data-tone="{{.Tone}}" data-label="{{.Label}}" data-detail="{{.Detail}}" aria-label="{{.Label}}. {{.Detail}}"><span class="at-st-dot" aria-hidden="true"></span></span>{{end}}
+
+{{/* What the drawer holds: its bar, a slot for a failed save, and the
+     add or edit form. */}}
+{{define "sheetbody"}}{{$csrf := .CSRFToken}}
+<div class="at-sheet-bar">
+  {{if and (eq .Sheet "server") .EditMediaServerID}}<button type="button" class="at-btn at-btn--critical" onclick="document.getElementById('del-ms-{{.EditMediaServerID}}').showModal()">Delete</button>{{end}}
+  {{if and (eq .Sheet "downloader") .EditDownloaderID}}<button type="button" class="at-btn at-btn--critical" onclick="document.getElementById('del-dl-{{.EditDownloaderID}}').showModal()">Delete</button>{{end}}
+  <button type="button" class="at-btn at-btn--ghost" data-sheet-close>Close</button>
+</div>
+<div id="sheet-error"></div>
+{{if eq .Sheet "server"}}{{template "serverform" .}}
+  {{if .EditMediaServerID}}{{template "deletedialog" dict "ID" (printf "del-ms-%d" .EditMediaServerID) "Name" .EditMediaServer.Name "Action" (printf "/configuration/media-servers/%d/delete" .EditMediaServerID) "CSRF" $csrf
+    "Body" "Its mappings are removed with it. Log entries are kept."}}{{end}}
+{{else}}{{template "downloaderform" .}}
+  {{if .EditDownloaderID}}{{template "deletedialog" dict "ID" (printf "del-dl-%d" .EditDownloaderID) "Name" .EditDownloader.Name "Action" (printf "/configuration/downloaders/%d/delete" .EditDownloaderID) "CSRF" $csrf
+    "Body" "Its mappings are removed with it. Log entries are kept. The client keeps whatever rate limits are currently set on it."}}{{end}}
+{{end}}{{end}}
+
+{{define "sheeterror"}}{{template "alert" dict "Tone" "error" "Title" "That didn't save" "Body" .}}{{end}}
+
+{{define "serverform"}}{{$csrf := .CSRFToken}}
+  <section class="at-card at-formcard">
+    <header class="at-card-head"><h2 class="at-card-title">{{if .EditMediaServerID}}Edit media server{{else}}Add a media server{{end}}</h2></header>
+    <form method="post" action="/configuration/media-servers" id="ms-form" data-require="name,url,credential"{{if .EditMediaServerID}} data-editing{{end}}{{if .EditMediaServer.HasCredential}} data-hascredential="1"{{end}} class="at-stack"
+          hx-post="/configuration/media-servers" hx-target="#sheet-error" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      {{if .EditMediaServerID}}<input type="hidden" name="id" value="{{.EditMediaServerID}}">{{end}}
+      <label class="at-field"><span class="at-field-label">Name</span>
+        <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}"{{if not .EditMediaServerID}} data-autoname="{{.EditMediaServer.Name}}"{{end}} required></label>
+      <label class="at-field"><span class="at-field-label">Type</span>
+        <select class="at-select" name="type">
+          <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
+          <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
+          <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
+        </select></label>
+      <label class="at-field"><span class="at-field-label">URL</span>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
+        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
+      {{/* Plex takes either a pasted token or its own sign-in; Emby and
+           Jellyfin only take an API key. Each input has its own name and
+           the server picks by type, so a hidden blank field can never
+           win over the value the user actually supplied. */}}
+      <div data-credgroup="plex" class="at-stack">
+        <div class="at-tabs at-tabs--sm" role="tablist">
+          <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>
+          <button type="button" class="at-tab" role="tab" aria-selected="false" data-credtab="signin">Sign in with Plex</button>
+        </div>
+        <div data-credpane="token">
+          {{template "credentialfield" dict "Label" "X-Plex-Token" "Name" "token"
+            "HasCredential" .EditMediaServer.HasCredential "Placeholder" "X-Plex-Token"
+            "Help" "https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
+            "HelpLabel" "Plex support: finding an authentication token (X-Plex-Token)"}}
+        </div>
+        <div data-credpane="signin" hidden>
+          <div id="plex-signin">{{template "plexsignin" dict "State" "idle"}}</div>
+        </div>
+      </div>
+      <div data-credgroup="apikey" hidden>
+        {{template "credentialfield" dict "Label" "API key" "Name" "api_token"
+          "HasCredential" .EditMediaServer.HasCredential "Placeholder" "API key"}}
+      </div>
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
+        <span class="at-check-text">
+          <span>Ignore local network playback</span>
+        </span>
+      </label>
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditMediaServer.Enabled}}checked{{end}}>
+        <span class="at-check-text"><span>Enabled</span></span>
+      </label>
+      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
+        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditMediaServerID}}Save changes{{else}}Add media server{{end}}</button>
+        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/media-servers/test" hx-include="#ms-form"
+                hx-target="#ms-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
+        {{if .EditMediaServerID}}<button type="button" class="at-btn at-btn--ghost" data-sheet-close>Cancel</button>{{end}}
+      </div>
+      <div id="ms-form-test"></div>
+    </form>
+  </section>
+{{end}}
+
+{{define "downloaderform"}}{{$csrf := .CSRFToken}}
+  <section class="at-card at-formcard">
+    <header class="at-card-head"><h2 class="at-card-title">{{if .EditDownloaderID}}Edit download client{{else}}Add a download client{{end}}</h2></header>
+    <form method="post" action="/configuration/downloaders" id="dl-form" data-require="name,url"{{if .EditDownloaderID}} data-editing{{end}}{{if .EditDownloader.HasCredential}} data-hascredential="1"{{end}} class="at-stack"
+          hx-post="/configuration/downloaders" hx-target="#sheet-error" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      {{if .EditDownloaderID}}<input type="hidden" name="id" value="{{.EditDownloaderID}}">{{end}}
+      <label class="at-field"><span class="at-field-label">Name</span>
+        <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}"{{if not .EditDownloaderID}} data-autoname="{{.EditDownloader.Name}}"{{end}} required></label>
+      <label class="at-field"><span class="at-field-label">Type</span>
+        <select class="at-select" name="type">
+          <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
+          <option value="transmission" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
+        </select></label>
+      <label class="at-field"><span class="at-field-label">URL</span>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required>
+        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
+      <div style="display:grid;gap:var(--space-6);grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
+        <label class="at-field"><span class="at-field-label">Username</span>
+          <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>
+        {{template "credentialfield" dict "Label" "Password" "Name" "password" "HasCredential" .EditDownloader.HasCredential "Placeholder" ""}}
+      </div>
+      {{template "ratepair" dict "Legend" "Default rates" "Tone" "default"
+        "Hint" "Applied when nothing" "HintTail" "is playing."
+        "HintLabel" "Applied when nothing mapped is playing." "HintID" "hint-default-rates"
+        "DownName" "default_download_limit" "UpName" "default_upload_limit"
+        "Down" .EditDownloader.DefaultDownloadLimit "Up" .EditDownloader.DefaultUploadLimit}}
+      {{template "ratepair" dict "Legend" "Throttled rates" "Tone" "warn"
+        "Hint" "Applied while a" "HintTail" "server is playing."
+        "HintLabel" "Applied while a mapped server is playing." "HintID" "hint-throttled-rates"
+        "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
+        "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
+        "Note" "Rates are KB/s. 0 means unlimited, and the field says so as you type."}}
+      <label class="at-check-label">
+        <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
+        <span class="at-check-text"><span>Enabled</span></span>
+      </label>
+      <div style="display:flex;gap:var(--space-4);flex-wrap:wrap">
+        <button type="submit" class="at-btn at-btn--primary" data-submit disabled>{{if .EditDownloaderID}}Save changes{{else}}Add downloader{{end}}</button>
+        <button type="button" class="at-btn" data-testbtn hx-post="/configuration/downloaders/test" hx-include="#dl-form"
+                hx-target="#dl-form-test" hx-swap="innerHTML" hx-disabled-elt="this"><span class="at-btn-idle">Test connection</span><span class="at-btn-busy">Testing…</span></button>
+        {{if .EditDownloaderID}}<button type="button" class="at-btn at-btn--ghost" data-sheet-close>Cancel</button>{{end}}
+      </div>
+      <div id="dl-form-test"></div>
+    </form>
+  </section>
+{{end}}

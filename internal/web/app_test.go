@@ -53,6 +53,8 @@ type testApp struct {
 	handler  http.Handler
 	cookies  []*http.Cookie
 	csrf     string
+	// htmx marks requests as HTMX's, as the drawer's are.
+	htmx bool
 	// qbit is a stand-in qBittorrent that accepts everything, so the
 	// scheduler's real rate-setting calls succeed rather than failing in
 	// the background and writing error events a test then trips over.
@@ -132,6 +134,9 @@ func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRec
 	}
 	for _, c := range a.cookies {
 		req.AddCookie(c)
+	}
+	if a.htmx {
+		req.Header.Set("HX-Request", "true")
 	}
 	rec := httptest.NewRecorder()
 	a.handler.ServeHTTP(rec, req)

@@ -190,8 +190,8 @@ func TestHeroStatements(t *testing.T) {
 		in   heroInput
 		want heroState
 	}{
-		{"nothing configured past a downloader", heroInput{downloaders: 1}, heroState{Statement: "Not ready to throttle", Tone: "dim", Missing: "a media server", MissingTab: "media-servers"}},
-		{"a server but no downloader", heroInput{servers: 1}, heroState{Statement: "Not ready to throttle", Tone: "dim", Missing: "a downloader", MissingTab: "downloaders"}},
+		{"nothing configured past a downloader", heroInput{downloaders: 1}, heroState{Statement: "Not ready to throttle", Tone: "dim", Missing: "a media server"}},
+		{"a server but no downloader", heroInput{servers: 1}, heroState{Statement: "Not ready to throttle", Tone: "dim", Missing: "a downloader"}},
 		{"paused while playing", heroInput{paused: true, sessions: 2, servers: 1, downloaders: 2}, heroState{Statement: "Default downloader speeds enforced", Tone: "plain"}},
 		{"paused, nothing playing", heroInput{paused: true, servers: 1, downloaders: 2}, heroState{Statement: "Default downloader speeds enforced", Tone: "plain", Reason: "Nothing mapped is playing, so nothing would be throttled right now in any case."}},
 		{"two throttled", heroInput{throttled: []string{"qBittorrent", "Transmission"}, servers: 1, downloaders: 2}, heroState{Statement: "qBittorrent and Transmission throttled", Tone: "warn"}},

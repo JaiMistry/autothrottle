@@ -65,8 +65,72 @@
     if (e.target.closest(".at-rail a")) setDrawer(false);
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") setDrawer(false);
+    if (e.key !== "Escape") return;
+    setDrawer(false);
+    // A delete confirmation over the drawer takes the first Esc itself.
+    if (!document.querySelector("dialog[open]")) setSheet(false);
   });
+
+  /* ── Connections drawer ──────────────────────────────────────────
+     The add and edit forms load into it; it opens once one has landed
+     and keeps it while sliding shut, so nothing empties mid-slide. */
+  var sheetReturn = null;
+  function setSheet(open) {
+    var sheet = document.getElementById("sheet");
+    if (!sheet) return;
+    sheet.classList.toggle("open", open);
+    sheet.inert = !open;
+    var scrim = document.querySelector(".at-sheet-scrim");
+    if (scrim) scrim.classList.toggle("open", open);
+    if (open) {
+      sheet.scrollTop = 0;
+      var first = sheet.querySelector("input:not([type=hidden]), select");
+      if (first) first.focus({ preventScroll: true });
+    } else if (sheetReturn && document.contains(sheetReturn)) {
+      sheetReturn.focus();
+    }
+  }
+  document.addEventListener("click", function (e) {
+    var opener = e.target.closest("[data-sheet-open]");
+    if (opener) sheetReturn = opener;
+    if (e.target.closest("[data-sheet-close]")) setSheet(false);
+  });
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.detail.target && e.detail.target.id === "sheet-body") setSheet(true);
+  });
+  document.body.addEventListener("at-sheet-close", function () { setSheet(false); });
+
+  /* ── Status dots ────────────────────────────────────────────────
+     One fixed hover card for every dot, so a table's horizontal scroll
+     can't clip it. */
+  function showTip(dot) {
+    var tip = document.querySelector(".at-st-tip");
+    if (!tip) return;
+    var r = dot.getBoundingClientRect();
+    tip.dataset.tone = dot.dataset.tone;
+    tip.firstElementChild.textContent = dot.dataset.label;
+    tip.lastElementChild.textContent = dot.dataset.detail;
+    tip.style.left = (r.left - 2) + "px";
+    tip.style.top = (r.top - 6) + "px";
+    tip.classList.add("on");
+  }
+  function hideTip() {
+    var tip = document.querySelector(".at-st-tip");
+    if (tip) tip.classList.remove("on");
+  }
+  ["mouseover", "focusin"].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var dot = e.target.closest && e.target.closest(".at-st");
+      if (dot) showTip(dot);
+    });
+  });
+  ["mouseout", "focusout"].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var dot = e.target.closest && e.target.closest(".at-st");
+      if (dot && !dot.contains(e.relatedTarget)) hideTip();
+    });
+  });
+  window.addEventListener("scroll", hideTip, true);
 
   /* ── Two-row cap ────────────────────────────────────────────────
      The Dashboard's list cards show two rows and scroll past that, so a

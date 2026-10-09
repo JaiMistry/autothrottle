@@ -41,7 +41,7 @@
       <div style="display:grid;gap:var(--space-4)">
         <p class="at-hero-statement" data-tone="{{.Hero.Tone}}">{{.Hero.Statement}}</p>
         {{if .Hero.Missing}}
-          <p class="at-hero-reason">Add {{.Hero.Missing}} to start throttling. AutoThrottle needs at least one downloader and media server added. Go to <a href="/configuration?tab={{.Hero.MissingTab}}">Configuration</a></p>
+          <p class="at-hero-reason">Add {{.Hero.Missing}} to start throttling. AutoThrottle needs at least one downloader and media server added. Go to <a href="/configuration?tab=connections">Configuration</a></p>
         {{else if .Hero.Reason}}
           <p class="at-hero-reason">{{.Hero.Reason}}</p>
         {{else if not .Hero.Since.IsZero}}
