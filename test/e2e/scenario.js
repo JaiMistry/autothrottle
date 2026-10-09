@@ -94,9 +94,9 @@ const qbittorrent = {
 
 // Stops and starts the AutoThrottle container through Docker's API, the
 // socket run.sh mounts in.
-function docker(action) {
+function docker(action, container = 'e2e-autothrottle') {
   return new Promise((resolve, reject) => {
-    const req = http.request({ socketPath: '/var/run/docker.sock', method: 'POST', path: `/containers/e2e-autothrottle/${action}` }, (res) => {
+    const req = http.request({ socketPath: '/var/run/docker.sock', method: 'POST', path: `/containers/${container}/${action}` }, (res) => {
       res.resume();
       res.on('end', () => (res.statusCode < 300 ? resolve() : reject(new Error(`docker ${action}: ${res.statusCode}`))));
     });
@@ -389,6 +389,27 @@ const transmission = {
     check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
+
+    section('A download client restarting');
+    // qBittorrent restarts (an update, say) and is still coming up when
+    // AutoThrottle applies its rates. It must not stay Unreachable.
+    await docker('stop', 'e2e-qbittorrent');
+    await docker('restart');
+    await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
+    await navigate('/configuration?tab=connections');
+    const dlDot = () => page.evaluate(() => {
+      const row = [...document.querySelectorAll('#connections tbody tr')].find((r) => r.innerText.includes('qBittorrent'));
+      return row ? row.querySelector('.at-st').dataset.label : '';
+    });
+    const red = await until('qBittorrent to read Unreachable', async () => ((await dlDot()) === 'Unreachable' ? true : null), 60000);
+    check(!!red, 'a client down at startup reads Unreachable', await dlDot());
+    await docker('start', 'e2e-qbittorrent');
+    const cameBack = Date.now();
+    const green = await until('qBittorrent to come back', async () => ((await dlDot()) === 'Default rates' ? true : null), 120000);
+    check(!!green, 'once it is back, its dot turns green on the open page, without a reload', `${await dlDot()} after ${Math.round((Date.now() - cameBack) / 1000)}s`);
+    check((await qbittorrent.limits()).down === 0, 'and its rates were applied again');
+    const logText0 = await (await fetch(APP + '/logs', { headers: { Cookie: (await page.cookies()).map((c) => `${c.name}=${c.value}`).join('; ') } })).text();
+    check((logText0.match(/failed to apply rate limits to qBittorrent/g) || []).length === 1, 'the outage is logged once, not once per retry');
 
     section('Local playback exemption');
     // The player runs on this machine, so the server sees a private

@@ -152,6 +152,7 @@ func main() {
 	}()
 
 	go maintenance.Run(ctx)
+	go sched.RetryFailed(ctx)
 	go heartbeat(ctx, database, runID)
 
 	go func() {

@@ -592,24 +592,26 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	s.applied[dl.ID] = want
 	s.mu.Unlock()
 
-	if known && prev.throttled == throttled {
+	// After a failure nothing is known about what the client is running,
+	// so the state applied is named in full rather than as an update.
+	if known && prev.failure == "" && prev.throttled == throttled {
 		message = fmt.Sprintf("updated rate limits for %s", dl.Name)
 	}
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
-		s.recordFailure(dl.ID, fmt.Sprintf("reading credential for %s: %v", dl.Name, err))
+		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("reading credential for %s: %v", dl.Name, err))
 		return
 	}
 
 	limiter := s.limiterFor(dl.Type)
 	if limiter == nil {
-		s.recordFailure(dl.ID, fmt.Sprintf("no rate-limit support for downloader type %q (%s)", dl.Type, dl.Name))
+		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("no rate-limit support for downloader type %q (%s)", dl.Type, dl.Name))
 		return
 	}
 
 	if err := limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
-		s.recordFailure(dl.ID, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, err))
+		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, err))
 		return
 	}
 
@@ -626,16 +628,92 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 // recordFailure logs and persists an error. The attempted state is
 // replaced by the failure, so the next resolve retries, and the
 // Dashboard shows the downloader as unreachable rather than normal.
-func (s *Scheduler) recordFailure(downloaderID int64, message string) {
+// recordFailure marks a downloader failing. previous is its failure
+// before this attempt, if any: applyState has already overwritten it.
+func (s *Scheduler) recordFailure(downloaderID int64, previous, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
 	s.applied[downloaderID] = appliedState{failure: message}
 	s.mu.Unlock()
+	// Retries hit the same wall until the client is back; the log gets
+	// the error once, not once per attempt.
+	if previous == message {
+		return
+	}
 	if err := s.db.InsertEvent(db.Event{
 		Level:        "error",
 		Message:      message,
 		DownloaderID: sql.NullInt64{Int64: downloaderID, Valid: true},
 	}); err != nil {
 		slog.Error("scheduler: recording failure event", "error", err)
+	}
+}
+
+// Retry backoff for downloaders whose last apply failed: soon at first,
+// for a client that was only restarting, then less often for one that
+// is down for longer. Variables so tests need not wait them out.
+var (
+	retryFirst = 15 * time.Second
+	retryMax   = 2 * time.Minute
+	retryCheck = 5 * time.Second
+)
+
+// failing reports whether any downloader's last apply failed.
+func (s *Scheduler) failing() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, state := range s.applied {
+		if state.failure != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// RetryFailed re-applies throttle state while a downloader is failing,
+// until ctx ends. Without it a client that was briefly down — restarting
+// for an update, say — stayed Unreachable, with its rates not
+// re-asserted, until some unrelated playback event or save happened to
+// resolve again.
+func (s *Scheduler) RetryFailed(ctx context.Context) {
+	t := time.NewTicker(retryCheck)
+	defer t.Stop()
+	delay := retryFirst
+	var next time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			if !s.failing() {
+				delay, next = retryFirst, time.Time{}
+				continue
+			}
+			if next.IsZero() {
+				next = now.Add(delay)
+				continue
+			}
+			if now.Before(next) {
+				continue
+			}
+			s.resolveNow()
+			delay = min(delay*2, retryMax)
+			next = now.Add(delay)
+		}
+	}
+}
+
+// resolveNow is resolve on its own timeout-bound context, waited for.
+func (s *Scheduler) resolveNow() {
+	ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
+	defer cancel()
+	s.resolve(ctx)
+}
+
+// RetryIfFailing re-applies at once when the downloader's last apply
+// failed — for a connection test that has just shown it reachable.
+func (s *Scheduler) RetryIfFailing(downloaderID int64) {
+	if s.State(downloaderID).Failure != "" {
+		s.ResolveAsync()
 	}
 }

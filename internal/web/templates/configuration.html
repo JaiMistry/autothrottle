@@ -19,6 +19,10 @@
 
 {{if eq $tab "connections"}}
 {{template "connections" .}}
+{{/* Follows the live stream so a dot changes the moment its state
+     does: a downloader failing, or coming back. */}}
+<div id="conn-live" hidden hx-get="/configuration/connections/status" hx-trigger="live, every 5s [atLivePoll(this)]"
+     hx-swap="none" data-live="dashboard"></div>
 {{/* One hover card for every status dot. Fixed and outside the tables,
      so their horizontal scroll can't clip it on the first or last row. */}}
 <span class="at-st-tip" role="tooltip" aria-hidden="true"><span class="at-st-tip-label"></span><span class="at-st-tip-detail"></span></span>
@@ -255,11 +259,11 @@
         <tbody>
         {{range .MediaServers}}
           <tr>
-            <td><span class="at-named">{{template "statusdot" .Dot}}{{.Name}}</span></td>
+            <td><span class="at-named">{{template "statusdot" (dict "ID" (printf "st-ms-%d" .ID) "Dot" .Dot)}}{{.Name}}</span></td>
             <td class="at-cell--mono at-cell--dim">{{.Type}}</td>
             <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
             <td class="at-cell--dim">{{if .SkipLocalPlayback}}Yes{{else}}No{{end}}</td>
-            <td class="at-cell--mono">{{.Sessions}}</td>
+            <td class="at-cell--mono"><span id="sess-ms-{{.ID}}">{{.Sessions}}</span></td>
             <td>
               <span class="at-rowactions">
                 <button type="button" class="at-btn at-btn--xs" data-sheet-open
@@ -294,7 +298,7 @@
         <tbody>
         {{range .Downloaders}}
           <tr>
-            <td><span class="at-named">{{template "statusdot" .Dot}}{{.Name}}</span></td>
+            <td><span class="at-named">{{template "statusdot" (dict "ID" (printf "st-dl-%d" .ID) "Dot" .Dot)}}{{.Name}}</span></td>
             <td class="at-cell--mono at-cell--dim">{{.URL}}</td>
             <td>{{template "ratefigure" dict "Down" .DefaultDownloadLimit "Up" .DefaultUploadLimit}}</td>
             <td>{{template "ratefigure" dict "Down" .BackupDownloadLimit "Up" .BackupUploadLimit}}</td>
@@ -324,7 +328,14 @@
 
 {{/* The dot carries its state in its label; the hover card only shows
      the same two lines to a pointer. Args: Tone, Label, Detail */}}
-{{define "statusdot"}}<span class="at-st" tabindex="0" data-tone="{{.Tone}}" data-label="{{.Label}}" data-detail="{{.Detail}}" aria-label="{{.Label}}. {{.Detail}}"><span class="at-st-dot" aria-hidden="true"></span></span>{{end}}
+{{define "statusdot"}}<span class="at-st" id="{{.ID}}" tabindex="0" data-tone="{{.Dot.Tone}}" data-label="{{.Dot.Label}}" data-detail="{{.Dot.Detail}}" aria-label="{{.Dot.Label}}. {{.Dot.Detail}}"><span class="at-st-dot" aria-hidden="true"></span></span>{{end}}
+
+{{/* The live parts of the Connections tables — each dot and session
+     count by id — for the page to merge in place as state changes. */}}
+{{define "connectionstatus"}}
+{{- range .MediaServers}}{{template "statusdot" (dict "ID" (printf "st-ms-%d" .ID) "Dot" .Dot)}}<span id="sess-ms-{{.ID}}">{{.Sessions}}</span>{{end}}
+{{- range .Downloaders}}{{template "statusdot" (dict "ID" (printf "st-dl-%d" .ID) "Dot" .Dot)}}{{end}}
+{{- end}}
 
 {{/* What the drawer holds: its bar, a slot for a failed save, and the
      add or edit form. */}}

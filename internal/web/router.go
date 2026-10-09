@@ -138,6 +138,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /dashboard/live", s.dashboardLive)
 	protected.HandleFunc("GET /events", s.liveEvents)
 	protected.HandleFunc("GET /dashboard/history", s.historyCard)
+	protected.HandleFunc("GET /configuration/connections/status", s.connectionStatus)
 	protected.HandleFunc("GET /configuration/media-servers/new", s.sheetForm("server"))
 	protected.HandleFunc("GET /configuration/media-servers/{id}/edit", s.sheetForm("server"))
 	protected.HandleFunc("GET /configuration/downloaders/new", s.sheetForm("downloader"))

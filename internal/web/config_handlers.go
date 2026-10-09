@@ -312,6 +312,18 @@ func (s *Server) sheetForm(sheet string) http.HandlerFunc {
 	}
 }
 
+// connectionStatus serves the Connections tables' dots and session
+// counts, for the page to merge in place.
+func (s *Server) connectionStatus(w http.ResponseWriter, r *http.Request) {
+	data, err := s.buildConfigPageData(r, "connections")
+	if err != nil {
+		slog.Error("building connection status", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	s.renderFragment(w, "configuration", "connectionstatus", data)
+}
+
 // savedConnection answers a successful save. From the drawer, the
 // tables are swapped out of band and the drawer is told to close, so it
 // slides shut over the updated list; a plain form post is redirected.
@@ -690,7 +702,15 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	s.probe(w, r, probeDownloader, rawURL, "Successfully connected.", func(ctx context.Context) error {
-		return clients.TestDownloader(ctx, dlType, rawURL, username, password)
+		if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
+			return err
+		}
+		// Testing a saved downloader from its edit form: if it was
+		// failing, it is reachable now, so its rates go back on at once.
+		if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil {
+			s.scheduler.RetryIfFailing(id)
+		}
+		return nil
 	})
 }
 
@@ -713,7 +733,13 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.probe(w, r, probeDownloader, dl.URL, "Successfully connected.", func(ctx context.Context) error {
-		return clients.TestDownloader(ctx, dl.Type, dl.URL, username, password)
+		if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
+			return err
+		}
+		// Reachable again: put its rates back now rather than at the
+		// next retry.
+		s.scheduler.RetryIfFailing(dl.ID)
+		return nil
 	})
 }
 

@@ -132,6 +132,28 @@
   });
   window.addEventListener("scroll", hideTip, true);
 
+  // The live refresh of the Connections tables: each dot and session
+  // count is updated in place, never replaced, so one under the pointer
+  // or holding keyboard focus keeps both, and its open card follows.
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    if (!e.detail.elt || e.detail.elt.id !== "conn-live" || !e.detail.successful) return;
+    var parsed = document.createElement("div");
+    parsed.innerHTML = e.detail.xhr.responseText;
+    [].forEach.call(parsed.children, function (fresh) {
+      var el = fresh.id && document.getElementById(fresh.id);
+      if (!el) return;
+      if (fresh.classList.contains("at-st")) {
+        ["data-tone", "data-label", "data-detail", "aria-label"].forEach(function (a) {
+          if (el.getAttribute(a) !== fresh.getAttribute(a)) el.setAttribute(a, fresh.getAttribute(a));
+        });
+        var tip = document.querySelector(".at-st-tip.on");
+        if (tip && (el.matches(":hover") || el === document.activeElement)) showTip(el);
+      } else if (el.textContent !== fresh.textContent) {
+        el.textContent = fresh.textContent;
+      }
+    });
+  });
+
   /* ── Two-row cap ────────────────────────────────────────────────
      The Dashboard's list cards show two rows and scroll past that, so a
      third downloader never pushes the activity log off the fold. Row
