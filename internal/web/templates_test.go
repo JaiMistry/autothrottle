@@ -2,6 +2,7 @@ package web
 
 import (
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,5 +158,52 @@ func TestPagedLogArithmetic(t *testing.T) {
 	empty := newPagedLog("Events", "t", "/e", nil, 0, 10, 1, nil)
 	if empty.Pages != 1 || empty.HasNext || empty.RangeFrom != 0 {
 		t.Errorf("empty pager = %+v", empty)
+	}
+}
+
+// The healthy state is a green dot before the name; every other state
+// keeps its flag after it.
+func TestRowHealthyStateIsADot(t *testing.T) {
+	tmpl, err := parsePage("dashboard", templateFuncs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(name string, data any) string {
+		var b strings.Builder
+		if err := tmpl.ExecuteTemplate(&b, name, data); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	dot := func(label string) string {
+		return `class="at-rowdot" role="img" aria-label="` + label + `" title="` + label + `"`
+	}
+
+	for state, flag := range map[string]string{
+		"normal": "", "paused": "", "throttled": "Throttled", "unreachable": "Unreachable", "unknown": "Unknown", "disabled": "Disabled",
+	} {
+		html := render("downloaderrow", downloaderRowView{Name: "qBit", State: state, Cause: "nothing mapped is playing"})
+		hasDot := strings.Contains(html, dot("Default rates"))
+		if (flag == "") != hasDot || strings.Contains(html, ">Default rates<") {
+			t.Errorf("downloader %s: dot %v in %s", state, hasDot, html)
+		}
+		if flag != "" && !strings.Contains(html, flag) {
+			t.Errorf("downloader %s lost its %q flag", state, flag)
+		}
+		if hasDot && strings.Index(html, "at-rowdot") > strings.Index(html, "qBit") {
+			t.Errorf("downloader %s: the dot comes after the name", state)
+		}
+	}
+	for state, flag := range map[string]string{
+		"idle": "", "playing": "2 playing", "unreachable": "Unreachable", "connecting": "Connecting…", "disabled": "Disabled",
+	} {
+		html := render("serverrow", serverRowView{Name: "Plex", State: state, Sessions: 2, Detail: "No activity detected."})
+		hasDot := strings.Contains(html, dot("Idle"))
+		if (flag == "") != hasDot || strings.Contains(html, ">Idle<") {
+			t.Errorf("server %s: dot %v in %s", state, hasDot, html)
+		}
+		if flag != "" && !strings.Contains(html, flag) {
+			t.Errorf("server %s lost its %q flag", state, flag)
+		}
 	}
 }

@@ -659,6 +659,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot { justify-items: center; }
 }
 .at-serverrow-main { display: grid; gap: 3px; min-width: 0; }
 .at-serverrow-head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.at-rowdot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
 .at-serverrow-detail { font-size: var(--text-caption); color: var(--text-dim); }
 .at-serverrow[data-state="unreachable"] .at-serverrow-detail { color: var(--critical); }
 

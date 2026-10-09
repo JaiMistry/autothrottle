@@ -97,15 +97,19 @@
 </svg>{{end}}
 
 {{/* ServerRow. Args: Name, Type, State, Sessions, Detail */}}
+{{/* The healthy state, as a green dot before the name: a flag saying
+     all is well was the loudest thing on a quiet row. Arg: the label. */}}
+{{define "rowdot"}}<span class="at-rowdot" role="img" aria-label="{{.}}" title="{{.}}"></span>{{end}}
+
 {{define "serverrow"}}<div class="at-serverrow" data-state="{{.State}}">
   <div class="at-serverrow-main">
     <div class="at-serverrow-head">
+      {{if eq .State "idle"}}{{template "rowdot" "Idle"}}{{end}}
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
       {{if eq .State "playing"}}{{template "statusflag" dict "Tone" "accent" "Icon" "playing" "Label" (printf "%d playing" .Sessions)}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
       {{else if eq .State "connecting"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "connecting" "Label" "Connecting…"}}
-      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
-      {{else}}{{template "statusflag" dict "Tone" "good" "Icon" "idle" "Label" "Idle"}}{{end}}
+      {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
     {{if .Playing}}<span class="at-sessions">
@@ -138,16 +142,16 @@
 {{define "downloaderrow"}}<div class="at-dlrow-wrap" data-state="{{.State}}">
   <div class="at-dlrow">
     <div class="at-dlrow-head">
+      {{/* At default rates the flag is just a green dot before the name;
+           the reason line says why. normal and paused read the same:
+           throttling off means the configured default rate is in force,
+           the same rate as any other unthrottled moment. */}}
+      {{if or (eq .State "normal") (eq .State "paused")}}{{template "rowdot" "Default rates"}}{{end}}
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
       {{if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
       {{else if eq .State "unreachable"}}{{template "statusflag" dict "Tone" "critical" "Icon" "unreachable" "Label" "Unreachable"}}
       {{else if eq .State "disabled"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "disabled" "Label" "Disabled"}}
-      {{else if eq .State "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown"}}
-      {{else}}{{/* normal and paused read the same: throttling off means
-                   the configured default rate is in force, which is the
-                   same rate as any other unthrottled moment. The reason
-                   line carries the override. */}}
-        {{template "statusflag" dict "Tone" "good" "Icon" "normal" "Label" "Default rates"}}{{end}}
+      {{else if eq .State "unknown"}}{{template "statusflag" dict "Tone" "neutral" "Icon" "unknown" "Label" "Unknown"}}{{end}}
       {{if .Type}}<span class="at-rowtype">{{.Type}}</span>{{end}}
     </div>
     <span class="at-dlrow-reason">{{.Cause}}</span>
