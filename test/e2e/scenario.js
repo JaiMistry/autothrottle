@@ -446,6 +446,15 @@ const transmission = {
     check(missing.status() === 404 && (await page.title()) === 'Page not found', 'an unknown address gets the 404 page', `${missing.status()} ${await page.title()}`);
     check((await page.$$('.at-shell')).length === 0 && (await text('.at-nf-msg')) === 'no route for GET /no-such-page',
       'it stands alone and names the address', await text('.at-nf-msg'));
+    const shownTime = await text('.at-nf-time');
+    await navigate('/logs');
+    const logged = await page.$$eval('.at-logrow', (rows) => rows.map((r) => ({
+      time: r.querySelector('.at-logrow-time').textContent.trim(),
+      level: r.dataset.level,
+      msg: r.querySelector('.at-logrow-msg').textContent.trim(),
+    })).find((r) => r.msg === 'no route for GET /no-such-page'));
+    check(!!logged && logged.level === 'warn' && logged.time === shownTime, 'the 404 is in the log as shown, at the same time', JSON.stringify(logged) + ' vs ' + shownTime);
+    await page.goto(APP + '/no-such-page', { waitUntil: 'networkidle2' });
     await settle(() => page.click('.at-nf-actions .at-btn--primary'));
     check(at() === '/' && (await page.title()) === 'AutoThrottle' && (await page.$$('.at-shell')).length === 1,
       'and its button goes back to the Dashboard', `${at()} ${await page.title()}`);

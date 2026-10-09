@@ -71,7 +71,7 @@ func TestPagesRender(t *testing.T) {
 		"configuration": testConfigPage("connections"),
 		"notfound": notFoundData{
 			pageData: pageData{Title: "Page not found", Version: "test", Asset: func(p string) string { return p }},
-			SignedIn: true, Time: "14:12:21", Method: "GET", Path: "/nope",
+			SignedIn: true, Time: "14:12:21", Message: "no route for GET /nope",
 		},
 	}
 

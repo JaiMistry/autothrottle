@@ -12,7 +12,7 @@
   <div class="at-card at-nf-log">
     <span class="at-nf-time">{{.Time}}</span>
     <span class="at-nf-lvl">WARN</span>
-    <span class="at-nf-msg">no route for {{.Method}} {{.Path}}</span>
+    <span class="at-nf-msg">{{.Message}}</span>
   </div>
   <div class="at-nf-actions">
     {{if .SignedIn}}

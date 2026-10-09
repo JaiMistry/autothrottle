@@ -52,6 +52,7 @@ type Server struct {
 	assets        *staticAssets
 	startedAt     time.Time
 	live          *live.Hub
+	notFoundLog   notFoundLog
 }
 
 // parsePage builds one page's template set: the shared layout, the

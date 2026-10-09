@@ -61,8 +61,7 @@ type notFoundData struct {
 	pageData
 	SignedIn bool
 	Time     string
-	Method   string
-	Path     string
+	Message  string
 	LoginURL string
 }
 
@@ -70,14 +69,15 @@ type notFoundData struct {
 // so a signed-out visitor following a dead link still gets the app's
 // own page, with a way to sign in that comes back here.
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
 	data := notFoundData{
 		pageData: pageData{Title: "Page not found", Version: version.Label(), Asset: s.assets.URL},
 		SignedIn: auth.Authenticated(s.auth, s.sessions, r),
-		Time:     time.Now().Format("15:04:05"),
-		Method:   r.Method,
-		Path:     r.URL.Path,
+		Time:     now.Format("15:04:05"),
+		Message:  notFoundMessage(r.Method, r.URL.Path),
 		LoginURL: "/login?next=" + url.QueryEscape(r.URL.RequestURI()),
 	}
+	s.recordNotFound(r, data.Message, now)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	s.render(w, "notfound", data)
