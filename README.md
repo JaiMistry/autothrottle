@@ -18,11 +18,13 @@
 
 AutoThrottle dynamically lowers your download client speeds while something is playing on your media server, and restores them when playback stops. Set it up once and it looks after itself from then on. The throttling is aware of what is actually happening. A paused stream stays throttled, one that has sat paused or stalled for 30 minutes is let go, and playback on your own network can be ignored. When you want full speed regardless, one click turns throttling off until you turn it back on.
 
-<!-- Screenshots: add once the Dashboard redesign is final.
 <p align="center">
-  <img src="docs/screenshots/dashboard-dark.png" width="820" alt="Dashboard">
+  <img src=".github/assets/screenshots/dashboard-dark-light.png" width="100%" alt="The Dashboard in dark and light themes">
 </p>
--->
+<p align="center">
+  <img src=".github/assets/screenshots/connections-light.png" width="49%" alt="Connections">
+  <img src=".github/assets/screenshots/login-dark.png" width="49%" alt="Sign-in">
+</p>
 
 ## ⭐ Features
 
