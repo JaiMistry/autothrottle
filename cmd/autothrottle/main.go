@@ -4,9 +4,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,9 +40,21 @@ func main() {
 		logger.Error("switching to PUID/PGID", "error", err)
 		os.Exit(1)
 	}
-	if err := checkWritable(dataDir); err != nil {
-		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Not 8080, which is qBittorrent's default.
+	err := run(ctx, logger, dataDir, ":7676", os.Stdout)
+	stop()
+	if err != nil {
+		logger.Error("exiting", "error", err)
 		os.Exit(1)
+	}
+}
+
+// run starts everything and serves on addr until ctx ends.
+func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.Writer) error {
+	if err := checkWritable(dataDir); err != nil {
+		return fmt.Errorf("data directory %s is not usable: %w", dataDir, err)
 	}
 	// Not fatal: a directory we can write but not chmod still works.
 	if err := restrictDataDir(dataDir); err != nil {
@@ -50,8 +63,7 @@ func main() {
 	dbPath := filepath.Join(dataDir, "autothrottle.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
-		logger.Error("opening database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("opening database: %w", err)
 	}
 	defer func() {
 		if err := database.Close(); err != nil {
@@ -61,27 +73,27 @@ func main() {
 
 	authenticator, err := auth.Load(database)
 	if err != nil {
-		logger.Error("loading auth config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("loading auth config: %w", err)
 	}
 
 	encryptionKey, err := crypto.LoadOrGenerateKey(filepath.Join(dataDir, "encryption.key"))
 	if err != nil {
-		logger.Error("loading encryption key", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("loading encryption key: %w", err)
 	}
 
 	// Before anything reads history: this closes what the previous run
 	// left open at its last heartbeat, so downtime never reads as throttling.
 	runID, err := database.StartRun(time.Now())
 	if err != nil {
-		logger.Error("recording this run", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("recording this run: %w", err)
 	}
 
-	// Not 8080, which is qBittorrent's default.
-	const addr = ":7676"
-	printBanner(os.Stdout, version.Current(), startupInfo{
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listening on %s: %w", addr, err)
+	}
+
+	printBanner(out, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
 		AuthMode:     authenticator.Mode(),
@@ -97,8 +109,8 @@ func main() {
 
 	srv, err := web.New(database, authenticator, encryptionKey, sched, watchers)
 	if err != nil {
-		logger.Error("initializing web server", "error", err)
-		os.Exit(1)
+		_ = listener.Close()
+		return fmt.Errorf("initializing web server: %w", err)
 	}
 
 	hub := srv.Live()
@@ -107,7 +119,6 @@ func main() {
 	database.OnEventsChanged(func() { hub.Notify(live.Logs) })
 
 	httpServer := &http.Server{
-		Addr:         addr,
 		Handler:      srv.Router(),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -117,8 +128,12 @@ func main() {
 	// waits out its whole timeout on them.
 	httpServer.RegisterOnShutdown(hub.Close)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// Ends the background work however run returns. The last heartbeat
+	// is waited for: it records when this run stopped.
+	ctx, cancel := context.WithCancel(ctx)
+	beating := make(chan struct{})
+	defer func() { <-beating }()
+	defer cancel()
 
 	watchers.Start(ctx)
 
@@ -135,26 +150,28 @@ func main() {
 
 	go maintenance.Run(ctx)
 	go sched.RetryFailed(ctx)
-	go heartbeat(ctx, database, runID)
-
 	go func() {
-		logger.Info("listening", "addr", addr, "auth_disabled", authenticator.Disabled())
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server failed", "error", err)
-			os.Exit(1)
-		}
+		heartbeat(ctx, database, runID)
+		close(beating)
 	}()
 
-	<-ctx.Done()
+	served := make(chan error, 1)
+	go func() { served <- httpServer.Serve(listener) }()
+	logger.Info("listening", "addr", listener.Addr().String(), "auth_disabled", authenticator.Disabled())
+
+	select {
+	case err := <-served:
+		return fmt.Errorf("server failed: %w", err)
+	case <-ctx.Done():
+	}
 	logger.Info("shutting down")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}
+	return nil
 }
 
 // heartbeat keeps this run's last-seen time current, so the throttle
