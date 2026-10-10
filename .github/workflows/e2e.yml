@@ -105,7 +105,7 @@ jobs:
             echo "$failed"
             echo
             echo "**Versions tested:**"
-            cat versions-*.md 2>/dev/null || echo "- not recorded"
+            sort -u versions-*.md 2>/dev/null || echo "- not recorded"
             echo
             echo "This issue is updated each night while the run fails, and closes itself when it passes."
           } > body.md
