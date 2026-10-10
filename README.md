@@ -46,27 +46,16 @@ aside with one click whenever you want full speed back.
 
 ## Supported versions
 
-<table>
-<tr>
-<td valign="top">
-
 | | Media server | Version |
 |:-:|---|---|
-| <img src=".github/assets/logos/plex.png" width="18" alt=""> | Plex Media Server | 1.43+ |
-| <img src=".github/assets/logos/jellyfin.png" width="18" alt=""> | Jellyfin | 10.11+ |
-| <img src=".github/assets/logos/emby.png" width="18" alt=""> | Emby | 4.9+ |
-
-</td>
-<td valign="top">
+| <a href="https://www.plex.tv"><img src=".github/assets/logos/plex.png" width="18" alt="Plex Media Server"></a> | Plex Media Server | 1.43+ |
+| <a href="https://jellyfin.org"><img src=".github/assets/logos/jellyfin.png" width="18" alt="Jellyfin"></a> | Jellyfin | 10.11+ |
+| <a href="https://emby.media"><img src=".github/assets/logos/emby.png" width="18" alt="Emby"></a> | Emby | 4.9+ |
 
 | | Download client | Version |
 |:-:|---|---|
-| <img src=".github/assets/logos/qbittorrent.svg" width="18" alt=""> | qBittorrent | 5.2+ |
-| <img src=".github/assets/logos/transmission.png" width="18" alt=""> | Transmission | 4.1+ |
-
-</td>
-</tr>
-</table>
+| <a href="https://www.qbittorrent.org"><img src=".github/assets/logos/qbittorrent.svg" width="18" alt="qBittorrent"></a> | qBittorrent | 5.2+ |
+| <a href="https://transmissionbt.com"><img src=".github/assets/logos/transmission.png" width="18" alt="Transmission"></a> | Transmission | 4.1+ |
 
 ## Quick start
 
