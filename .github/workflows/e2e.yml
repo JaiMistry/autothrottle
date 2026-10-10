@@ -5,6 +5,10 @@ name: E2E
 # nightly, on demand from the Actions tab, and on pull requests that
 # change what it tests: dependency updates, chiefly, where it proves the
 # new versions work before they merge.
+#
+# Nightly and on demand it runs a second time against each server's newest
+# release, and keeps one issue open while that fails: an upstream release
+# that breaks AutoThrottle is found before users find it.
 on:
   workflow_dispatch:
   schedule:
@@ -18,6 +22,7 @@ on:
       - "package-lock.json"
       - "test/e2e/**"
       - ".github/workflows/e2e.yml"
+      - ".github/workflows/e2e-suite.yml"
 
 permissions:
   contents: read
@@ -29,51 +34,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  pinned:
     strategy:
       fail-fast: false
       matrix:
         media: [jellyfin, emby, plex]
     name: e2e (${{ matrix.media }})
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      media: ${{ matrix.media }}
+    secrets: inherit
+
+  # After the pinned runs, which share the Plex account, whatever they
+  # found.
+  newest:
+    needs: pinned
+    if: always() && github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        media: [jellyfin, emby, plex]
+    name: newest (${{ matrix.media }})
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      media: ${{ matrix.media }}
+      newest: true
+    secrets: inherit
+
+  # One issue while the newest releases fail, kept current each night and
+  # closed by the first run that passes.
+  report:
+    needs: newest
+    if: always() && (needs.newest.result == 'success' || needs.newest.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
-
-      # Built with the Actions cache: a run with no code changes since the
-      # last reuses the whole image, and any other reuses everything
-      # before the compile (the CSS build and the Go modules).
-      - uses: docker/setup-buildx-action@v3
-      - name: Build AutoThrottle
-        uses: docker/build-push-action@v6
+      - uses: actions/download-artifact@v4
         with:
-          context: .
-          load: true
-          tags: autothrottle-e2e:ci
-          cache-from: type=gha,scope=e2e
-          cache-to: type=gha,mode=max,scope=e2e
+          pattern: versions-*
+          merge-multiple: true
 
-      # The runner already has Chrome and Node, so the scenario drives
-      # those rather than pulling the 1 GB Puppeteer image.
-      - name: Install puppeteer-core
-        run: npm install --prefix test/e2e --no-save --no-package-lock puppeteer-core@25.12.0
-
-      - name: Run the end-to-end suite
-        run: test/e2e/run.sh
+      - name: Open, update or close the issue
         env:
-          MEDIA: ${{ matrix.media }}
-          AT_IMAGE: autothrottle-e2e:ci
-          E2E_BROWSER: host
-          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
-          # The Plex test account. Only the Plex job uses them, and
-          # nothing writes them to disk.
-          PLEX_E2E_TOKEN: ${{ secrets.PLEX_E2E_TOKEN }}
-          PLEX_E2E_CLIENT_ID: ${{ secrets.PLEX_E2E_CLIENT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.newest.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="E2E fails against the newest upstream releases"
+          open=$(gh issue list --state open --label upstream --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
 
-      - name: Keep the failure screenshot
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-failure-${{ matrix.media }}
-          path: test/e2e/.state/failure.png
-          if-no-files-found: ignore
+          if [ "$RESULT" = success ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "Passing again against the newest releases: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          failed=$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+            --jq '.jobs[] | select(.conclusion == "failure" and (.name | startswith("newest"))) | "- " + .name')
+          {
+            echo "The end-to-end run against each server's newest release failed. An upstream release may have changed something AutoThrottle relies on."
+            echo
+            echo "**Run:** $RUN_URL"
+            echo
+            echo "**Failed:**"
+            echo "$failed"
+            echo
+            echo "**Versions tested:**"
+            cat versions-*.md 2>/dev/null || echo "- not recorded"
+            echo
+            echo "This issue is updated each night while the run fails, and closes itself when it passes."
+          } > body.md
+
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --body-file body.md
+          else
+            gh issue create --title "$title" --label upstream --body-file body.md
+          fi

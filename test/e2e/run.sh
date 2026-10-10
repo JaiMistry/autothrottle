@@ -6,6 +6,7 @@
 #   MEDIA=emby test/e2e/run.sh          one media server only
 #   AT_IMAGE=my-image test/e2e/run.sh   test an image you already built
 #   KEEP=1 test/e2e/run.sh              leave the last stack running afterwards
+#   E2E_NEWEST=1 test/e2e/run.sh        every server at its newest release, not the pins
 #   E2E_BROWSER=host test/e2e/run.sh    use this machine's Node, puppeteer-core and
 #                                       Chrome (PUPPETEER_EXECUTABLE_PATH), not the
 #                                       Puppeteer image
@@ -62,5 +63,5 @@ for media in ${MEDIA:-$default}; do
   fi
 done
 
-[ "${KEEP:-}" = 1 ] || COMPOSE_PROFILES=jellyfin,emby,plex docker compose -f compose.yml down --remove-orphans >/dev/null 2>&1
+[ "${KEEP:-}" = 1 ] || COMPOSE_PROFILES=jellyfin,emby,plex docker compose -f compose.yml -f compose.newest.yml down --remove-orphans >/dev/null 2>&1
 exit "$status"

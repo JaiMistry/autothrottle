@@ -1,0 +1,88 @@
+name: E2E suite
+
+# One media server's run of the end-to-end suite, called by the E2E
+# workflow for the pinned versions and for the newest.
+on:
+  workflow_call:
+    inputs:
+      media:
+        type: string
+        required: true
+      newest:
+        description: Each server's newest release instead of the pinned one
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built with the Actions cache: a run with no code changes since the
+      # last reuses the whole image, and any other reuses everything
+      # before the compile (the CSS build and the Go modules).
+      - uses: docker/setup-buildx-action@v3
+      - name: Build AutoThrottle
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: autothrottle-e2e:ci
+          cache-from: type=gha,scope=e2e
+          cache-to: type=gha,mode=max,scope=e2e
+
+      # The runner already has Chrome and Node, so the scenario drives
+      # those rather than pulling the 1 GB Puppeteer image.
+      - name: Install puppeteer-core
+        run: npm install --prefix test/e2e --no-save --no-package-lock puppeteer-core@25.12.0
+
+      - name: Run the end-to-end suite
+        run: test/e2e/run.sh
+        env:
+          MEDIA: ${{ inputs.media }}
+          E2E_NEWEST: ${{ inputs.newest && '1' || '' }}
+          AT_IMAGE: autothrottle-e2e:ci
+          E2E_BROWSER: host
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          # The Plex test account. Only the Plex job uses them, and
+          # nothing writes them to disk.
+          PLEX_E2E_TOKEN: ${{ secrets.PLEX_E2E_TOKEN }}
+          PLEX_E2E_CLIENT_ID: ${{ secrets.PLEX_E2E_CLIENT_ID }}
+
+      # Which releases "newest" meant tonight, for the summary and for the
+      # issue a failure opens.
+      - name: Record the versions
+        if: always() && inputs.newest
+        env:
+          MEDIA: ${{ inputs.media }}
+        run: |
+          {
+            for image in "$(grep -A1 "^  $MEDIA:" test/e2e/compose.newest.yml | sed -n 's/.*image: //p')" \
+                ghcr.io/linuxserver/qbittorrent:latest ghcr.io/linuxserver/transmission:latest; do
+              version=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image" 2>/dev/null || true)
+              digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null | sed 's/.*@sha256:\(.\{12\}\).*/\1/' || true)
+              echo "- \`$image\`: ${version:-unknown version} (${digest:-not pulled})"
+            done
+          } > "versions-$MEDIA.md"
+          cat "versions-$MEDIA.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the versions
+        if: always() && inputs.newest
+        uses: actions/upload-artifact@v4
+        with:
+          name: versions-${{ inputs.media }}
+          path: versions-${{ inputs.media }}.md
+          if-no-files-found: ignore
+
+      - name: Keep the failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-${{ inputs.media }}${{ inputs.newest && '-newest' || '' }}
+          path: test/e2e/.state/failure.png
+          if-no-files-found: ignore

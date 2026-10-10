@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # Tears the e2e stack down and provisions it again from nothing.
 #
-# MEDIA=jellyfin|emby|plex picks the media server (default jellyfin), and
+# MEDIA=jellyfin|emby|plex picks the media server (default jellyfin),
 # AT_IMAGE=<image> uses an image you already built instead of building
-# AutoThrottle from this checkout. Plex needs PLEX_E2E_TOKEN and
+# AutoThrottle from this checkout, and E2E_NEWEST=1 uses each server's
+# newest release instead of the pinned one. Plex needs PLEX_E2E_TOKEN and
 # PLEX_E2E_CLIENT_ID set (run.sh loads them).
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# E2E_NEWEST=1 runs every server at its newest release, pulled fresh.
+compose=(docker compose -f compose.yml)
+up=(up -d)
+if [ "${E2E_NEWEST:-}" = 1 ]; then
+  compose+=(-f compose.newest.yml)
+  up+=(--pull always)
+fi
+
 export COMPOSE_PROFILES=jellyfin,emby,plex
-docker compose -f compose.yml down --remove-orphans >/dev/null 2>&1 || true
+"${compose[@]}" down --remove-orphans >/dev/null 2>&1 || true
 # Jellyfin and Plex write their files as root, which a runner's own user
 # can't remove — so the state is cleared from inside a container.
 if [ -d .state ]; then
@@ -25,8 +34,8 @@ if [ "${MEDIA:-}" = plex ]; then
   export PLEX_CLAIM
 fi
 if [ -n "${AT_IMAGE:-}" ]; then
-  docker compose -f compose.yml up -d --no-build
+  "${compose[@]}" "${up[@]}" --no-build
 else
-  docker compose -f compose.yml up -d --build
+  "${compose[@]}" "${up[@]}" --build
 fi
 python3 provision.py configure

@@ -23,6 +23,7 @@ After that, each media server takes about two minutes.
 | `MEDIA=jellyfin`, `emby` or `plex` | Run one media server instead of all three. |
 | `AT_IMAGE=<image>` | Test an image you already built instead of building this checkout. |
 | `KEEP=1` | Leave the stack running when the run ends. |
+| `E2E_NEWEST=1` | Run each server at its newest release instead of the pinned version. |
 | `PLEX_E2E_ENV=<file>` | Read the Plex test account's details from this file. |
 
 With `KEEP=1`, the stack is on these ports:
@@ -71,6 +72,14 @@ With `KEEP=1`, the stack is on these ports:
 - The 404 page
 - Returning to the page you asked for after signing in
 
+## In CI
+
+The suite runs nightly, on demand from the Actions tab, and on pull
+requests that change what it tests, such as dependency updates. Nightly,
+it also runs against each server's newest release. While that fails, one
+issue labelled `upstream` stays open with the versions that failed, and it
+closes itself once a run passes.
+
 ## Plex
 
 Plex needs a real plex.tv account to claim the server, so it uses an account
@@ -92,7 +101,8 @@ disk.
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | The stack |
+| `compose.yml` | The stack, with each server pinned to a tested version |
+| `compose.newest.yml` | Each server at its newest release, for `E2E_NEWEST=1` |
 | `provision.py` | Prepares the stack before it starts and sets up the media server after |
 | `scenario.js` | The browser test |
 | `run.sh` | Runs everything |

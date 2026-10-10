@@ -53,7 +53,7 @@
     {
       "description": "Puppeteer as the E2E workflow installs it",
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/e2e\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/e2e-suite\\.yml$/"],
       "matchStrings": ["puppeteer-core@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "puppeteer-core",
       "datasourceTemplate": "npm"
