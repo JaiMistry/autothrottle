@@ -1,9 +1,8 @@
 name: Docker Hub description
 
-# Docker Hub's page: the README from a release, trimmed to the logo, a
-# link back to the repository and the setup sections, since Docker Hub's
-# own header already names the image. Called by each stable release, or
-# run from the Actions tab to resync the latest one.
+# Docker Hub's page: the README from a release, trimmed to the logo, the
+# name, a link back to the repository and the setup sections. Called by
+# each stable release, or run from the Actions tab to resync the latest.
 on:
   workflow_dispatch:
   workflow_call:
@@ -40,7 +39,11 @@ jobs:
           REPO: https://github.com/${{ github.repository }}/blob/${{ steps.release.outputs.tag }}/
         run: |
           awk -v repo="https://github.com/$GITHUB_REPOSITORY" '
-            NR == 1, /<\/p>/ { print; if (/<\/p>/) print "\n<p align=\"center\"><a href=\"" repo "\">Source, issues and releases on GitHub</a></p>"; next }
+            NR == 1, /<\/p>/ {
+              print
+              if (/<\/p>/) print "\n<h1 align=\"center\">AutoThrottle</h1>\n\n<p align=\"center\"><a href=\"" repo "\">Source Code</a></p>"
+              next
+            }
             /^## .*Quick start/ { keep = 1; print "" }
             keep' README.md |
             perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' > dockerhub.md
