@@ -17,14 +17,14 @@
   <a href="https://github.com/JaiMistry/autothrottle/releases"><img src="https://img.shields.io/github/downloads/JaiMistry/autothrottle/total" alt="Downloads"></a>
 </p>
 
-Streaming and downloading on the same connection means buffering.
-AutoThrottle watches your media server and slows your download clients the
-moment someone presses play, then puts them back to full speed when playback
-ends.
+AutoThrottle lowers your download speeds while something is playing on your
+media server, and restores them when playback stops. Set it up once and it
+looks after itself from then on.
 
-It keeps the throttle on through a pause, lets go of a stream that has been
-abandoned for 30 minutes, can ignore playback on your own network, and steps
-aside with one click whenever you want full speed back.
+The throttling is aware of what is actually happening. A paused stream stays
+throttled, one that has sat paused or stalled for 30 minutes is let go, and
+playback on your own network can be ignored. When you want full speed
+regardless, one click turns throttling off until you turn it back on.
 
 <!-- Screenshots: add once the Dashboard redesign is final.
 <p align="center">
