@@ -1,9 +1,11 @@
-# End-to-end test stack: AutoThrottle against a real Jellyfin or Emby
-# (one per run, chosen by profile), qBittorrent and Transmission. Driven
-# by test/e2e/run.sh — see the README there.
+# End-to-end test stack: AutoThrottle against a real Jellyfin, Emby or
+# Plex (one per run, chosen by profile), qBittorrent and Transmission.
+# Driven by test/e2e/run.sh — see the README there.
 #
 # Everything is published on 1xxxx ports so the stack can run beside a
-# normal install without a clash.
+# normal install without a clash. The linuxserver images come straight
+# from ghcr.io: lscr.io is only a redirector in front of it, and the
+# one that rate-limits.
 name: autothrottle-e2e
 
 services:
@@ -28,7 +30,7 @@ services:
     container_name: e2e-jellyfin
     volumes:
       - ./.state/jellyfin:/config
-      - ./.state/media:/media:ro
+      - ./fixtures:/media/movies:ro
     ports:
       - "18196:8096"
     mem_limit: 1g
@@ -42,13 +44,32 @@ services:
       - GID=1000
     volumes:
       - ./.state/emby:/config
-      - ./.state/media:/media:ro
+      - ./fixtures:/media/movies:ro
     ports:
       - "18096:8096"
     mem_limit: 1g
 
+  plex:
+    image: plexinc/pms-docker:1.43.4.10903-e5521bd8c
+    profiles: [plex]
+    container_name: e2e-plex
+    # Plex names the server after its host, and the run's cleanup finds
+    # it on the account by this name.
+    hostname: e2e-plex
+    environment:
+      # A one-time code from plex.tv, fetched just before start, that
+      # claims this server for the test account.
+      - PLEX_CLAIM=${PLEX_CLAIM:-}
+      - TZ=America/Los_Angeles
+    volumes:
+      - ./.state/plex:/config
+      - ./fixtures:/media/movies:ro
+    ports:
+      - "18324:32400"
+    mem_limit: 1g
+
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:5.2.3
+    image: ghcr.io/linuxserver/qbittorrent:5.2.3
     container_name: e2e-qbittorrent
     environment:
       - PUID=1000
@@ -61,7 +82,7 @@ services:
     mem_limit: 512m
 
   transmission:
-    image: lscr.io/linuxserver/transmission:4.1.3
+    image: ghcr.io/linuxserver/transmission:4.1.3
     container_name: e2e-transmission
     environment:
       - PUID=1000

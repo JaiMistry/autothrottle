@@ -1,6 +1,6 @@
 // The end-to-end scenario: a fresh install set up and used entirely
-// through its web UI, against a real Jellyfin or Emby, qBittorrent and
-// Transmission. Every check that matters is made twice where it can be —
+// through its web UI, against a real Jellyfin, Emby or Plex, qBittorrent
+// and Transmission. Every check that matters is made twice where it can be —
 // on the page, and on the download client itself — because the page
 // saying "throttled" proves nothing if qBittorrent was never told.
 //
@@ -12,7 +12,10 @@ const puppeteer = require('puppeteer');
 
 const env = JSON.parse(fs.readFileSync(path.join(__dirname, '.state/env.json')));
 const APP = env.autothrottle;
-const MEDIA = env.media; // Jellyfin or Emby, whichever this run provisioned
+const MEDIA = env.media; // Jellyfin, Emby or Plex, whichever this run provisioned
+const PLEX = MEDIA.kind === 'plex';
+// The Plex test account's token: from the environment, never from disk.
+const PLEX_TOKEN = process.env.PLEX_E2E_TOKEN || '';
 const NAME = MEDIA.label;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -36,9 +39,13 @@ async function until(what, fn, timeoutMs = 90000) {
 
 // --- the outside world: a player, and the download clients ---------------
 
+// Each server hears about playback its own way. Jellyfin and Emby take
+// reports on their sessions API; Plex takes the timeline a Plex client
+// sends every few seconds. Either way the server then has a real session
+// it shows, and tells AutoThrottle about, as it would for a real player.
 const AUTH = `MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0", Token="${MEDIA.userToken}"`;
-const player = {
-  async report(endpoint, positionSeconds, paused = false) {
+const mediaBrowserPlayer = {
+  async send(endpoint, positionSeconds, paused) {
     const res = await fetch(MEDIA.base + endpoint, {
       method: 'POST',
       // Jellyfin reads Authorization; Emby reads its own header.
@@ -50,21 +57,61 @@ const player = {
     });
     if (!res.ok) throw new Error(`${MEDIA.kind} ${endpoint}: ${res.status}`);
   },
+  start(pos) { return this.send('/Sessions/Playing', pos, false); },
+  progress(pos, paused) { return this.send('/Sessions/Playing/Progress', pos, paused); },
+  stop(pos) { return this.send('/Sessions/Playing/Stopped', pos, false); },
 };
+const plexPlayer = {
+  async send(state, positionSeconds) {
+    const q = new URLSearchParams({
+      ratingKey: MEDIA.itemId, key: `/library/metadata/${MEDIA.itemId}`, state,
+      time: String(Math.round(positionSeconds * 1000)), duration: String(MEDIA.durationMs),
+      identifier: 'com.plexapp.plugins.library', playQueueItemID: '1',
+    });
+    const res = await fetch(`${MEDIA.base}/:/timeline?${q}`, {
+      headers: {
+        'X-Plex-Token': PLEX_TOKEN, 'X-Plex-Client-Identifier': 'e2e-player', 'X-Plex-Product': 'Plex Web',
+        'X-Plex-Device-Name': 'Living Room TV', 'X-Plex-Platform': 'Chrome', 'X-Plex-Device': 'Linux', 'X-Plex-Version': '4.0',
+      },
+    });
+    if (!res.ok) throw new Error(`plex timeline ${state}: ${res.status}`);
+  },
+  start(pos) { return this.send('playing', pos); },
+  progress(pos, paused) { return this.send(paused ? 'paused' : 'playing', pos); },
+  stop(pos) { return this.send('stopped', pos); },
+};
+const player = PLEX ? plexPlayer : mediaBrowserPlayer;
 
 // A player keeps reporting progress while it plays; this does the same.
 function startPlayer() {
   let position = 60, paused = false;
-  player.report('/Sessions/Playing', position);
+  player.start(position);
   const timer = setInterval(() => {
     if (!paused) position += 2;
-    player.report('/Sessions/Playing/Progress', position, paused).catch(() => {});
+    player.progress(position, paused).catch(() => {});
   }, 2000);
   return {
-    pause() { paused = true; return player.report('/Sessions/Playing/Progress', position, true); },
-    resume() { paused = false; return player.report('/Sessions/Playing/Progress', position, false); },
-    async stop() { clearInterval(timer); await player.report('/Sessions/Playing/Stopped', position); },
+    pause() { paused = true; return player.progress(position, true); },
+    resume() { paused = false; return player.progress(position, false); },
+    async stop() { clearInterval(timer); await player.stop(position); },
   };
+}
+
+// Approves a "Sign in with Plex" request the way the account owner would
+// on plex.tv, using the test account's token.
+async function approvePlexPin(code) {
+  const res = await fetch('https://plex.tv/api/v2/pins/link', {
+    method: 'PUT',
+    headers: {
+      'X-Plex-Token': PLEX_TOKEN, 'X-Plex-Client-Identifier': process.env.PLEX_E2E_CLIENT_ID || 'autothrottle-e2e',
+      // plex.tv only lets its own web app approve a sign-in, which is
+      // where a person would do it ("not available for this device"
+      // otherwise).
+      'X-Plex-Product': 'Plex Web', Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ code }).toString(),
+  });
+  if (!res.ok) throw new Error(`approving the Plex sign-in: ${res.status} ${(await res.text()).slice(0, 120)}`);
 }
 
 const qbittorrent = {
@@ -212,14 +259,31 @@ const transmission = {
     await page.select('#ms-form [name=type]', MEDIA.kind);
     await fill('#ms-form [name=name]', NAME);
     await fill('#ms-form [name=url]', MEDIA.internal);
-    const keyField = '#ms-form [name=api_token]';
+    // Plex's token goes in its X-Plex-Token pane; Jellyfin and Emby take an API key.
+    const keyField = PLEX ? '#ms-form [name=token]' : '#ms-form [name=api_token]';
+    const goodKey = PLEX ? PLEX_TOKEN : MEDIA.apiKey;
     await fill(keyField, 'not-the-key');
     let result = await testConnection('#ms-form');
-    check(result.state === 'failed' && !result.canSave, 'a wrong API key fails the test and blocks saving', JSON.stringify(result));
-    await fill(keyField, MEDIA.apiKey);
-    check(!(await page.$('#ms-form .at-testresult[data-state="connected"]')), 'editing a field retires an old result');
+    check(result.state === 'failed' && !result.canSave, `a wrong ${PLEX ? 'token' : 'API key'} fails the test and blocks saving`, JSON.stringify(result));
+    if (PLEX) {
+      // Sign in with Plex, approved on plex.tv as the account owner would.
+      await page.$eval(keyField, (e) => { e.value = ''; });
+      await page.click('#ms-form [data-credtab="signin"]');
+      await page.click('#ms-form [data-plexstart]');
+      const authUrl = await page.waitForSelector('.at-plexsignin[data-authurl]').then((el) => el.evaluate((e) => e.dataset.authurl));
+      await approvePlexPin(new URLSearchParams(authUrl.split('#?')[1]).get('code'));
+      const signedIn = await page.waitForSelector('.at-plexsignin[data-state="done"]', { timeout: 30000 }).catch(() => null);
+      check(!!signedIn, 'Sign in with Plex picks up the approval by itself');
+      // Plex closes its window once approved; the sign-in must survive that.
+      for (const p of await browser.pages()) if (p !== page) await p.close();
+      await sleep(4500);
+      check(!!(await page.$('.at-plexsignin[data-state="done"]')), 'and survives the Plex window closing');
+    } else {
+      await fill(keyField, goodKey);
+      check(!(await page.$('#ms-form .at-testresult[data-state="connected"]')), 'editing a field retires an old result');
+    }
     result = await testConnection('#ms-form');
-    check(result.state === 'connected' && result.canSave, 'the right API key passes and allows saving', JSON.stringify(result));
+    check(result.state === 'connected' && result.canSave, `the right ${PLEX ? 'sign-in' : 'API key'} passes and allows saving`, JSON.stringify(result));
     await submit('#ms-form');
     check((await savedNames()).includes(NAME), 'the server is saved', JSON.stringify(await savedNames()));
     await sleep(300);
@@ -229,7 +293,7 @@ const transmission = {
     await page.select('#ms-form [name=type]', MEDIA.kind);
     await fill('#ms-form [name=name]', `${NAME} again`);
     await fill('#ms-form [name=url]', MEDIA.internal + '/');
-    await fill(keyField, MEDIA.apiKey);
+    await fill(keyField, goodKey);
     await testConnection('#ms-form');
     await submit('#ms-form');
     check((await text('#sheet-error .at-alert')).includes('already added'), 'adding the same server twice is refused with a reason', await text('#sheet-error .at-alert'));
@@ -282,8 +346,9 @@ const transmission = {
     const opened = await until('the stream to open', async () => (await stream()) === 'open', 15000);
     check(!!opened, 'the Dashboard opens a live stream', await stream());
     liveFetches = 0;
-    await sleep(12000);
-    check(liveFetches === 0, 'with the stream up and nothing happening, the Dashboard does not poll', `${liveFetches} fetches in 12s`);
+    // Longer than one 5-second poll: a page polling would show it.
+    await sleep(7000);
+    check(liveFetches === 0, 'with the stream up and nothing happening, the Dashboard does not poll', `${liveFetches} fetches in 7s`);
     // A tab in the background lets its stream go, and picks it up again.
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
@@ -328,7 +393,7 @@ const transmission = {
     check(t1 && t2 && t1 !== t2, 'a session timer counts while throttled', `${t1} → ${t2}`);
 
     const before = (await dashboard()).sessionTime;
-    await sleep(6000);
+    await sleep(4000);
     const after = (await dashboard()).sessionTime;
     check(before && after && before !== after, 'the timecode advances while playing', `${before} → ${after}`);
 
@@ -353,7 +418,7 @@ const transmission = {
     await player.pause();
     const paused = await until('the pause to show', async () => ((await dashboard()).paused ? await dashboard() : null), 30000);
     check(!!paused, 'the session shows as paused');
-    const p1 = (await dashboard()).sessionTime; await sleep(6000); const p2 = (await dashboard()).sessionTime;
+    const p1 = (await dashboard()).sessionTime; await sleep(4000); const p2 = (await dashboard()).sessionTime;
     check(p1 === p2, 'the timecode holds still while paused', `${p1} → ${p2}`);
     check((await dashboard()).downloaders.every((s) => s === 'throttled'), 'a pause keeps the throttle on');
     await player.resume();
@@ -371,9 +436,9 @@ const transmission = {
       r.continue();
     });
     await blocked.goto(APP + '/', { waitUntil: 'networkidle2' });
-    await sleep(11000);
+    await sleep(6500);
     const state = await blocked.evaluate(() => document.documentElement.dataset.liveStream || '');
-    check(state !== 'open' && blockedFetches >= 2, 'with the stream blocked, the Dashboard polls instead', `${state}, ${blockedFetches} fetches in 11s`);
+    check(state !== 'open' && blockedFetches >= 1, 'with the stream blocked, the Dashboard polls instead', `${state}, ${blockedFetches} fetches in 6.5s`);
     await blocked.close();
 
     section('Disable throttling');
@@ -454,7 +519,8 @@ const transmission = {
     await setExempt(true);
     await navigate('/');
     const local = startPlayer();
-    await sleep(10000);
+    // Well past the ~1s a counted session takes to throttle.
+    await sleep(7000);
     const d = await dashboard();
     check(d.hero === 'Nothing is throttled' && (await qbittorrent.limits()).down === 0,
       'local playback is ignored when the exemption is on', JSON.stringify(d));

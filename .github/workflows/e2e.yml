@@ -1,8 +1,8 @@
 name: E2E
 
-# The full suite against real Jellyfin and Emby (one job each),
-# qBittorrent and Transmission. Too heavy for every push — about 2 GB of
-# images — so it runs nightly, and on demand from the Actions tab.
+# The full suite against real Jellyfin, Emby and Plex (one job each),
+# qBittorrent and Transmission. Too heavy for every push, so it runs
+# nightly, and on demand from the Actions tab.
 on:
   workflow_dispatch:
   schedule:
@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+# Plex runs against one real plex.tv account, and each run cleans its
+# test servers off it by name; two runs at once would remove each other's.
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -18,15 +24,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        media: [jellyfin, emby]
+        media: [jellyfin, emby, plex]
     name: e2e (${{ matrix.media }})
     steps:
       - uses: actions/checkout@v4
+
+      # Built with the Actions cache: a run with no code changes since the
+      # last reuses the whole image, and any other reuses everything
+      # before the compile (the CSS build and the Go modules).
+      - uses: docker/setup-buildx-action@v3
+      - name: Build AutoThrottle
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: autothrottle-e2e:ci
+          cache-from: type=gha,scope=e2e
+          cache-to: type=gha,mode=max,scope=e2e
 
       - name: Run the end-to-end suite
         run: test/e2e/run.sh
         env:
           MEDIA: ${{ matrix.media }}
+          AT_IMAGE: autothrottle-e2e:ci
+          # The Plex test account. Only the Plex job uses them, and
+          # nothing writes them to disk.
+          PLEX_E2E_TOKEN: ${{ secrets.PLEX_E2E_TOKEN }}
+          PLEX_E2E_CLIENT_ID: ${{ secrets.PLEX_E2E_CLIENT_ID }}
 
       - name: Keep the failure screenshot
         if: failure()
