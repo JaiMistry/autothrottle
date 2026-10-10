@@ -1,0 +1,119 @@
+name: Scan
+
+# The latest release, as published, checked weekly for vulnerabilities
+# disclosed since it shipped. One issue stays open while any are found,
+# and closes itself when a scan comes back clean: a finding is the cue for
+# a patch release, not something to release on every week just in case.
+on:
+  schedule:
+    - cron: "23 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+          cache: false
+
+      - name: Pull the latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag=$(gh release view --json tagName --jq .tagName)
+          image="jaimistry/autothrottle:${tag#v}"
+          docker pull -q "$image"
+          # The binary on its own, for govulncheck.
+          id=$(docker create "$image")
+          docker cp "$id:/autothrottle" ./autothrottle
+          docker rm "$id" >/dev/null
+          { echo "tag=$tag"; echo "image=$image"; } >> "$GITHUB_OUTPUT"
+
+      # Go's own scanner reads the module and standard library versions
+      # built into the binary, and reports only vulnerable code it contains.
+      # Exit status 3 means it found something; any other failure is the
+      # scan itself breaking, which fails the run rather than reporting.
+      - name: govulncheck
+        id: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          status=0
+          govulncheck -mode=binary ./autothrottle > govulncheck.txt || status=$?
+          cat govulncheck.txt
+          case "$status" in
+            0) echo "found=false" >> "$GITHUB_OUTPUT" ;;
+            3) echo "found=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+
+      - name: Trivy
+        id: trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.image }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          output: trivy.txt
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+          GOVULNCHECK: ${{ steps.govulncheck.outputs.found }}
+          TRIVY: ${{ steps.trivy.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Vulnerabilities in the released image"
+          open=$(gh issue list --state open --label security --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+
+          if [ "$TRIVY" = failure ] && [ ! -s trivy.txt ]; then
+            echo "::error::Trivy failed without a report; see its step."
+            exit 1
+          fi
+          if [ "$GOVULNCHECK" = false ] && [ "$TRIVY" = success ]; then
+            echo "$TAG is clean."
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "The weekly scan of $TAG is clean: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          {
+            echo "The weekly scan of **$TAG** found known vulnerabilities. Where one affects AutoThrottle and has a fix, the fix ships as a patch release."
+            echo
+            echo "**Run:** $RUN_URL"
+            if [ "$GOVULNCHECK" = true ]; then
+              echo
+              echo "### govulncheck"
+              echo '```'
+              cat govulncheck.txt 2>/dev/null || echo "No output; see the run."
+              echo '```'
+            fi
+            if [ "$TRIVY" != success ]; then
+              echo
+              echo "### Trivy (high and critical)"
+              echo '```'
+              cat trivy.txt 2>/dev/null || echo "No output; see the run."
+              echo '```'
+            fi
+            echo
+            echo "This issue is updated by each weekly scan, and closes itself when one is clean."
+          } > body.md
+
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --body-file body.md
+          else
+            gh issue create --title "$title" --label security --body-file body.md
+          fi
