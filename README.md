@@ -25,7 +25,7 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 </p>
 -->
 
-## Features
+## ✨ Features
 
 - **Real-time:** reacts within seconds, from each server's live feed.
 - **Mappings:** control which applications are throttled.
@@ -37,7 +37,7 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 - **Full log:** every throttle and restore, with its cause.
 - **Lightweight:** one small container with nothing else to run beside it.
 
-## Supported versions
+## 🧩 Supported versions
 
 | | Media server | Version |
 |:-:|---|---|
@@ -50,7 +50,7 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 | <a href="https://www.qbittorrent.org"><img src=".github/assets/logos/qbittorrent.svg" width="18" alt="qBittorrent"></a> | qBittorrent | 5.2+ |
 | <a href="https://transmissionbt.com"><img src=".github/assets/logos/transmission.png" width="18" alt="Transmission"></a> | Transmission | 4.1+ |
 
-## Quick start
+## 🚀 Quick start
 
 `docker compose`:
 
@@ -84,7 +84,7 @@ docker run -d \
   jaimistry/autothrottle:latest
 ```
 
-## Environment variables
+## ⚙️ Environment variables
 
 All are optional.
 
@@ -95,7 +95,7 @@ All are optional.
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | | Sign-in from the environment instead of creating an account. Set both or neither. |
 | `AUTH_DISABLED` | `false` | Turns off sign-in. Only use this behind a proxy that handles it. |
 
-## First-time setup
+## 🛠️ First-time setup
 
 Open `http://<your-server>:7676` and create your account. Everything else
 happens on the **Configuration** page:
@@ -109,7 +109,7 @@ happens on the **Configuration** page:
    Rates are in KB/s, and `0` means unlimited.
 3. **Map them.** Choose which media servers throttle which download clients.
 
-## License
+## 📄 License
 
 [GPL-3.0](LICENSE)
 
