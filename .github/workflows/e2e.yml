@@ -2,11 +2,22 @@ name: E2E
 
 # The full suite against real Jellyfin, Emby and Plex (one job each),
 # qBittorrent and Transmission. Too heavy for every push, so it runs
-# nightly, and on demand from the Actions tab.
+# nightly, on demand from the Actions tab, and on pull requests that
+# change what it tests: dependency updates, chiefly, where it proves the
+# new versions work before they merge.
 on:
   workflow_dispatch:
   schedule:
     - cron: "17 9 * * *"
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "test/e2e/**"
+      - ".github/workflows/e2e.yml"
 
 permissions:
   contents: read

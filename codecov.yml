@@ -1,0 +1,3 @@
+# Coverage is reported as a status check; a comment on every pull request,
+# dependency updates included, would only be noise.
+comment: false

@@ -13,3 +13,5 @@ node_modules
 *.md
 docker-compose*.yml
 coverage.out
+renovate.json
+codecov.yml

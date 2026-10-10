@@ -1,18 +1,69 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "timezone": "America/Los_Angeles",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "3 days",
+  "labels": ["dependencies"],
+  "postUpdateOptions": ["gomodTidy"],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null
+  },
   "packageRules": [
     {
+      "description": "Everything routine in one weekly pull request",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "dependencies"
+    },
+    {
+      "description": "The go directive is the oldest Go that builds this, not the toolchain in use",
       "matchManagers": ["gomod"],
-      "groupName": "Go dependencies"
+      "matchDepTypes": ["golang"],
+      "enabled": false
     },
     {
-      "matchManagers": ["dockerfile"],
-      "groupName": "Docker base images"
+      "description": "The end-to-end servers follow releases only, never betas or date-numbered unstable builds",
+      "matchFileNames": ["test/e2e/compose.yml"],
+      "allowedVersions": "/^\\d+(\\.\\d+)+$/"
     },
     {
-      "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions"
+      "description": "Plex tags carry the build's hash after the version",
+      "matchPackageNames": ["plexinc/pms-docker"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)-[0-9a-f]+$",
+      "allowedVersions": "/^\\d+\\.\\d+\\.\\d+\\.\\d+-[0-9a-f]+$/"
+    },
+    {
+      "description": "The Puppeteer image and package must stay on the same version",
+      "matchDepNames": ["puppeteer-core", "ghcr.io/puppeteer/puppeteer"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "Puppeteer"
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "The Go version CI tests with, kept with the Dockerfile's",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["go-version: \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
+    },
+    {
+      "description": "Puppeteer as the E2E workflow installs it",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/e2e\\.yml$/"],
+      "matchStrings": ["puppeteer-core@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "puppeteer-core",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "description": "Puppeteer as the local E2E run pulls it",
+      "customType": "regex",
+      "managerFilePatterns": ["/^test/e2e/run\\.sh$/"],
+      "matchStrings": ["PUPPETEER=(?<depName>ghcr\\.io/puppeteer/puppeteer):(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "docker"
     }
   ]
 }
