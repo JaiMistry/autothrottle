@@ -13,7 +13,7 @@
       <input type="hidden" name="csrf_token" value="{{.Token}}">
       <div class="at-setup-head">
         <h1 class="at-setup-title">Set up your login</h1>
-        <p class="at-setup-sub">You'll use these to sign in from now on.</p>
+        <p class="at-setup-sub">Create your login credentials for access.</p>
       </div>
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
       <label class="at-field">

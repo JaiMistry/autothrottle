@@ -120,7 +120,7 @@ func TestFirstRunSetup(t *testing.T) {
 	}
 	page := app.get("/setup")
 	expectStatus(t, page, http.StatusOK)
-	for _, want := range []string{"Set up your login", "use these to sign in from now on.", `autocomplete="new-password"`, "data-reveal", ">Create account<"} {
+	for _, want := range []string{"Set up your login", "Create your login credentials for access.", `autocomplete="new-password"`, "data-reveal", ">Create account<"} {
 		expectBody(t, page, want)
 	}
 	if strings.Contains(page.Body.String(), `name="confirm"`) || strings.Contains(page.Body.String(), "minlength") {
