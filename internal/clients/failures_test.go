@@ -220,7 +220,7 @@ func TestPlexEdgeCases(t *testing.T) {
 	server.set(episode("other", "playing", false), episode("1", "playing", false))
 	w := NewPlexWatcher(server.URL, "t", false)
 	w.fillDetail(context.Background(), "1")
-	if e := nextEvent(t, w); e.Session.Key != "1" || e.Session.Title != "Andor S1E4" {
+	if e := nextEvent(t, w); e.Key != "1" || e.Title != "Andor S1E4" {
 		t.Errorf("detail %+v", e)
 	}
 

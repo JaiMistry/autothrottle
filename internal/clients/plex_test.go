@@ -307,23 +307,23 @@ func TestPlexWatcherNotifications(t *testing.T) {
 	server.push <- playing("1", "playing", 60000)
 
 	started := nextEvent(t, w)
-	if !started.Active || started.DetailOnly || started.Session.Key != "1" || started.Session.Position != time.Minute {
+	if !started.Active || started.DetailOnly || started.Key != "1" || started.Position != time.Minute {
 		t.Fatalf("start %+v", started)
 	}
 	if !w.Connection().Connected {
 		t.Error("not connected with the socket open")
 	}
 	detail := nextEvent(t, w)
-	if !detail.DetailOnly || detail.Session.Title != "Andor S1E4" || detail.Session.Device != "Living Room TV" || detail.Session.Duration != 2840*time.Second {
+	if !detail.DetailOnly || detail.Title != "Andor S1E4" || detail.Device != "Living Room TV" || detail.Duration != 2840*time.Second {
 		t.Fatalf("detail %+v", detail)
 	}
 
 	server.push <- playing("1", "paused", 62000)
-	if moved := nextEvent(t, w); !moved.DetailOnly || !moved.Session.Paused || moved.Session.Position != 62*time.Second {
+	if moved := nextEvent(t, w); !moved.DetailOnly || !moved.Paused || moved.Position != 62*time.Second {
 		t.Fatalf("position update %+v", moved)
 	}
 	server.push <- playing("1", "stopped", 62000)
-	if ended := nextEvent(t, w); ended.Active || ended.Session.Key != "1" {
+	if ended := nextEvent(t, w); ended.Active || ended.Key != "1" {
 		t.Fatalf("stop %+v", ended)
 	}
 }
@@ -345,14 +345,14 @@ func TestPlexWatcherSkipsLocalPlayback(t *testing.T) {
 	}
 
 	w.handleMessage(ctx, []byte(playing("gone", "playing", 1000)))
-	if e := nextEvent(t, w); !e.Active || e.Session.Key != "gone" {
+	if e := nextEvent(t, w); !e.Active || e.Key != "gone" {
 		t.Errorf("unknown locality: %+v", e)
 	}
 	server.mu.Lock()
 	server.sessionsCode = http.StatusBadGateway
 	server.mu.Unlock()
 	w.handleMessage(ctx, []byte(playing("broken", "playing", 1000)))
-	if e := nextEvent(t, w); !e.Active || e.Session.Key != "broken" {
+	if e := nextEvent(t, w); !e.Active || e.Key != "broken" {
 		t.Errorf("failed lookup: %+v", e)
 	}
 }
@@ -369,7 +369,7 @@ func TestPlexWatcherReleasesAbandonedPause(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 	w.handleMessage(ctx, []byte(playing("1", "paused", 5000)))
-	if e := nextEvent(t, w); e.Active || e.Session.Key != "1" {
+	if e := nextEvent(t, w); e.Active || e.Key != "1" {
 		t.Fatalf("abandoned pause %+v", e)
 	}
 }
