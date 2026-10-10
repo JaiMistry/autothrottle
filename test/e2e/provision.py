@@ -86,7 +86,7 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
         req.add_header("X-Emby-Token", token)
     # A server can report itself ready and still answer 503, or drop the
     # connection, for a few seconds while it finishes starting, so those
-    # alone are retried.
+    # alone are retried. The wizard's calls are safe to repeat.
     for attempt in range(30):
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
@@ -96,7 +96,9 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
             if e.code != 503 or attempt == 29:
                 raise
             time.sleep(2)
-        except (ConnectionResetError, http.client.RemoteDisconnected):
+        # Any dropped connection: a reset, a broken pipe, a server closing
+        # mid-reply. urllib wraps some of these in URLError.
+        except (urllib.error.URLError, ConnectionError, http.client.HTTPException):
             if attempt == 29:
                 raise
             time.sleep(2)
