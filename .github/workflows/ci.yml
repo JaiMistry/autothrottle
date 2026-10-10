@@ -32,8 +32,13 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+      # Counted across packages, so code a package's tests reach through
+      # another counts. Each package's profile repeats every block; keep
+      # the highest count per block.
       - name: Test with coverage
-        run: go test -coverprofile=coverage.out ./...
+        run: |
+          go test -coverpkg=./... -coverprofile=coverage.all.out ./...
+          awk 'NR==1{print;next} {k=$1; if(!(k in c) || $3>c[k]) {c[k]=$3; n[k]=$2}} END{for(k in c) print k, n[k], c[k]}' coverage.all.out > coverage.out
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
