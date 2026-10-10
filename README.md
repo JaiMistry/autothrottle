@@ -25,7 +25,7 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 </p>
 -->
 
-## ✨ Features
+## ⭐ Features
 
 - **Real-time:** reacts within seconds, from each server's live feed.
 - **Mappings:** control which applications are throttled.
@@ -109,7 +109,7 @@ happens on the **Configuration** page:
    Rates are in KB/s, and `0` means unlimited.
 3. **Map them.** Choose which media servers throttle which download clients.
 
-## 📄 License
+## License
 
 [GPL-3.0](LICENSE)
 
