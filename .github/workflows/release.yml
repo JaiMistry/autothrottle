@@ -154,7 +154,8 @@ jobs:
 
       # The image as files on the release page too, one per architecture,
       # for anyone loading it without a registry. Pulled back from the
-      # registry so they are exactly what was published.
+      # registry so they are exactly what was published. GitHub records
+      # each file's SHA-256 on the release page.
       - name: Save the images
         env:
           TAG: ${{ steps.version.outputs.tag }}
@@ -165,7 +166,6 @@ jobs:
             docker tag "ghcr.io/jaimistry/autothrottle:$version" "jaimistry/autothrottle:$version"
             docker save "jaimistry/autothrottle:$version" | gzip -9 > "autothrottle-$TAG-linux-$arch.tar.gz"
           done
-          sha256sum autothrottle-*.tar.gz > SHA256SUMS
 
       # The release page the version badge and update check read from.
       # Creating it creates the tag, on the commit just built.
@@ -180,10 +180,10 @@ jobs:
           [ "$STABLE" = true ] || flags="--prerelease"
           if [ -n "$NOTES" ]; then
             gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes "$NOTES" $flags \
-              autothrottle-*.tar.gz SHA256SUMS
+              autothrottle-*.tar.gz
           else
             gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags \
-              autothrottle-*.tar.gz SHA256SUMS
+              autothrottle-*.tar.gz
           fi
 
   # Docker Hub shows the README too. Its links are made absolute, at the
