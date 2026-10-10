@@ -48,14 +48,14 @@ aside with one click whenever you want full speed back.
 
 | | Media server | Version |
 |:-:|---|---|
-| <img src="https://cdn.simpleicons.org/plex" width="18" alt=""> | Plex Media Server | 1.43+ |
+| <img src=".github/assets/logos/plex.png" width="18" alt=""> | Plex Media Server | 1.43+ |
 | <img src="https://cdn.simpleicons.org/jellyfin" width="18" alt=""> | Jellyfin | 10.11+ |
 | <img src="https://cdn.simpleicons.org/emby" width="18" alt=""> | Emby | 4.9+ |
 
 | | Download client | Version |
 |:-:|---|---|
-| <img src="https://cdn.simpleicons.org/qbittorrent" width="18" alt=""> | qBittorrent | 5.2+ |
-| <img src="https://cdn.simpleicons.org/transmission" width="18" alt=""> | Transmission | 4.1+ |
+| <img src=".github/assets/logos/qbittorrent.svg" width="18" alt=""> | qBittorrent | 5.2+ |
+| <img src=".github/assets/logos/transmission.png" width="18" alt=""> | Transmission | 4.1+ |
 
 ## Quick start
 
