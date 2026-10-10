@@ -1,0 +1,65 @@
+name: Bug report
+description: Something isn't throttling, restoring or showing as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The details below are usually all it takes to find the cause.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: The steps that lead to it, if you know them.
+      placeholder: |
+        1. Start playback on Plex
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: AutoThrottle version
+      description: Shown at the bottom right of every page, and under Configuration › About.
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: media
+    attributes:
+      label: Media server
+      multiple: true
+      options: [Plex, Jellyfin, Emby]
+    validations:
+      required: true
+  - type: input
+    id: media-version
+    attributes:
+      label: Media server version
+      placeholder: "1.43.4"
+  - type: dropdown
+    id: downloader
+    attributes:
+      label: Download client
+      multiple: true
+      options: [qBittorrent, Transmission]
+    validations:
+      required: true
+  - type: input
+    id: downloader-version
+    attributes:
+      label: Download client version
+      placeholder: "5.2.3"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The relevant lines from the Logs page, and from `docker logs autothrottle`.
+        Tokens and passwords are never written to the logs, but check before posting.
+      render: text
