@@ -24,6 +24,10 @@ type pageData struct {
 	Version       string
 	// Next is where signing in returns to, when it is not the Dashboard.
 	Next string
+	// Paused puts the "Throttling disabled" banner across every page;
+	// PausedSince is when, as "2:06 PM" in the server's time zone.
+	Paused      bool
+	PausedSince string
 }
 
 // loginNext is the return address a login page carries: a safe one

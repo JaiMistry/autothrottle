@@ -1,6 +1,7 @@
 {{define "content"}}
-{{/* Reachable only while nothing can log in; gone for good once the
-     account exists. */}}
+{{/* First start-up only: while no account exists, every address leads
+     here. Once one does, this page and its address are gone for good —
+     there is no sign-up after that and no reset. */}}
 <div class="at-login-inner">
   <div class="at-login-brand">
     <img src="/static/img/logo-mark.svg" width="72" height="72" alt="">
@@ -8,25 +9,25 @@
   </div>
   <section class="at-card" style="padding:20px 22px;width:100%">
     <div>
-    <form method="post" action="/setup" class="at-stack">
-      <div style="display:grid;gap:var(--space-2)">
-        <h1 style="margin:0;font-size:var(--text-ui);font-weight:var(--weight-bold)">Create your account</h1>
-        <p style="margin:0;font-size:var(--text-caption);color:var(--text-dim);text-wrap:pretty">This is the account you'll log in with. It's the only one, and this page won't appear again.</p>
+    <form method="post" action="/setup" class="at-stack" data-fill-required="username,password">
+      <input type="hidden" name="csrf_token" value="{{.Token}}">
+      <div class="at-setup-head">
+        <h1 class="at-setup-title">Set up your login</h1>
+        <p class="at-setup-sub">You'll use these to sign in from now on.</p>
       </div>
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
       <label class="at-field">
         <span class="at-field-label">Username</span>
-        <input class="at-input" type="text" name="username" value="{{.Username}}" autocomplete="username" autofocus required>
+        <input class="at-input" type="text" name="username" value="{{.Username}}" autocomplete="username" autofocus>
       </label>
       <label class="at-field">
         <span class="at-field-label">Password</span>
-        <input class="at-input" type="password" name="password" autocomplete="new-password" minlength="8" required>
+        <span class="at-reveal">
+          <input class="at-input" type="password" name="password" autocomplete="new-password">
+          <button type="button" class="at-reveal-btn" data-reveal aria-pressed="false" aria-label="Show password">Show</button>
+        </span>
       </label>
-      <label class="at-field">
-        <span class="at-field-label">Confirm password</span>
-        <input class="at-input" type="password" name="confirm" autocomplete="new-password" minlength="8" required>
-      </label>
-      <button type="submit" class="at-btn at-btn--primary at-btn--md at-btn--block" style="margin-top:var(--space-2)">Create account</button>
+      <button type="submit" class="at-btn at-btn--primary at-btn--md at-btn--block" style="margin-top:var(--space-2)" data-submit disabled>Create account</button>
     </form>
     </div>
   </section>

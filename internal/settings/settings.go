@@ -34,8 +34,11 @@ const (
 	MaintenanceInterval = time.Hour
 )
 
-// keyPaused is the only value this package persists.
-const keyPaused = "throttle.paused"
+// The pause switch, and when it was last switched on.
+const (
+	keyPaused      = "throttle.paused"
+	keyPausedSince = "throttle.paused_since"
+)
 
 // Store persists the pause switch.
 type Store struct {
@@ -66,5 +69,27 @@ func (s *Store) Paused() bool {
 }
 
 func (s *Store) SetPaused(paused bool) error {
+	// When it was disabled is kept from the first switch-off; switching
+	// it off again while already off does not restart the clock.
+	if paused && !s.Paused() {
+		if err := s.db.SetSetting(keyPausedSince, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			return err
+		}
+	}
 	return s.db.SetSetting(keyPaused, strconv.FormatBool(paused))
+}
+
+// PausedSince is when throttling was disabled, for the banner that says
+// so. ok is false while it is not, or when the time was never recorded
+// (a pause from before it was).
+func (s *Store) PausedSince() (since time.Time, ok bool) {
+	if !s.Paused() {
+		return time.Time{}, false
+	}
+	raw, found, err := s.db.GetSetting(keyPausedSince)
+	if err != nil || !found {
+		return time.Time{}, false
+	}
+	since, err = time.Parse(time.RFC3339, raw)
+	return since, err == nil
 }

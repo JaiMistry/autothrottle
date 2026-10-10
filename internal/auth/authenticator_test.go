@@ -94,8 +94,8 @@ func TestSetupCreatesAnAccountOnce(t *testing.T) {
 	if err := a.CompleteSetup("  ", "a-long-password"); !errors.Is(err, ErrUsernameEmpty) {
 		t.Fatalf("blank username: err = %v", err)
 	}
-	if err := a.CompleteSetup("jai", "short"); !errors.Is(err, ErrPasswordShort) {
-		t.Fatalf("short password: err = %v", err)
+	if err := a.CompleteSetup("jai", ""); !errors.Is(err, ErrPasswordEmpty) {
+		t.Fatalf("empty password: err = %v", err)
 	}
 
 	if err := a.CompleteSetup(" jai ", "a-long-password"); err != nil {

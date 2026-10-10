@@ -155,6 +155,27 @@ func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRec
 
 func (a *testApp) get(path string) *httptest.ResponseRecorder { return a.do("GET", path, nil) }
 
+// doWithReferer posts a form as if from a page at referer. httptest
+// requests are for example.com, so that is the app's own host here.
+func (a *testApp) doWithReferer(path string, form url.Values, referer string) *httptest.ResponseRecorder {
+	a.t.Helper()
+	if form == nil {
+		form = url.Values{}
+	}
+	if a.csrf != "" && form.Get("csrf_token") == "" {
+		form.Set("csrf_token", a.csrf)
+	}
+	req := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", referer)
+	for _, c := range a.cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	a.handler.ServeHTTP(rec, req)
+	return rec
+}
+
 // post submits a form the way the app's own pages do, CSRF token included.
 func (a *testApp) post(path string, form url.Values) *httptest.ResponseRecorder {
 	a.t.Helper()

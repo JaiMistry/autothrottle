@@ -120,6 +120,10 @@ func (s *Scheduler) SetPaused(ctx context.Context, paused bool) {
 	s.resolve(ctx)
 }
 
+// PausedSince is when throttling was disabled; ok is false while it is
+// not, or if the time was never recorded.
+func (s *Scheduler) PausedSince() (time.Time, bool) { return s.settings.PausedSince() }
+
 func (s *Scheduler) Paused() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

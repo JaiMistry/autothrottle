@@ -152,6 +152,7 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /logs/panel", s.logPanelFragment)
 	protected.HandleFunc("POST /logs/clear", s.clearLogs)
 	protected.HandleFunc("GET /dashboard/live", s.dashboardLive)
+	protected.HandleFunc("GET /paused-banner", s.pausedBanner)
 	protected.HandleFunc("GET /events", s.liveEvents)
 	protected.HandleFunc("GET /dashboard/history", s.historyCard)
 	protected.HandleFunc("GET /configuration/connections/status", s.connectionStatus)
@@ -177,6 +178,12 @@ func (s *Server) Router() http.Handler {
 	// below, so hashed assets keep their immutable headers.
 	app := auth.RequireAuth(s.auth, s.sessions)(auth.RequireCSRF(s.auth, s.csrf)(protected))
 	mux.Handle("/", noStoreHTML(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Until an account exists, every address is the create-account
+		// screen: there is nothing else to see without one.
+		if s.auth.NeedsSetup() {
+			http.Redirect(w, r, "/setup", http.StatusSeeOther)
+			return
+		}
 		// Every page that exists asks for a sign-in first. An address no
 		// page lives at gets the 404 whether signed in or not: there is
 		// nothing behind it to protect.

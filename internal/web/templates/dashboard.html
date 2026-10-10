@@ -55,10 +55,6 @@
     </div>
   </section>
 
-  {{if .Paused}}
-    {{template "alert" dict "Tone" "warn" "Title" "Throttling is off"
-      "Body" "All downloaders are currently overridden to use the configured default speeds. Sessions are still tracked, and rates re-resolve against whatever is playing the moment you resume throttling."}}
-  {{end}}
   {{with .Unreachable}}
     <div class="at-alert at-alert--error" role="alert">
       <strong class="at-alert-title">{{count (len .) "backend unreachable" "backends unreachable"}}</strong>
@@ -183,10 +179,12 @@
 {{/* Always rendered, hidden until setup is complete, so the swap that
      keeps it current always has something to replace. */}}
 {{define "dashactions"}}
-<div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}{{if not .Ready}} hidden{{end}}>
-  {{if .Ready}}<form method="post" action="/pause-toggle">
+{{/* Disable only: while disabled, Resume lives on the banner across
+     every page. */}}
+<div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}{{if or (not .Ready) .Paused}} hidden{{end}}>
+  {{if and .Ready (not .Paused)}}<form method="post" action="/pause-toggle">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <button type="submit" class="at-btn{{if .Paused}} at-btn--warning{{end}}">{{if .Paused}}Resume throttling{{else}}Disable throttling{{end}}</button>
+    <button type="submit" class="at-btn">Disable throttling</button>
   </form>{{end}}
 </div>
 {{end}}

@@ -18,7 +18,6 @@ package auth
 import (
 	"crypto/subtle"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -44,10 +43,10 @@ const (
 var (
 	ErrSetupDone     = errors.New("setup has already been completed")
 	ErrUsernameEmpty = errors.New("choose a username")
-	ErrPasswordShort = fmt.Errorf("use a password of at least %d characters", minPasswordLength)
+	// There are no password rules: any non-empty password is accepted.
+	// It is the owner's own instance and the owner's own choice.
+	ErrPasswordEmpty = errors.New("choose a password")
 )
-
-const minPasswordLength = 8
 
 // Authenticator decides who may log in. Unlike the environment, the
 // stored account can appear while the app is running — setup creates
@@ -145,8 +144,8 @@ func (a *Authenticator) CompleteSetup(username, password string) error {
 	if username == "" {
 		return ErrUsernameEmpty
 	}
-	if len(password) < minPasswordLength {
-		return ErrPasswordShort
+	if password == "" {
+		return ErrPasswordEmpty
 	}
 	hash, err := hashPassword(password)
 	if err != nil {

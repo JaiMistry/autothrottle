@@ -192,13 +192,13 @@ const transmission = {
     section('First run');
     await navigate('/');
     check(at() === '/setup', 'a fresh install opens on the setup screen', at());
+    check((await page.$eval('[data-submit]', (b) => b.disabled)), 'Create account waits for both fields');
     await fill('[name=username]', 'admin');
     await fill('[name=password]', 'e2e-password');
-    await fill('[name=confirm]', 'e2e-passwore');
-    await settle(() => page.click('button[type=submit]'));
-    check((await text('.at-alert')).includes('two passwords'), 'mismatched passwords are refused');
-    await fill('[name=password]', 'e2e-password');
-    await fill('[name=confirm]', 'e2e-password');
+    await page.click('[data-reveal]');
+    check((await page.$eval('[name=password]', (i) => i.type)) === 'text' && (await text('[data-reveal]')) === 'Hide',
+      'Show reveals the password');
+    await page.click('[data-reveal]');
     await settle(() => page.click('button[type=submit]'));
     check(at() === '/', 'setup creates the account and signs in', at());
     check((await page.content()).includes('Nothing configured yet'), 'the empty Dashboard says nothing is configured');
@@ -376,7 +376,13 @@ const transmission = {
     await settle(() => page.click('form[action="/pause-toggle"] button'));
     const overridden = await until('the override', async () => ((await qbittorrent.limits()).down === 0 ? true : null), 30000);
     check(!!overridden, 'turning throttling off restores default rates while still playing');
-    await settle(() => page.click('form[action="/pause-toggle"] button'));
+    for (const p of ['/configuration', '/logs']) {
+      await navigate(p);
+      check(/Throttling disabled since \d{1,2}:\d{2} [AP]M/.test(await text('.at-paused')), `the banner is on ${p}`, await text('.at-paused'));
+    }
+    await settle(() => page.click('.at-paused form button'));
+    check(at() === '/logs' && !(await page.$('.at-paused')), 'Resume on the banner stays on the page it was pressed on', at());
+    await navigate('/');
     const back = await until('throttling to come back', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
     check(!!back, 'turning it back on re-throttles immediately');
 

@@ -3,6 +3,7 @@ package settings
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
@@ -44,5 +45,30 @@ func TestUnreadablePauseValueIsOff(t *testing.T) {
 	}
 	if s.Paused() {
 		t.Error("an unreadable value must fall back to throttling on")
+	}
+}
+
+func TestPausedSince(t *testing.T) {
+	s := openStore(t)
+	if _, ok := s.PausedSince(); ok {
+		t.Fatal("a time before ever pausing")
+	}
+	before := time.Now().Add(-time.Second)
+	if err := s.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	first, ok := s.PausedSince()
+	if !ok || first.Before(before) || first.After(time.Now().Add(time.Second)) {
+		t.Fatalf("paused since %v, %v", first, ok)
+	}
+	// Disabling again while disabled keeps the original time.
+	time.Sleep(1100 * time.Millisecond)
+	_ = s.SetPaused(true)
+	if again, _ := New(s.db).PausedSince(); !again.Equal(first) {
+		t.Errorf("the time moved from %v to %v", first, again)
+	}
+	_ = s.SetPaused(false)
+	if _, ok := s.PausedSince(); ok {
+		t.Error("a time while resumed")
 	}
 }

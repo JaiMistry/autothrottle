@@ -39,6 +39,8 @@
   <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/>
   </svg>
+{{- else if eq .Icon "paused" -}}
+  <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.9 9.1A8.4 8.4 0 1 1 14.9 4.1"/><path d="M13.2 1.7 14.9 4.1 12 4.9"/></svg>
 {{- else if eq .Icon "disabled" -}}
   <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6.2 12h11.6"/></svg>
 {{- else -}}
@@ -239,4 +241,21 @@
            placeholder="{{if .HasCredential}}••••••••{{else}}{{.Placeholder}}{{end}}">
     {{if .HasCredential}}<span class="at-field-hint" data-keep-hint>Leave blank to keep the existing value.</span>{{end}}
   </label>
+</div>{{end}}
+
+{{/* Across the top of every page while throttling is disabled, with the
+     way back on it. Always present, empty when not paused, so the live
+     stream can bring it in or take it away on any page. */}}
+{{define "pausedbanner"}}<div id="paused-banner" hx-get="/paused-banner" hx-trigger="live, every 5s [atLivePoll(this)]"
+     hx-swap="outerHTML" hx-target="this" data-live="dashboard">
+  {{- if .Paused}}
+  <div class="at-paused" role="status">
+    <span class="at-paused-glyph" aria-hidden="true"><span></span><span></span></span>
+    <span class="at-paused-text"><b>Throttling disabled</b>{{with .PausedSince}} since {{.}}{{end}}. Download clients restored to default speeds.</span>
+    <form method="post" action="/pause-toggle">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit" class="at-btn at-paused-resume">Resume throttling</button>
+    </form>
+  </div>
+  {{- end}}
 </div>{{end}}

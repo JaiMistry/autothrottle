@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -380,7 +381,7 @@ func livePosition(session clients.Session, now time.Time) time.Duration {
 func overallStatus(paused bool, throttled int, empty, ready, unresolved bool) overallFlag {
 	switch {
 	case paused:
-		return overallFlag{Tone: "good", Label: "Throttling disabled", Icon: "normal"}
+		return overallFlag{Tone: "warn", Label: "Throttling disabled", Icon: "paused"}
 	case throttled > 0:
 		return overallFlag{Tone: "warn", Label: "Throttling", Icon: "throttled"}
 	case empty:
@@ -530,9 +531,15 @@ func count(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
+// togglePause flips the switch and goes back to the page it was pressed
+// on: the banner's Resume is on every page, not only the Dashboard's.
 func (s *Server) togglePause(w http.ResponseWriter, r *http.Request) {
 	s.scheduler.SetPaused(r.Context(), !s.scheduler.Paused())
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	back := "/"
+	if ref, err := url.Parse(r.Referer()); err == nil && ref.Host == r.Host {
+		back = auth.SafeNext(ref.RequestURI())
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // page fills the fields every template needs.
@@ -544,7 +551,24 @@ func (s *Server) page(r *http.Request, title, active string) pageData {
 		Authenticated: true,
 		CSRFToken:     s.csrf.TokenFor(auth.SessionTokenFromContext(r.Context())),
 		Version:       version.Label(),
+		Paused:        s.scheduler.Paused(),
+		PausedSince:   s.pausedSince(),
 	}
+}
+
+// pausedSince is when throttling was disabled, as the banner shows it.
+func (s *Server) pausedSince() string {
+	since, ok := s.scheduler.PausedSince()
+	if !ok {
+		return ""
+	}
+	return since.In(time.Local).Format("3:04 PM")
+}
+
+// pausedBanner serves the banner on its own, so every page can follow
+// the pause switch live — flipped from another tab, say.
+func (s *Server) pausedBanner(w http.ResponseWriter, r *http.Request) {
+	s.renderFragment(w, "dashboard", "pausedbanner", s.page(r, "", ""))
 }
 
 func (s *Server) render(w http.ResponseWriter, page string, data any) {

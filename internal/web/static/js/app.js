@@ -914,6 +914,37 @@
   document.addEventListener("DOMContentLoaded", syncAfterRender);
 })();
 
+/* ── Create account ─────────────────────────────────────────────
+   Show/Hide lets the owner check what they typed, since there is no
+   confirm field; Create stays off until both fields have something. */
+(function () {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-reveal]");
+    if (!btn) return;
+    var input = btn.parentNode.querySelector("input");
+    var show = input.type === "password";
+    input.type = show ? "text" : "password";
+    btn.textContent = show ? "Hide" : "Show";
+    btn.setAttribute("aria-pressed", show ? "true" : "false");
+    btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+  });
+  function gate(form) {
+    var submit = form.querySelector("[data-submit]");
+    if (!submit) return;
+    submit.disabled = form.getAttribute("data-fill-required").split(",").some(function (name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      return !el || el.value === "";
+    });
+  }
+  document.addEventListener("input", function (e) {
+    var form = e.target.closest && e.target.closest("form[data-fill-required]");
+    if (form) gate(form);
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("form[data-fill-required]").forEach(gate);
+  });
+})();
+
 /* ── Live updates ───────────────────────────────────────────────
    One event stream per tab names what changed — "dashboard", "logs",
    "history" — and the parts of the page showing it fetch their own

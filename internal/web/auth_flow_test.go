@@ -47,18 +47,29 @@ func TestLogin(t *testing.T) {
 	expectRedirect(t, app.get("/"), "/login")
 }
 
+// setupForm loads the create-account screen, as a browser would, and
+// returns its form with the CSRF field filled in.
+func (a *testApp) setupForm(user, pass string) url.Values {
+	a.t.Helper()
+	m := csrfField.FindStringSubmatch(a.get("/setup").Body.String())
+	if m == nil {
+		a.t.Fatal("the create-account screen has no CSRF field")
+	}
+	return url.Values{"username": {user}, "password": {pass}, "csrf_token": {m[1]}}
+}
+
 // The setup form is the one page open to anyone, so it is throttled
 // like the login form.
 func TestSetupIsRateLimited(t *testing.T) {
 	app := newAppWith(t, nil)
 	var last int
 	for i := 0; i < 8; i++ {
-		last = app.do("POST", "/setup", url.Values{"username": {"x"}, "password": {"short"}, "confirm": {"short"}}).Code
+		last = app.do("POST", "/setup", app.setupForm(" ", "")).Code
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("after 8 rapid attempts: %d, want 429", last)
 	}
-	rec := app.do("POST", "/setup", url.Values{"username": {"jai"}, "password": {"long-enough"}, "confirm": {"long-enough"}})
+	rec := app.do("POST", "/setup", app.setupForm("jai", "pw"))
 	expectStatus(t, rec, http.StatusTooManyRequests)
 	if !app.srv.auth.NeedsSetup() {
 		t.Error("a rate-limited attempt created the account")
@@ -102,39 +113,40 @@ func TestDisabledAuthLetsEveryoneIn(t *testing.T) {
 func TestFirstRunSetup(t *testing.T) {
 	app := newAppWith(t, nil)
 
-	// Nothing can log in yet, so every road leads to setup.
-	expectRedirect(t, app.get("/"), "/setup")
-	expectRedirect(t, app.get("/login"), "/setup")
-	expectStatus(t, app.get("/setup"), http.StatusOK)
-
-	type result struct {
-		code           int
-		location, body string
+	// Nothing can log in yet, so every address leads to setup — real
+	// pages, the login page and made-up ones alike.
+	for _, path := range []string{"/", "/login", "/logs", "/no-such-page"} {
+		expectRedirect(t, app.get(path), "/setup")
 	}
-	submit := func(user, pass, confirm string) result {
-		rec := app.do("POST", "/setup", url.Values{"username": {user}, "password": {pass}, "confirm": {confirm}})
-		return result{rec.Code, rec.Header().Get("Location"), rec.Body.String()}
+	page := app.get("/setup")
+	expectStatus(t, page, http.StatusOK)
+	for _, want := range []string{"Set up your login", "use these to sign in from now on.", `autocomplete="new-password"`, "data-reveal", ">Create account<"} {
+		expectBody(t, page, want)
 	}
-
-	r := submit("jai", "long-enough", "different")
-	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "two passwords") {
-		t.Fatalf("mismatched passwords: %d %.200s", r.code, r.body)
-	}
-	r = submit("jai", "short", "short")
-	if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "at least 8 characters") {
-		t.Fatalf("short password: %d %.200s", r.code, r.body)
+	if strings.Contains(page.Body.String(), `name="confirm"`) || strings.Contains(page.Body.String(), "minlength") {
+		t.Error("the screen still asks for a confirmation or sets a length")
 	}
 
-	r = submit("jai", "long-enough", "long-enough")
-	if r.code != http.StatusSeeOther || r.location != "/" {
-		t.Fatalf("valid setup: %d → %q", r.code, r.location)
+	// Another site making the browser post the form gets nothing: it has
+	// no way to the token.
+	forged := app.do("POST", "/setup", url.Values{"username": {"intruder"}, "password": {"pw"}})
+	expectStatus(t, forged, http.StatusForbidden)
+	if !app.srv.auth.NeedsSetup() {
+		t.Fatal("a forged post created the account")
 	}
-	// Setup signs you straight in.
-	expectStatus(t, app.get("/"), http.StatusOK)
-	// And can never run again.
-	expectRedirect(t, app.get("/setup"), "/login")
-	r = submit("intruder", "long-enough", "long-enough")
-	if r.location != "/login" {
-		t.Fatalf("second setup was not refused: %d → %q", r.code, r.location)
+
+	expectStatus(t, app.do("POST", "/setup", app.setupForm("jai", "")), http.StatusUnprocessableEntity)
+
+	// No password rules: one character is a password.
+	rec := app.do("POST", "/setup", app.setupForm("jai", "x"))
+	expectRedirect(t, rec, "/")
+	// Setup signs you straight in, to the first-run Dashboard.
+	expectBody(t, app.get("/"), "Nothing configured yet")
+
+	// And the screen and its address are gone for good.
+	expectStatus(t, app.get("/setup"), http.StatusNotFound)
+	expectStatus(t, app.do("POST", "/setup", url.Values{"username": {"intruder"}, "password": {"pw"}}), http.StatusNotFound)
+	if !app.srv.auth.Verify("jai", "x") || app.srv.auth.Verify("intruder", "pw") {
+		t.Error("the account changed after setup")
 	}
 }
