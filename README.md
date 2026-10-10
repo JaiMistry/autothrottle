@@ -46,16 +46,27 @@ aside with one click whenever you want full speed back.
 
 ## Supported versions
 
+<table>
+<tr>
+<td valign="top">
+
 | | Media server | Version |
 |:-:|---|---|
 | <img src=".github/assets/logos/plex.png" width="18" alt=""> | Plex Media Server | 1.43+ |
 | <img src=".github/assets/logos/jellyfin.png" width="18" alt=""> | Jellyfin | 10.11+ |
 | <img src=".github/assets/logos/emby.png" width="18" alt=""> | Emby | 4.9+ |
 
+</td>
+<td valign="top">
+
 | | Download client | Version |
 |:-:|---|---|
 | <img src=".github/assets/logos/qbittorrent.svg" width="18" alt=""> | qBittorrent | 5.2+ |
 | <img src=".github/assets/logos/transmission.png" width="18" alt=""> | Transmission | 4.1+ |
+
+</td>
+</tr>
+</table>
 
 ## Quick start
 
@@ -120,4 +131,6 @@ happens on the **Configuration** page:
 
 [GPL-3.0](LICENSE)
 
-<p align="center">Made with ❤️ by <a href="https://github.com/JaiMistry">JaiMistry</a></p>
+---
+
+<p align="center"><sub>Made with ❤️ by <a href="https://github.com/JaiMistry">JaiMistry</a></sub></p>
