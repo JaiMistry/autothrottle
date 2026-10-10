@@ -24,7 +24,8 @@ func TestSelfRefreshingBlocksDoNotLendTheirTarget(t *testing.T) {
 	seen := 0
 	for _, path := range []string{"/", "/configuration?tab=connections", "/configuration?tab=mappings", "/logs"} {
 		for _, tag := range openTag.FindAllString(app.get(path).Body.String(), -1) {
-			if !strings.Contains(tag, "hx-trigger=") || !(strings.Contains(tag, "every ") || strings.Contains(tag, `"live`)) {
+			refreshes := strings.Contains(tag, "every ") || strings.Contains(tag, `"live`)
+			if !strings.Contains(tag, "hx-trigger=") || !refreshes {
 				continue
 			}
 			seen++
