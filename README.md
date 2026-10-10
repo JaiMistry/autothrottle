@@ -9,12 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/github/v/release/JaiMistry/autothrottle?label=version" alt="Latest version"></a>
   <a href="https://github.com/JaiMistry/autothrottle/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/JaiMistry/autothrottle/ci.yml?branch=main&label=build" alt="Build status"></a>
   <a href="https://codecov.io/gh/JaiMistry/autothrottle"><img src="https://codecov.io/gh/JaiMistry/autothrottle/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/github/v/release/JaiMistry/autothrottle?label=version" alt="Latest version"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/pulls/jaimistry/autothrottle" alt="Docker pulls"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/image-size/jaimistry/autothrottle/latest?label=size" alt="Size"></a>
-  <a href="https://github.com/JaiMistry/autothrottle/releases"><img src="https://img.shields.io/github/downloads/JaiMistry/autothrottle/total" alt="Downloads"></a>
 </p>
 
 AutoThrottle dynamically lowers your download client speeds while something is playing on your media server, and restores them when playback stops. Set it up once and it looks after itself from then on. The throttling is aware of what is actually happening. A paused stream stays throttled, one that has sat paused or stalled for 30 minutes is let go, and playback on your own network can be ignored. When you want full speed regardless, one click turns throttling off until you turn it back on.
@@ -27,17 +26,15 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 
 ## ⭐ Features
 
-- **Real-time:** reacts within seconds, from each server's live feed.
+- **Live dashboard:** a reactive modern UI.
+- **Real-time:** detects within seconds, from each server's live feed.
 - **Mappings:** control which applications are throttled.
 - **Pause-aware:** a paused stream stays throttled, and an abandoned one is released.
 - **Local playback exemption:** streams on your own network can be ignored.
 - **Restart-safe:** rates are re-applied on startup, so nothing stays stuck slow.
-- **Live dashboard:** what's throttled, why, and what's playing.
 - **Throttle history:** a heatmap of when your downloads were held back.
-- **Full log:** every throttle and restore, with its cause.
-- **Clean web UI:** a focused dashboard, configuration and log, in light or dark.
-- **Secure:** credentials encrypted at rest, sign-in rate-limited, and secrets kept out of the logs.
-- **Lightweight:** one small container with nothing else to run beside it.
+- **Secure:** all credentials securely encrypted.
+- **Lightweight:** very small footprint.
 
 ## 🧩 Supported versions
 
