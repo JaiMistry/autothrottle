@@ -1,0 +1,77 @@
+name: Docker Hub prune
+
+# Deletes untagged images from Docker Hub by digest: the old build of a
+# version that was released again, say. A digest any tag still uses,
+# directly or as one of its platform images or attestations, is skipped.
+on:
+  workflow_dispatch:
+    inputs:
+      digests:
+        description: Full digests (sha256:...) to delete, separated by spaces
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DIGESTS: ${{ inputs.digests }}
+          REPO: jaimistry/autothrottle
+        run: |
+          registry="https://registry-1.docker.io/v2/$REPO"
+          token=$(curl -fsS -u "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$REPO:pull,delete" | jq -r .token)
+          auth="Authorization: Bearer $token"
+          accept="Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json"
+
+          # Everything the tags use: each tag's own digest, and what it lists.
+          : > in-use
+          for tag in $(curl -fsS -H "$auth" "$registry/tags/list" | jq -r '.tags[]'); do
+            curl -fsSI -H "$auth" -H "$accept" "$registry/manifests/$tag" |
+              tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" { print $2 }' >> in-use
+            curl -fsS -H "$auth" -H "$accept" "$registry/manifests/$tag" |
+              jq -r '.manifests[]?.digest' >> in-use
+          done
+          echo "In use by tags: $(sort -u in-use | wc -l) digests"
+
+          # Two passes: Docker Hub refuses (403) to delete an image another
+          # stored image still lists, so platform images and attestations
+          # only go once the index listing them has.
+          failed=0
+          pending=""
+          for digest in $DIGESTS; do
+            case "$digest" in
+              sha256:????????????????????????????????????????????????????????????????) ;;
+              *) echo "::error::Not a full digest: $digest"; failed=1; continue ;;
+            esac
+            if grep -qx "$digest" in-use; then
+              echo "Skipped $digest: a tag still uses it."
+              continue
+            fi
+            pending="$pending $digest"
+          done
+          for _ in 1 2; do
+            retry=""
+            for digest in $pending; do
+              status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "$auth" "$registry/manifests/$digest")
+              case "$status" in
+                202) echo "Deleted $digest" ;;
+                404) echo "Already gone: $digest" ;;
+                403) retry="$retry $digest" ;;
+                *) echo "::error::Deleting $digest answered $status"; failed=1 ;;
+              esac
+            done
+            pending="$retry"
+          done
+          for digest in $pending; do
+            echo "::error::Docker Hub refused to delete $digest (403)"
+            failed=1
+          done
+          exit "$failed"
