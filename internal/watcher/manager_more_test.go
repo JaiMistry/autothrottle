@@ -54,23 +54,31 @@ func TestReconcileLogsLostAndRegainedContact(t *testing.T) {
 
 	time.Sleep(60 * time.Millisecond) // several failed passes
 	w.setErr(nil)
-	eventually(t, "the recovery", func() bool { return len(sink.replacements()) > 0 })
 
-	events, err := database.ListEvents(10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The recovery is logged just after the snapshot is handed over, so
+	// wait for the log line itself.
 	var lost, back int
-	for _, e := range events {
-		switch e.Message {
-		case "Lost contact with Plex. Playback there will not be noticed until it answers again.":
-			lost++
-		case "Back in contact with Plex":
-			back++
+	eventually(t, "the recovery to be logged", func() bool {
+		events, err := database.ListEvents(10)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
+		lost, back = 0, 0
+		for _, e := range events {
+			switch e.Message {
+			case "Lost contact with Plex. Playback there will not be noticed until it answers again.":
+				lost++
+			case "Back in contact with Plex":
+				back++
+			}
+		}
+		return back > 0
+	})
 	if lost != 1 || back != 1 {
-		t.Errorf("lost %d, back %d, want one of each in %+v", lost, back, events)
+		t.Errorf("lost %d, back %d, want one of each", lost, back)
+	}
+	if len(sink.replacements()) == 0 {
+		t.Error("the recovered snapshot never reached the scheduler")
 	}
 }
 
