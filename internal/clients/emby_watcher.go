@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -109,9 +110,9 @@ func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	c, _, err := websocket.Dial(ctx, w.webSocketURL(), nil)
+	c, _, err := websocket.Dial(ctx, w.webSocketURL(), &websocket.DialOptions{HTTPHeader: w.authHeader()})
 	if err != nil {
-		// The API key is in the URL, and so in the error.
+		// Emby's key is in the URL, and so in the error.
 		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))
 	}
 	defer func() { _ = c.CloseNow() }()
@@ -287,9 +288,19 @@ func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 }
 
 func (w *EmbyWatcher) webSocketURL() string {
-	return webSocketBase(w.BaseURL) + w.flavor.webSocketPath +
-		"?api_key=" + url.QueryEscape(w.APIKey) +
-		"&deviceId=" + url.QueryEscape(embyDeviceID)
+	q := url.Values{"deviceId": {embyDeviceID}}
+	if w.flavor.keyInSocketURL {
+		q.Set("api_key", w.APIKey)
+	}
+	return webSocketBase(w.BaseURL) + w.flavor.webSocketPath + "?" + q.Encode()
+}
+
+// authHeader is the REST calls' credential, which the socket handshake
+// takes too.
+func (w *EmbyWatcher) authHeader() http.Header {
+	r := &http.Request{Header: http.Header{}}
+	w.flavor.setAuth(r, w.APIKey)
+	return r.Header
 }
 
 // Connection reports this watcher's live connection health.

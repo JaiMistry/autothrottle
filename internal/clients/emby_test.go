@@ -314,8 +314,8 @@ func TestEmbyWebSocketURL(t *testing.T) {
 	if !strings.HasPrefix(got, "wss://host/socket?") {
 		t.Errorf("Jellyfin socket URL = %q", got)
 	}
-	if !strings.Contains(got, "deviceId=autothrottle") {
-		t.Errorf("Jellyfin socket URL missing device id: %q", got)
+	if !strings.Contains(got, "deviceId=autothrottle") || strings.Contains(got, "api_key") {
+		t.Errorf("Jellyfin socket URL = %q, want a device id and no key", got)
 	}
 	if got := webSocketBase("ws://a"); got != "ws://a" {
 		t.Errorf("webSocketBase(ws://a) = %q", got)

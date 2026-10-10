@@ -16,6 +16,7 @@ type embyFakeServer struct {
 	subscribed chan string
 	keepAlives chan string
 	query      chan string
+	auth       chan string
 	push       chan string
 }
 
@@ -25,6 +26,7 @@ func newEmbyFakeServer(t *testing.T) (*embyFakeServer, *httptest.Server) {
 		subscribed: make(chan string, 1),
 		keepAlives: make(chan string, 4),
 		query:      make(chan string, 1),
+		auth:       make(chan string, 1),
 		push:       make(chan string, 4),
 	}
 
@@ -38,6 +40,10 @@ func newEmbyFakeServer(t *testing.T) (*embyFakeServer, *httptest.Server) {
 
 		select {
 		case f.query <- r.URL.RawQuery:
+		default:
+		}
+		select {
+		case f.auth <- r.Header.Get("Authorization"):
 		default:
 		}
 
@@ -89,17 +95,21 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- w.connectAndListen(ctx) }()
 
-	// These sockets take the key as a query parameter, not a header.
+	// Jellyfin 12 refuses a key in the URL: it goes in the header, as on
+	// the REST calls.
 	select {
 	case q := <-fake.query:
-		if !strings.Contains(q, "api_key=sekrit") {
-			t.Errorf("handshake query = %q, want it to carry the api key", q)
+		if strings.Contains(q, "sekrit") {
+			t.Errorf("handshake query = %q, want no key in it", q)
 		}
 		if !strings.Contains(q, "deviceId=autothrottle") {
 			t.Errorf("handshake query = %q, want it to carry a device id", q)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for the handshake")
+	}
+	if auth := <-fake.auth; !strings.Contains(auth, `Token="sekrit"`) {
+		t.Errorf("handshake Authorization = %q, want the key", auth)
 	}
 
 	// Nothing is pushed until the client subscribes.

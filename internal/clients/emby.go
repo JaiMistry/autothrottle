@@ -15,11 +15,15 @@ type embyFlavor struct {
 	name          string
 	webSocketPath string
 	setAuth       func(*http.Request, string)
+	// keyInSocketURL is Emby's socket handshake, which takes the key as
+	// api_key. Jellyfin 12 refuses that form and reads only the header.
+	keyInSocketURL bool
 }
 
 var flavorEmby = embyFlavor{
-	name:          "Emby",
-	webSocketPath: "/embywebsocket",
+	name:           "Emby",
+	webSocketPath:  "/embywebsocket",
+	keyInSocketURL: true,
 	setAuth: func(r *http.Request, apiKey string) {
 		r.Header.Set("X-Emby-Token", apiKey)
 	},
