@@ -115,6 +115,7 @@ func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
 		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))
 	}
 	defer func() { _ = c.CloseNow() }()
+	w.conn.connected()
 
 	conn := &embyConn{c: c}
 

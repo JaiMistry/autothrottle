@@ -69,6 +69,7 @@ func (w *PlexWatcher) connectAndListen(ctx context.Context) error {
 		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))
 	}
 	defer func() { _ = c.CloseNow() }()
+	w.conn.connected()
 
 	for {
 		_, data, err := c.Read(ctx)

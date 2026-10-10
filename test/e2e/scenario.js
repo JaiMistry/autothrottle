@@ -494,6 +494,16 @@ const transmission = {
     const logText0 = await (await fetch(APP + '/logs', { headers: { Cookie: (await page.cookies()).map((c) => `${c.name}=${c.value}`).join('; ') } })).text();
     check((logText0.match(/failed to apply rate limits to qBittorrent/g) || []).length === 1, 'the outage is logged once, not once per retry');
 
+    section('A media server going away');
+    await navigate('/');
+    const serverState = () => page.$eval('.at-serverrow', (r) => r.dataset.state).catch(() => '');
+    await docker('stop', `e2e-${MEDIA.kind}`);
+    const down = await until('the Dashboard to notice', async () => ((await serverState()) === 'connecting' ? true : null), 45000);
+    check(!!down, 'a stopped media server reads Connecting, not Idle', await serverState());
+    await docker('start', `e2e-${MEDIA.kind}`);
+    const reconnected = await until('it to reconnect', async () => ((await serverState()) === 'idle' ? true : null), 120000);
+    check(!!reconnected, 'and Idle again once it is back, without a reload', await serverState());
+
     section('Local playback exemption');
     // The player runs on this machine, so the server sees local playback.
     async function setExempt(on) {

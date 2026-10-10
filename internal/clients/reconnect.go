@@ -23,20 +23,18 @@ func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connect
 		if ctx.Err() != nil {
 			return
 		}
-		connectedAt := time.Now()
-		tracker.set(true)
 		// Redacted here too, where every watcher's error is logged.
 		err := Redact(connect(ctx))
+		lasted := tracker.dropped()
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil {
 			slog.Warn("watcher disconnected, reconnecting", "type", label, "url", baseURL, "error", err)
 		}
-		if time.Since(connectedAt) > reconnectMaxBackoff {
-			backoff = time.Second // connection was healthy for a while; don't punish it for one drop
+		if lasted > reconnectMaxBackoff {
+			backoff = time.Second // it was healthy for a while; one drop is not a pattern
 		}
-		tracker.set(false)
 
 		select {
 		case <-ctx.Done():
