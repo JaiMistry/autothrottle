@@ -22,7 +22,7 @@
 {{/* Follows the live stream so a dot changes the moment its state
      does: a downloader failing, or coming back. */}}
 <div id="conn-live" hidden hx-get="/configuration/connections/status" hx-trigger="live, every 5s [atLivePoll(this)]"
-     hx-swap="none" data-live="dashboard"></div>
+     hx-swap="none" hx-disinherit="*" data-live="dashboard"></div>
 {{/* One hover card for every status dot. Fixed and outside the tables,
      so their horizontal scroll can't clip it on the first or last row. */}}
 <span class="at-st-tip" role="tooltip" aria-hidden="true"><span class="at-st-tip-label"></span><span class="at-st-tip-detail"></span></span>

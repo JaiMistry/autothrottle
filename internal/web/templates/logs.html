@@ -28,7 +28,7 @@
 <div id="log-panel"
   {{- if and .LivePanel (eq .Log.Page 1)}}
   hx-get="{{.LivePanel}}" hx-trigger="live, every 5s [atLivePoll(this)]" data-live="logs"
-  hx-target="#log-panel" hx-swap="outerHTML"{{end}}>
+  hx-target="#log-panel" hx-swap="outerHTML" hx-disinherit="*"{{end}}>
   <div class="at-tabs at-tabs--sm at-tabs--fill" role="tablist" style="margin-bottom:var(--space-8)">
     {{template "logtab" dict "Label" "All" "Level" "" "Count" .CountAll "Active" (eq .Level "") "Q" $q "Per" $per}}
     {{template "logtab" dict "Label" "Info" "Level" "info" "Count" (index .Counts "info") "Active" (eq .Level "info") "Q" $q "Per" $per}}

@@ -246,8 +246,11 @@
 {{/* Across the top of every page while throttling is disabled, with the
      way back on it. Always present, empty when not paused, so the live
      stream can bring it in or take it away on any page. */}}
+{{/* hx-disinherit: the Resume form inside is boosted, and inheriting
+     this block's target and swap would load the whole next page into
+     the banner, sidebar and all. */}}
 {{define "pausedbanner"}}<div id="paused-banner" hx-get="/paused-banner" hx-trigger="live, every 5s [atLivePoll(this)]"
-     hx-swap="outerHTML" hx-target="this" data-live="dashboard">
+     hx-swap="outerHTML" hx-target="this" hx-disinherit="*" data-live="dashboard">
   {{- if .Paused}}
   <div class="at-paused" role="status">
     <span class="at-paused-glyph" aria-hidden="true"><span></span><span></span></span>

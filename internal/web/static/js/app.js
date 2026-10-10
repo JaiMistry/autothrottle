@@ -416,6 +416,18 @@
   }
 
   document.body.addEventListener("htmx:beforeSwap", function (e) {
+    // A whole page — shell and sidebar — only ever belongs in the body.
+    // Aimed anywhere smaller, it nests a second app inside the first;
+    // that has happened twice, each time through a link or form that
+    // inherited a self-refreshing block's target. Whatever the next
+    // cause, the page is loaded properly instead.
+    var body = e.detail.serverResponse;
+    if (e.detail.target !== document.body && typeof body === "string" && body.indexOf('id="at-shell"') !== -1) {
+      e.detail.shouldSwap = false;
+      console.warn("AutoThrottle: a full page was aimed at #" + (e.detail.target && e.detail.target.id) + "; loading it instead");
+      window.location.assign(e.detail.xhr.responseURL || window.location.href);
+      return;
+    }
     // A rejected form comes back as 422 with the page re-rendered and the
     // reason at the top. htmx drops non-2xx responses by default, so
     // without this the button does nothing at all and the reason is

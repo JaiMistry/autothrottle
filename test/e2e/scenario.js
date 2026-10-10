@@ -131,6 +131,10 @@ const transmission = {
   page.setDefaultTimeout(30000);
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
+  // The nesting guard warns when it has to step in: that means some
+  // link or form aimed a whole page at part of one, which is a bug.
+  page.on('console', (m) => { if (m.text().includes('a full page was aimed at')) pageErrors.push(m.text()); });
+  const oneShell = () => page.evaluate(() => document.querySelectorAll('.at-shell').length === 1 && document.querySelectorAll('.at-rail').length === 1);
   // Every fetch of the Dashboard's live block, to tell pushed updates
   // from polling.
   let liveFetches = 0;
@@ -382,6 +386,24 @@ const transmission = {
     }
     await settle(() => page.click('.at-paused form button'));
     check(at() === '/logs' && !(await page.$('.at-paused')), 'Resume on the banner stays on the page it was pressed on', at());
+    await navigate('/');
+    // Off and on again, twice, from the Dashboard and from Logs: the
+    // page must stay one page, never a sidebar inside a sidebar.
+    for (const p of ['/', '/', '/logs']) {
+      if (p !== '/') await navigate(p);
+      if (p === '/') await settle(() => page.click('#dash-actions form button'));
+      else {
+        await page.evaluate(async () => {
+          const t = document.querySelector('input[name=csrf_token]').value;
+          await fetch('/pause-toggle', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'csrf_token=' + encodeURIComponent(t) });
+        });
+        await page.waitForSelector('.at-paused', { timeout: 15000 });
+      }
+      const offOk = (await oneShell()) && !!(await page.$('.at-paused'));
+      await settle(() => page.click('.at-paused form button'));
+      check(offOk && (await oneShell()) && !(await page.$('.at-paused')) && at() === p,
+        `disabling and resuming from ${p} leaves one page, one sidebar`, at());
+    }
     await navigate('/');
     const back = await until('throttling to come back', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
     check(!!back, 'turning it back on re-throttles immediately');
