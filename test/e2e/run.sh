@@ -6,6 +6,10 @@
 #   MEDIA=emby test/e2e/run.sh          one media server only
 #   AT_IMAGE=my-image test/e2e/run.sh   test an image you already built
 #   KEEP=1 test/e2e/run.sh              leave the last stack running afterwards
+#   E2E_BROWSER=host test/e2e/run.sh    drive the Chrome and Node on this machine
+#                                       (with puppeteer-core installed here, and
+#                                       PUPPETEER_EXECUTABLE_PATH) instead of
+#                                       pulling the Puppeteer image
 #
 # Plex runs against a real plex.tv test account. Its token and client
 # identifier come from PLEX_E2E_TOKEN and PLEX_E2E_CLIENT_ID, or from a
@@ -24,7 +28,7 @@ default="jellyfin emby"
 # stack is up, so it downloads while the stack is built and provisioned.
 PUPPETEER=ghcr.io/puppeteer/puppeteer:25.12.0
 pull=""
-if ! docker image inspect "$PUPPETEER" >/dev/null 2>&1; then
+if [ "${E2E_BROWSER:-}" != host ] && ! docker image inspect "$PUPPETEER" >/dev/null 2>&1; then
   docker pull -q "$PUPPETEER" >/dev/null &
   pull=$!
 fi
@@ -38,12 +42,17 @@ for media in ${MEDIA:-$default}; do
   MEDIA=$media ./reset.sh
   [ -n "$pull" ] && { wait "$pull" || true; pull=""; }
   # The Docker socket lets the scenario restart containers mid-test.
-  docker run --rm --memory=1500m --network host \
-    -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock)" \
-    -e NODE_PATH=/home/pptruser/node_modules \
-    -e PLEX_E2E_TOKEN -e PLEX_E2E_CLIENT_ID \
-    -v "$PWD:/work" -w /work \
-    "$PUPPETEER" node scenario.js || {
+  if [ "${E2E_BROWSER:-}" = host ]; then
+    scenario=(node scenario.js)
+  else
+    scenario=(docker run --rm --memory=1500m --network host
+      -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock)"
+      -e NODE_PATH=/home/pptruser/node_modules
+      -e PLEX_E2E_TOKEN -e PLEX_E2E_CLIENT_ID
+      -v "$PWD:/work" -w /work
+      "$PUPPETEER" node scenario.js)
+  fi
+  "${scenario[@]}" || {
       status=1
       echo; echo "--- AutoThrottle log ($media) ---"
       docker logs e2e-autothrottle 2>&1 | tail -40

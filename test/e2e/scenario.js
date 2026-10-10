@@ -8,7 +8,11 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const puppeteer = require('puppeteer');
+// In the Puppeteer image, the full package and its own Chrome; on a CI
+// runner, puppeteer-core and the Chrome already installed there.
+const puppeteer = (() => {
+  try { return require('puppeteer'); } catch (e) { return require('puppeteer-core'); }
+})();
 
 const env = JSON.parse(fs.readFileSync(path.join(__dirname, '.state/env.json')));
 const APP = env.autothrottle;
@@ -172,7 +176,10 @@ const transmission = {
 // --- the browser ------------------------------------------------------------
 
 (async () => {
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  });
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 1000 });
   page.setDefaultTimeout(30000);
