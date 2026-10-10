@@ -84,6 +84,10 @@ docker run -d \
   jaimistry/autothrottle:latest
 ```
 
+The image is also published as `ghcr.io/jaimistry/autothrottle`, and attached
+to each [release](https://github.com/JaiMistry/autothrottle/releases) for
+loading with `docker load` where there is no registry.
+
 ## ⚙️ Environment variables
 
 All are optional.

@@ -65,12 +65,31 @@ jobs:
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ steps.stamp.outputs.date }}
 
+      # The image as files on the release page too, one per architecture,
+      # for anyone loading it without a registry. Pulled back from the
+      # registry so they are exactly what was published.
+      - name: Save the images
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for arch in amd64 arm64; do
+            docker pull -q --platform "linux/$arch" "ghcr.io/jaimistry/autothrottle:$version"
+            docker tag "ghcr.io/jaimistry/autothrottle:$version" "jaimistry/autothrottle:$version"
+            docker save "jaimistry/autothrottle:$version" | gzip -9 > "autothrottle-$GITHUB_REF_NAME-linux-$arch.tar.gz"
+          done
+          sha256sum autothrottle-*.tar.gz > SHA256SUMS
+
       # The release page the version badge and update check read from,
       # with notes generated from the commits since the last one.
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          version="${GITHUB_REF_NAME#v}"
           flags="--generate-notes --verify-tag"
           case "$GITHUB_REF_NAME" in *-*) flags="$flags --prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" $flags
+          notes=$(printf '%s\n\n%s\n%s\n' \
+            "Pull \`jaimistry/autothrottle:$version\` or \`ghcr.io/jaimistry/autothrottle:$version\`." \
+            "Without a registry, download the file for your architecture below and run" \
+            "\`docker load -i autothrottle-$GITHUB_REF_NAME-linux-<arch>.tar.gz\`.")
+          gh release create "$GITHUB_REF_NAME" $flags --notes "$notes" \
+            autothrottle-*.tar.gz SHA256SUMS
