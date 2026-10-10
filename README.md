@@ -17,14 +17,7 @@
   <a href="https://github.com/JaiMistry/autothrottle/releases"><img src="https://img.shields.io/github/downloads/JaiMistry/autothrottle/total" alt="Downloads"></a>
 </p>
 
-AutoThrottle lowers your download speeds while something is playing on your
-media server, and restores them when playback stops. Set it up once and it
-looks after itself from then on.
-
-The throttling is aware of what is actually happening. A paused stream stays
-throttled, one that has sat paused or stalled for 30 minutes is let go, and
-playback on your own network can be ignored. When you want full speed
-regardless, one click turns throttling off until you turn it back on.
+AutoThrottle dynamically lowers your download client speeds while something is playing on your media server, and restores them when playback stops. Set it up once and it looks after itself from then on. The throttling is aware of what is actually happening. A paused stream stays throttled, one that has sat paused or stalled for 30 minutes is let go, and playback on your own network can be ignored. When you want full speed regardless, one click turns throttling off until you turn it back on.
 
 <!-- Screenshots: add once the Dashboard redesign is final.
 <p align="center">
