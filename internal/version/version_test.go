@@ -1,6 +1,10 @@
 package version
 
-import "testing"
+import (
+	"runtime/debug"
+	"testing"
+	"time"
+)
 
 func TestLabel(t *testing.T) {
 	original := Version
@@ -43,5 +47,41 @@ func TestNumber(t *testing.T) {
 		if got := Number(); got != want {
 			t.Errorf("Number() with Version=%q = %q, want %q", stamp, got, want)
 		}
+	}
+}
+
+// The link-time stamp wins; an unreadable one is left blank.
+func TestCurrentReadsTheBuildDate(t *testing.T) {
+	original := BuildDate
+	defer func() { BuildDate = original }()
+
+	BuildDate = "2026-10-01T12:00:00Z"
+	if b := Current(); b.Built.Format("2006-01-02") != "2026-10-01" || b.Go == "" {
+		t.Errorf("Current() = %+v", b)
+	}
+	BuildDate = "yesterday"
+	if b := Current(); b.Built.Year() == 2026 && b.Built.Month() == 10 && b.Built.Day() == 1 {
+		t.Errorf("an unreadable stamp was parsed: %v", b.Built)
+	}
+}
+
+// A plain go build carries its commit and time in the VCS metadata; the
+// link-time stamp, where set, wins.
+func TestFromVCS(t *testing.T) {
+	settings := []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "0123456789abcdef"},
+		{Key: "vcs.time", Value: "2026-10-01T12:00:00Z"},
+		{Key: "vcs.modified", Value: "true"},
+	}
+	var b Build
+	fromVCS(&b, settings)
+	if b.Commit != "0123456" || b.Built.Day() != 1 {
+		t.Errorf("from VCS: %+v", b)
+	}
+
+	stamped := Build{Commit: "stamped", Built: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)}
+	fromVCS(&stamped, settings)
+	if stamped.Commit != "stamped" || stamped.Built.Year() != 2025 {
+		t.Errorf("the stamp was overwritten: %+v", stamped)
 	}
 }

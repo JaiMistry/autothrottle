@@ -24,6 +24,7 @@ type fakeWatchers struct {
 	mu         sync.Mutex
 	reconciles int
 	running    map[int64]bool
+	dropped    map[int64]bool // running, but its live connection is down
 }
 
 func (f *fakeWatchers) Reconcile() {
@@ -38,8 +39,10 @@ func (f *fakeWatchers) Running(id int64) bool {
 	return f.running[id]
 }
 
-func (f *fakeWatchers) Connection(int64) (clients.ConnectionState, bool) {
-	return clients.ConnectionState{Connected: true}, true
+func (f *fakeWatchers) Connection(id int64) (clients.ConnectionState, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return clients.ConnectionState{Connected: !f.dropped[id]}, true
 }
 
 // testApp is the real router over a real database and scheduler. Only
@@ -48,6 +51,7 @@ type testApp struct {
 	t        *testing.T
 	srv      *Server
 	db       *db.DB
+	dbPath   string
 	sched    *scheduler.Scheduler
 	watchers *fakeWatchers
 	handler  http.Handler
@@ -77,7 +81,8 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	for _, k := range []string{"AUTH_USERNAME", "AUTH_PASSWORD", "AUTH_DISABLED"} {
 		t.Setenv(k, env[k])
 	}
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatalf("opening database: %v", err)
 	}
@@ -89,7 +94,7 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	}
 	key := []byte("0123456789abcdef0123456789abcdef")
 	sched := scheduler.New(database, key, settings.New(database))
-	watchers := &fakeWatchers{running: map[int64]bool{}}
+	watchers := &fakeWatchers{running: map[int64]bool{}, dropped: map[int64]bool{}}
 	srv, err := New(database, authenticator, key, sched, watchers)
 	if err != nil {
 		t.Fatalf("building server: %v", err)
@@ -107,7 +112,7 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	sched.SetNotifier(srv.Live())
 	database.OnEventsChanged(func() { srv.Live().Notify(live.Logs) })
 
-	return &testApp{t: t, srv: srv, db: database, sched: sched, watchers: watchers, handler: srv.Router(), qbit: qbit}
+	return &testApp{t: t, srv: srv, db: database, dbPath: dbPath, sched: sched, watchers: watchers, handler: srv.Router(), qbit: qbit}
 }
 
 // restart replaces the server over the same database; cookies carry over.

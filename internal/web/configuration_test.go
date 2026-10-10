@@ -126,6 +126,9 @@ func TestAddDownloader(t *testing.T) {
 	rec := app.post("/configuration/downloaders", dup)
 	expectStatus(t, rec, http.StatusUnprocessableEntity)
 	expectBody(t, rec, "is already added as")
+
+	dup = url.Values{"name": {"QBIT "}, "type": {"qbittorrent"}, "url": {"http://elsewhere.lan"}}
+	expectBody(t, app.post("/configuration/downloaders", dup), "already exists")
 }
 
 func (a *testApp) setMapping(ms, dl int64, on bool) {

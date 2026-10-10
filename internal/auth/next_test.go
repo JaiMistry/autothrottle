@@ -47,3 +47,16 @@ func TestLoginURL(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthenticated(t *testing.T) {
+	sessions := NewSessionManager(&memStore{})
+	req := httptest.NewRequest("GET", "/", nil)
+	disabled, _ := load(t, "true", "", "", &accountMem{})
+	setup, _ := load(t, "", "", "", &accountMem{})
+	if !Authenticated(disabled, sessions, req) {
+		t.Error("sign-in off, and not treated as signed in")
+	}
+	if Authenticated(setup, sessions, req) {
+		t.Error("signed in before an account exists")
+	}
+}

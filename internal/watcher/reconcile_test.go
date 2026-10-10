@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
@@ -10,11 +11,14 @@ import (
 
 // fakeWatcher is a SessionWatcher that never connects to anything.
 type fakeWatcher struct {
+	mu       sync.Mutex
 	events   chan clients.SessionEvent
 	snapshot []clients.Session
 	err      error
 	calls    int
 }
+
+func (f *fakeWatcher) setErr(err error) { f.mu.Lock(); f.err = err; f.mu.Unlock() }
 
 func (f *fakeWatcher) Run(context.Context) {}
 
@@ -26,6 +30,8 @@ func (f *fakeWatcher) Events() <-chan clients.SessionEvent {
 }
 
 func (f *fakeWatcher) Snapshot(context.Context) ([]clients.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	if f.err != nil {
 		return nil, f.err

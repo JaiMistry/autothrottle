@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"encoding/base64"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -61,5 +63,45 @@ func TestLoadOrGenerateKey_GeneratesAndPersists(t *testing.T) {
 	}
 	if string(key1) != string(key2) {
 		t.Fatal("second call should load the persisted key, not generate a new one")
+	}
+}
+
+// A key file that is damaged, the wrong size or unreadable stops start-up
+// rather than being replaced: replacing it would orphan every credential.
+func TestLoadOrGenerateKeyRefusesABadKey(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for name, path := range map[string]string{
+		"not base64":      write("garbled", "%%%"),
+		"wrong size":      write("short", base64.StdEncoding.EncodeToString([]byte("short"))),
+		"a directory":     dir,
+		"unwritable path": filepath.Join(dir, "missing", "key"),
+	} {
+		if _, err := LoadOrGenerateKey(path); err == nil {
+			t.Errorf("%s: loaded a key", name)
+		}
+	}
+}
+
+func TestEncryptAndDecryptRejectBadInput(t *testing.T) {
+	key := make([]byte, keySize)
+	if _, err := Encrypt([]byte("short"), "x"); err == nil {
+		t.Error("encrypted with a key of the wrong size")
+	}
+	sealed, _ := Encrypt(key, "x")
+	for name, call := range map[string]func() error{
+		"not base64": func() error { _, err := Decrypt(key, "%%%"); return err },
+		"bad key":    func() error { _, err := Decrypt([]byte("short"), sealed); return err },
+		"too short":  func() error { _, err := Decrypt(key, base64.StdEncoding.EncodeToString([]byte("abc"))); return err },
+	} {
+		if call() == nil {
+			t.Errorf("%s: decrypted", name)
+		}
 	}
 }

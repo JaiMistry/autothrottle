@@ -83,11 +83,16 @@ func Current() Build {
 			b.Built = t
 		}
 	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return b
+	if info, ok := debug.ReadBuildInfo(); ok {
+		fromVCS(&b, info.Settings)
 	}
-	for _, s := range info.Settings {
+	return b
+}
+
+// fromVCS fills what the link-time stamp left blank from the VCS
+// metadata a plain go build embeds.
+func fromVCS(b *Build, settings []debug.BuildSetting) {
+	for _, s := range settings {
 		switch s.Key {
 		case "vcs.revision":
 			if b.Commit == "" && len(s.Value) >= 7 {
@@ -101,7 +106,6 @@ func Current() Build {
 			}
 		}
 	}
-	return b
 }
 
 // inDocker reports whether this runs in a container, from the marker

@@ -45,8 +45,9 @@ func TestPlex(ctx context.Context, baseURL, token string) error {
 	return verifyPlexToken(ctx, token)
 }
 
-// plexAccountURL is where a token is actually checked.
-const plexAccountURL = "https://plex.tv/api/v2/user"
+// plexAccountURL is where a token is actually checked. A variable so
+// tests can stand in for plex.tv.
+var plexAccountURL = "https://plex.tv/api/v2/user"
 
 // verifyPlexToken checks the token with plex.tv. A Plex server does not
 // enforce tokens on the LAN by default (a wrong or missing token still

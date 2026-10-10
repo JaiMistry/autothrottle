@@ -80,17 +80,18 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	if err != nil {
 		return logsData{}, err
 	}
-	total, err := s.db.CountEvents(filter)
-	if err != nil {
-		return logsData{}, err
+	all := counts["info"] + counts["warn"] + counts["error"]
+	total := all
+	if filter.Levels != nil {
+		total = counts[level]
 	}
-	if total > logsWindow {
-		total = logsWindow
-	}
+	total = min(total, logsWindow)
 	// No events at all and none matching get different empty states.
-	unfiltered, err := s.db.CountEvents(db.EventFilter{})
-	if err != nil {
-		return logsData{}, err
+	unfiltered := all
+	if search != "" {
+		if unfiltered, err = s.db.CountEvents(db.EventFilter{}); err != nil {
+			return logsData{}, err
+		}
 	}
 
 	rows, page, err := s.pageOfEvents(filter, perPage, page, total)
@@ -111,7 +112,7 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 		Level:    level,
 		Search:   search,
 		Counts:   counts,
-		CountAll: counts["info"] + counts["warn"] + counts["error"],
+		CountAll: all,
 		Matching: total,
 		NoEvents: unfiltered == 0,
 		Log:      newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra),

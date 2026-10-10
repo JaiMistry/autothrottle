@@ -38,3 +38,10 @@ func TestCSRF(t *testing.T) {
 		t.Fatal("garbage token should not validate")
 	}
 }
+
+func TestCSRFRefusesAnEmptyToken(t *testing.T) {
+	csrf, _ := NewCSRF()
+	if csrf.Valid("", "") || csrf.Valid("session", "") {
+		t.Error("an empty token passed")
+	}
+}

@@ -164,8 +164,9 @@ func (w *EmbyWatcher) handleMessage(ctx context.Context, conn *embyConn, data []
 }
 
 // embySubscriptionGrace is how long a subscription may stay silent
-// before it is reported, well past the push interval.
-const embySubscriptionGrace = 30 * time.Second
+// before it is reported, well past the push interval. A variable so a
+// test need not wait it out.
+var embySubscriptionGrace = 30 * time.Second
 
 // warnIfSubscriptionSilent logs a subscription the server accepts but
 // never feeds (seen with some Jellyfin API keys). Throttling then runs,

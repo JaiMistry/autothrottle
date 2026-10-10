@@ -8,14 +8,17 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/live"
 )
 
-// streamHeartbeat keeps proxies from cutting an idle stream, and finds a
-// closed tab within that time.
-const streamHeartbeat = 25 * time.Second
+// Variables so tests can shorten them.
+var (
+	// streamHeartbeat keeps proxies from cutting an idle stream, and finds
+	// a closed tab within that time.
+	streamHeartbeat = 25 * time.Second
 
-// streamLifetime ends every stream after a while so the browser's
-// reconnect passes the login check again; a stream must not outlive its
-// session.
-const streamLifetime = 10 * time.Minute
+	// streamLifetime ends every stream after a while so the browser's
+	// reconnect passes the login check again; a stream must not outlive
+	// its session.
+	streamLifetime = 10 * time.Minute
+)
 
 // Live is the hub open pages subscribe to.
 func (s *Server) Live() *live.Hub { return s.live }

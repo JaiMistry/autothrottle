@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ type fakeSink struct {
 	mu       sync.Mutex
 	cleared  []int64
 	replaced []replacement
+	events   []string
 }
 
 type replacement struct {
@@ -26,7 +28,17 @@ type replacement struct {
 	sessionKeys   []string
 }
 
-func (f *fakeSink) HandleSessionEvent(int64, clients.Session, bool) {}
+func (f *fakeSink) HandleSessionEvent(_ int64, session clients.Session, active bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, fmt.Sprintf("%s:%v", session.Key, active))
+}
+
+func (f *fakeSink) eventList() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.events...)
+}
 
 func (f *fakeSink) ReplaceSessions(mediaServerID int64, sessions []clients.Session) {
 	f.mu.Lock()

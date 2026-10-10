@@ -11,14 +11,14 @@ import (
 
 // Plex's sign-in flow: ask plex.tv for a PIN, send the user to approve
 // it, then poll until a token is attached. The token is the same kind a
-// pasted X-Plex-Token is.
-const (
+// pasted X-Plex-Token is. Variables so tests can stand in for plex.tv.
+var (
 	plexPinsURL = "https://plex.tv/api/v2/pins"
 	plexAuthURL = "https://app.plex.tv/auth"
-
-	// plexProduct is how this app appears among the account's devices.
-	plexProduct = "AutoThrottle"
 )
+
+// plexProduct is how this app appears among the account's devices.
+const plexProduct = "AutoThrottle"
 
 // PlexPin is an in-flight sign-in attempt.
 type PlexPin struct {

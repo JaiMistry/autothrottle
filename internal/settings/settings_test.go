@@ -68,3 +68,27 @@ func TestPausedSince(t *testing.T) {
 		t.Error("a time while resumed")
 	}
 }
+
+// A database that cannot be read reads as throttling on, and a switch
+// that cannot be saved says so.
+func TestPauseSwitchOnAFailedDatabase(t *testing.T) {
+	s := openStore(t)
+	_ = s.db.SetSetting(keyPaused, "true")
+	if _, ok := s.PausedSince(); ok {
+		t.Error("a time that was never recorded")
+	}
+	_ = s.db.SetSetting(keyPausedSince, "a while ago")
+	if _, ok := s.PausedSince(); ok {
+		t.Error("an unreadable time was read")
+	}
+	_ = s.db.Close()
+	if s.Paused() {
+		t.Error("an unreadable database reads as paused")
+	}
+	if _, ok := s.PausedSince(); ok {
+		t.Error("a time from a closed database")
+	}
+	if s.SetPaused(true) == nil {
+		t.Error("pausing on a closed database succeeded")
+	}
+}

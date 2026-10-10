@@ -197,16 +197,6 @@ func (d *DB) ListMappings() ([]Mapping, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) SetMappingEnabled(id int64, enabled bool) error {
-	_, err := d.conn.Exec(`UPDATE mappings SET enabled = ? WHERE id = ?`, enabled, id)
-	return err
-}
-
-func (d *DB) DeleteMapping(id int64) error {
-	_, err := d.conn.Exec(`DELETE FROM mappings WHERE id = ?`, id)
-	return err
-}
-
 // --- events ---
 
 // InsertEvent records an event. An empty OccurredAt means now; tests

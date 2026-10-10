@@ -50,6 +50,9 @@ type Manager struct {
 	running map[int64]handle
 
 	notify live.Notifier
+	// reconcileEvery is the snapshot interval; a field so tests can
+	// shorten it.
+	reconcileEvery time.Duration
 }
 
 // SetNotifier makes the manager announce connection changes. Set once,
@@ -58,10 +61,11 @@ func (m *Manager) SetNotifier(n live.Notifier) { m.notify = n }
 
 func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
 	return &Manager{
-		db:            database,
-		encryptionKey: encryptionKey,
-		sched:         sched,
-		running:       make(map[int64]handle),
+		db:             database,
+		encryptionKey:  encryptionKey,
+		sched:          sched,
+		running:        make(map[int64]handle),
+		reconcileEvery: settings.SessionReconcileInterval,
 	}
 }
 
@@ -223,7 +227,7 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(settings.SessionReconcileInterval):
+			case <-time.After(m.reconcileEvery):
 			}
 		}
 		first = false

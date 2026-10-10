@@ -76,10 +76,8 @@ func (s *Server) downloaderDot(dl db.Downloader) statusDot {
 		return statusDot{"faint", "Unknown", "State not resolved yet"}
 	case s.scheduler.Paused():
 		return statusDot{"good", "Default rates", "Throttling disabled"}
-	case state.Throttled && state.Cause != "":
-		return statusDot{"warn", "Throttled", state.Cause + " is playing"}
 	case state.Throttled:
-		return statusDot{"warn", "Throttled", "A mapped server is playing"}
+		return statusDot{"warn", "Throttled", state.Cause + " is playing"}
 	default:
 		return statusDot{"good", "Default rates", "Nothing mapped is playing"}
 	}

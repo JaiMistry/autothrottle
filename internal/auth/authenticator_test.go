@@ -119,9 +119,25 @@ func TestPasswordHash(t *testing.T) {
 	if !checkPassword(h1, "hunter2hunter2") || checkPassword(h1, "hunter2hunter3") {
 		t.Error("checkPassword gives the wrong answer")
 	}
-	for _, junk := range []string{"", "plain", "pbkdf2-sha256$x$y$z", "md5$1$a$b"} {
+	for _, junk := range []string{"", "plain", "pbkdf2-sha256$x$y$z", "md5$1$a$b",
+		"pbkdf2-sha256$1$!!$c2FsdA", "pbkdf2-sha256$1$c2FsdA$!!", "pbkdf2-sha256$1$c2FsdA$"} {
 		if checkPassword(junk, "anything") {
 			t.Errorf("an unreadable hash %q must never match", junk)
 		}
+	}
+}
+
+// No one signs in with a password while sign-in is off or before the
+// account exists.
+func TestVerifyWithoutCredentials(t *testing.T) {
+	disabled, _ := load(t, "true", "", "", &accountMem{})
+	setup, _ := load(t, "", "", "", &accountMem{})
+	for name, a := range map[string]*Authenticator{"disabled": disabled, "setup": setup} {
+		if a.Verify("", "") || a.Verify("admin", "admin") {
+			t.Errorf("%s: a password was accepted", name)
+		}
+	}
+	if setup.Username() != "" {
+		t.Errorf("a username before setup: %q", setup.Username())
 	}
 }

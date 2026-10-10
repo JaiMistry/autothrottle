@@ -46,26 +46,6 @@ func TestListEventsFiltered(t *testing.T) {
 		}
 	})
 
-	t.Run("by downloader", func(t *testing.T) {
-		events, err := d.ListEventsFiltered(EventFilter{DownloaderID: dlID})
-		if err != nil {
-			t.Fatalf("listing: %v", err)
-		}
-		if len(events) != 1 {
-			t.Fatalf("got %d events, want the 1 attributed to the downloader", len(events))
-		}
-	})
-
-	t.Run("by time window", func(t *testing.T) {
-		events, err := d.ListEventsFiltered(EventFilter{Since: base.Add(time.Hour)})
-		if err != nil {
-			t.Fatalf("listing: %v", err)
-		}
-		if len(events) != 1 || events[0].Message != "restored default rate for qb" {
-			t.Fatalf("got %+v, want only the event after the cutoff", events)
-		}
-	})
-
 	t.Run("by message search", func(t *testing.T) {
 		events, err := d.ListEventsFiltered(EventFilter{Search: "THROTTLED"})
 		if err != nil {

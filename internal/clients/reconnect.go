@@ -41,11 +41,13 @@ func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connect
 			return
 		case <-time.After(backoff):
 		}
-		backoff *= 2
-		if backoff > reconnectMaxBackoff {
-			backoff = reconnectMaxBackoff
-		}
+		backoff = nextBackoff(backoff)
 	}
+}
+
+// nextBackoff doubles the wait, up to reconnectMaxBackoff.
+func nextBackoff(backoff time.Duration) time.Duration {
+	return min(backoff*2, reconnectMaxBackoff)
 }
 
 // webSocketBase rewrites an http(s) base URL to its ws(s) equivalent,

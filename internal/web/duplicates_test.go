@@ -10,6 +10,8 @@ func TestSameEndpoint(t *testing.T) {
 		// Default ports are implied, not different addresses.
 		{"http://media.lan:80", "http://media.lan"},
 		{"https://media.lan:443/", "https://media.lan"},
+		// Not URLs at all: compared as typed.
+		{"plex box ", "Plex Box/"},
 	}
 	for _, c := range same {
 		if !sameEndpoint(c[0], c[1]) {

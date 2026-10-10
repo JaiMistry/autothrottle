@@ -11,10 +11,7 @@ import (
 // zero value means "everything, newest first, unpaged".
 type EventFilter struct {
 	Levels        []string // any of info, warn, error; empty means all
-	MediaServerID int64    // 0 means any
-	DownloaderID  int64    // 0 means any
-	Since, Until  time.Time
-	Search        string // case-insensitive substring of the message
+	Search        string   // case-insensitive substring of the message
 	Limit, Offset int
 }
 
@@ -36,22 +33,6 @@ func (f EventFilter) where() (string, []any) {
 			args = append(args, level)
 		}
 		clauses = append(clauses, "level IN ("+strings.Join(placeholders, ", ")+")")
-	}
-	if f.MediaServerID > 0 {
-		clauses = append(clauses, "media_server_id = ?")
-		args = append(args, f.MediaServerID)
-	}
-	if f.DownloaderID > 0 {
-		clauses = append(clauses, "downloader_id = ?")
-		args = append(args, f.DownloaderID)
-	}
-	if !f.Since.IsZero() {
-		clauses = append(clauses, "occurred_at >= ?")
-		args = append(args, FormatTime(f.Since))
-	}
-	if !f.Until.IsZero() {
-		clauses = append(clauses, "occurred_at <= ?")
-		args = append(args, FormatTime(f.Until))
 	}
 	if f.Search != "" {
 		// SQLite's LIKE is case-insensitive for ASCII.

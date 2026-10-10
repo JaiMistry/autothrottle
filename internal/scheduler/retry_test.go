@@ -54,9 +54,11 @@ func TestFailedApplyIsRetriedUntilItLands(t *testing.T) {
 	s.limiterFor = func(string) clients.RateLimiter { return client }
 	_, dlID := addServerAndDownloader(t, database)
 
+	// Stopped before fastRetries puts the timings back.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go s.RetryFailed(ctx)
+	stopped := make(chan struct{})
+	go func() { s.RetryFailed(ctx); close(stopped) }()
+	defer func() { cancel(); <-stopped }()
 
 	s.resolveNow()
 	if s.State(dlID).Failure == "" {

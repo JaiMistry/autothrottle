@@ -97,22 +97,21 @@ func (a *Authenticator) Username() string {
 
 // Verify checks a login attempt, comparing both halves in constant time.
 func (a *Authenticator) Verify(username, password string) bool {
-	switch a.Mode() {
-	case ModeEnvironment:
+	if a.disabled {
+		return false
+	}
+	if a.envUser != "" {
 		userOK := subtle.ConstantTimeCompare([]byte(username), []byte(a.envUser)) == 1
 		passOK := subtle.ConstantTimeCompare([]byte(password), []byte(a.envPass)) == 1
 		return userOK && passOK
-	case ModeAccount:
-		storedUser, hash, _, err := a.store.GetAccount()
-		if err != nil {
-			return false
-		}
-		userOK := subtle.ConstantTimeCompare([]byte(username), []byte(storedUser)) == 1
-		passOK := checkPassword(hash, password)
-		return userOK && passOK
-	default:
+	}
+	storedUser, hash, ok, err := a.store.GetAccount()
+	if err != nil || !ok {
 		return false
 	}
+	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(storedUser)) == 1
+	passOK := checkPassword(hash, password)
+	return userOK && passOK
 }
 
 // CompleteSetup creates the account.
