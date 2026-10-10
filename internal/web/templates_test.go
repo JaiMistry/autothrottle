@@ -36,10 +36,8 @@ func testConfigPage(tab string) configPageData {
 	}
 }
 
-// Templates are parsed at startup and escaped at execution, so a
-// missing function or an unclosed tag only fails on the request that
-// reaches it. Rendering every page, and every Configuration tab, with
-// representative data catches that here instead.
+// Template errors only surface on the request that reaches them, so
+// render every page, tab and drawer here.
 func TestPagesRender(t *testing.T) {
 	funcs := templateFuncs()
 	cases := map[string]any{
@@ -96,7 +94,6 @@ func TestPagesRender(t *testing.T) {
 			t.Errorf("rendering configuration tab %s: %v", tab, err)
 		}
 	}
-	// The drawer open on each form, adding and editing.
 	for _, sheet := range []string{"server", "downloader"} {
 		for _, id := range []int64{0, 1} {
 			data := testConfigPage("connections")
@@ -108,9 +105,7 @@ func TestPagesRender(t *testing.T) {
 	}
 }
 
-// The Logs page has three mutually exclusive bodies and each is a
-// separate branch: no events at all, none matching the filter, and the
-// paged card. A broken one only shows when someone reaches that state.
+// The Logs page's two empty bodies are separate branches.
 func TestLogsEmptyStatesRender(t *testing.T) {
 	tmpl, err := parsePage("logs", templateFuncs())
 	if err != nil {
@@ -135,8 +130,6 @@ func TestLogsEmptyStatesRender(t *testing.T) {
 	}
 }
 
-// Paging arithmetic is shared by two pages that disagree about page
-// size, so it is worth pinning on its own.
 func TestPagedLogArithmetic(t *testing.T) {
 	rows := make([]logRowView, 10)
 	p := newPagedLog("Events", "t", "/e", rows, 34, 10, 2, nil)
@@ -150,19 +143,16 @@ func TestPagedLogArithmetic(t *testing.T) {
 		t.Error("page 2 of 4 has both neighbours")
 	}
 
-	// A page past the end clamps rather than showing an empty card.
 	if got := newPagedLog("Events", "t", "/e", rows, 34, 10, 99, nil); got.Page != 4 {
 		t.Errorf("page clamped to %d, want 4", got.Page)
 	}
-	// No events at all still renders a sane pager.
 	empty := newPagedLog("Events", "t", "/e", nil, 0, 10, 1, nil)
 	if empty.Pages != 1 || empty.HasNext || empty.RangeFrom != 0 {
 		t.Errorf("empty pager = %+v", empty)
 	}
 }
 
-// The healthy state is a green dot before the name; every other state
-// keeps its flag after it.
+// The healthy state is a dot before the name; others keep their flag.
 func TestRowHealthyStateIsADot(t *testing.T) {
 	tmpl, err := parsePage("dashboard", templateFuncs())
 	if err != nil {

@@ -32,7 +32,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 func TestDecryptWrongKeyFails(t *testing.T) {
 	key1 := make([]byte, keySize)
 	key2 := make([]byte, keySize)
-	key2[0] = 1 // differ from key1
+	key2[0] = 1
 
 	ciphertext, err := Encrypt(key1, "secret")
 	if err != nil {

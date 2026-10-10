@@ -11,10 +11,9 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
-// The 404 page is open to anyone, so what it writes to the log has to
-// survive someone scanning for paths: the same address is logged once
-// per notFoundRepeat, and no more than notFoundPerMinute addresses a
-// minute. The page itself still shows its line either way.
+// The 404 page is open to anyone, so its logging must survive a path
+// scan: each address once per notFoundRepeat, at most notFoundPerMinute
+// a minute. The page shows its line either way.
 const (
 	notFoundRepeat    = 10 * time.Minute
 	notFoundPerMinute = 20
@@ -29,8 +28,7 @@ type notFoundLog struct {
 	inWindow    int
 }
 
-// unprompted are addresses browsers ask for on their own. Nobody
-// followed a link to them, so they are not worth a log line.
+// unprompted are addresses browsers ask for on their own.
 func unprompted(path string) bool {
 	return path == "/favicon.ico" || strings.HasPrefix(path, "/apple-touch-icon")
 }
@@ -47,7 +45,7 @@ func (l *notFoundLog) allow(key string, now time.Time) bool {
 	}
 	if now.Sub(l.windowStart) >= time.Minute {
 		l.windowStart, l.inWindow = now, 0
-		// Forget what is past repeating, so the map cannot grow forever.
+		// Forget what is past repeating, so the map stays bounded.
 		for k, t := range l.seen {
 			if now.Sub(t) >= notFoundRepeat {
 				delete(l.seen, k)

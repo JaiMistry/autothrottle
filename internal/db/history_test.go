@@ -33,13 +33,12 @@ func TestThrottlePeriodsAndRuns(t *testing.T) {
 	if len(periods) != 2 || !periods[0].End.Equal(t0.Add(50*time.Minute)) || !periods[1].End.IsZero() {
 		t.Fatalf("periods = %+v", periods)
 	}
-	// A window that ends before the first period starts sees nothing.
 	if early, _ := d.ThrottlePeriods(t0, t0.Add(5*time.Minute)); len(early) != 0 {
 		t.Errorf("a period outside the window was returned: %+v", early)
 	}
 
-	// The process dies mid-period. The next start closes it at the last
-	// heartbeat, not at the moment it comes back.
+	// A run that dies mid-period: the next start closes it, and the open
+	// session, at the last heartbeat.
 	if _, err := d.conn.Exec(`INSERT INTO session_history (media_server_id, session_key, started_at) VALUES (?, 's', ?)`,
 		addTestMediaServer(t, d, "Plex"), FormatTime(t0.Add(80*time.Minute))); err != nil {
 		t.Fatal(err)
@@ -68,8 +67,7 @@ func TestThrottlePeriodsAndRuns(t *testing.T) {
 	}
 }
 
-// With no earlier run there is no evidence of how long anything lasted,
-// so a dangling period gets no duration rather than an invented one.
+// With no earlier run to bound it, a dangling period gets no duration.
 func TestDanglingPeriodWithoutAnEarlierRun(t *testing.T) {
 	d := newTestDB(t)
 	start := time.Date(2026, 10, 1, 20, 0, 0, 0, time.UTC)

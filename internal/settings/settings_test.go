@@ -18,16 +18,12 @@ func openStore(t *testing.T) *Store {
 	return New(database)
 }
 
-func TestPausedDefaultsOff(t *testing.T) {
-	if openStore(t).Paused() {
-		t.Error("a fresh install must not start with throttling switched off")
-	}
-}
-
-// The switch has to survive a restart: someone who turned throttling
-// off before rebooting the host should not find it silently back on.
+// Off on a fresh install, and the switch survives a restart.
 func TestPausedRoundTrips(t *testing.T) {
 	s := openStore(t)
+	if s.Paused() {
+		t.Error("a fresh install starts with throttling switched off")
+	}
 	for _, want := range []bool{true, false, true} {
 		if err := s.SetPaused(want); err != nil {
 			t.Fatalf("SetPaused(%v): %v", want, err)

@@ -1,16 +1,11 @@
-/* The app's only front-end code. Everything else is server-rendered and
-   swapped by HTMX; this covers the handful of behaviours that genuinely
-   need a client: theme, the rail, the drawer, and the measured row cap.
-*/
+/* The app's only front-end code: what server-rendered HTMX can't do. */
 (function () {
   "use strict";
 
   var root = document.documentElement;
 
   /* ── Theme ──────────────────────────────────────────────────────
-     Three modes, cycled. "System" is the absence of data-theme so
-     prefers-color-scheme applies — setting it unconditionally, the way
-     many theme libraries do, would make System impossible to express. */
+     "System" is the absence of data-theme, so prefers-color-scheme applies. */
   var MODES = ["system", "light", "dark"];
 
   function applyTheme(mode) {
@@ -28,10 +23,8 @@
   });
 
   /* ── Sidebar rail ───────────────────────────────────────────────
-     The blocking head script has already applied the stored state to
-     <html>, so the rail is the right width on the first paint and
-     never animates itself into position on load. This only handles
-     the toggle. */
+     The head script applies the stored state before first paint; this
+     only handles the toggle. */
   document.addEventListener("click", function (e) {
     if (!e.target.closest("[data-rail-toggle]")) return;
     var collapsed = root.getAttribute("data-rail") === "collapsed";
@@ -47,8 +40,7 @@
   });
 
   /* ── Mobile drawer ──────────────────────────────────────────────
-     Mounted always and translated off-canvas: a conditionally rendered
-     drawer has nothing to transition from and snaps open. */
+     Always mounted, so it has something to transition from. */
   function setDrawer(open) {
     document.body.setAttribute("data-drawer", open ? "1" : "0");
     var scrim = document.querySelector(".at-drawer-scrim");
@@ -59,9 +51,7 @@
   document.addEventListener("click", function (e) {
     if (e.target.closest("[data-drawer-open]")) { setDrawer(true); return; }
     if (e.target.closest("[data-drawer-close]")) { setDrawer(false); return; }
-    // Choosing a destination is the end of using the menu, so it closes
-    // with the choice rather than staying open over the page arriving
-    // behind it.
+    // Choosing a destination closes the menu.
     if (e.target.closest(".at-rail a")) setDrawer(false);
   });
   document.addEventListener("keydown", function (e) {
@@ -72,8 +62,8 @@
   });
 
   /* ── Connections drawer ──────────────────────────────────────────
-     The add and edit forms load into it; it opens once one has landed
-     and keeps it while sliding shut, so nothing empties mid-slide. */
+     Opens once a form has loaded into it, and keeps the form while
+     sliding shut. */
   var sheetReturn = null;
   function setSheet(open) {
     var sheet = document.getElementById("sheet");
@@ -132,9 +122,8 @@
   });
   window.addEventListener("scroll", hideTip, true);
 
-  // The live refresh of the Connections tables: each dot and session
-  // count is updated in place, never replaced, so one under the pointer
-  // or holding keyboard focus keeps both, and its open card follows.
+  // Connections' live refresh updates each dot and session count in
+  // place, so a hovered or focused dot keeps its hover card.
   document.body.addEventListener("htmx:afterRequest", function (e) {
     if (!e.detail.elt || e.detail.elt.id !== "conn-live" || !e.detail.successful) return;
     var parsed = document.createElement("div");
@@ -155,10 +144,8 @@
   });
 
   /* ── Two-row cap ────────────────────────────────────────────────
-     The Dashboard's list cards show two rows and scroll past that, so a
-     third downloader never pushes the activity log off the fold. Row
-     height varies with how the reason line and rate group wrap, so this
-     has to be measured rather than set as a CSS max-height. */
+     The Dashboard's list cards show two rows and scroll past that. Row
+     height varies with wrapping, so the cap is measured, not CSS. */
   function capList(list) {
     var rows = list.querySelectorAll(":scope > *");
     if (rows.length < 3) {
@@ -168,38 +155,23 @@
       return;
     }
 
-    // Measuring is only redone when the shape that determines the answer
-    // changes. offsetWidth rather than clientWidth because clientWidth
-    // shrinks by the width of the scrollbar this very function causes to
-    // appear — which would make the signature flip between the capped
-    // and uncapped states forever.
-    // Session lines are counted too: a server that starts playing grows
-    // its row without changing how many rows there are, and a signature
-    // blind to that would keep serving a cap measured for the quiet
-    // version. Timecodes ticking inside an existing line do not move it.
+    // Re-measured only when the shape changes. offsetWidth, not
+    // clientWidth, which shrinks by the scrollbar this cap adds and would
+    // flip the signature forever. Session lines count: playback grows a
+    // row without adding one.
     var signature = rows.length + ":" + Math.round(list.offsetWidth) +
       ":" + list.querySelectorAll(".at-session").length;
     if (list.dataset.capFor === signature && list.style.maxHeight) return;
 
-    // Measure with the cap lifted. The list lays its rows out with
-    // grid-auto-rows: 1fr, so once a cap is applied the rows compress to
-    // share it, and measuring them in that state feeds the previous
-    // answer back in.
-    //
-    // This must not run on every observer callback: clearing the cap
-    // resizes the rows, which notifies the observer, which clears it
-    // again — a loop that repaints every frame and shows up as a
-    // flickering scrollbar. The signature check above is what keeps it
-    // to once per shape.
+    // Measure with the cap lifted, or the compressed rows feed the old
+    // answer back in. The signature check keeps this from looping with
+    // the observer (a flickering scrollbar).
     var prevMax = list.style.maxHeight, prevOverflow = list.style.overflowY;
     var prevRows = list.style.gridAutoRows, prevAlign = list.style.alignContent;
     list.style.maxHeight = "";
     list.style.overflowY = "";
-    // Rows normally share the card's height evenly (grid-auto-rows: 1fr),
-    // which is right for display and wrong for measuring: uncapped, three
-    // rows of 96/73/96 all report 96, so the target comes out a whole row
-    // too tall and the cap then lands in the middle of the third row.
-    // Measure them at their natural heights instead.
+    // At natural heights: grid-auto-rows: 1fr makes every row report the
+    // tallest, which lands the cap mid-row.
     list.style.gridAutoRows = "min-content";
     list.style.alignContent = "start";
 
@@ -214,17 +186,13 @@
       return;
     }
 
-    // How much room the card is actually giving this list. The two cards
-    // share a row height, so a list can be handed far more space than
-    // two of its rows need — which is the common case when the other
-    // card's rows wrap onto more lines.
+    // The two cards share a row height, so this list may be given more
+    // room than two rows need.
     var available = list.parentElement ? list.parentElement.clientHeight : 0;
     var natural = heights.reduce(function (sum, h) { return sum + h; }, 0);
 
-    // Everything fits: no cap at all. The grid then stretches the rows to
-    // fill the card, so there is no scrollbar and — the point — no band
-    // of dead space under the last row, which is what capping at two
-    // rows regardless of available height produced.
+    // Everything fits: no cap, so the rows stretch to fill the card with
+    // no dead band under the last one.
     if (available > 0 && natural <= available + 1) {
       list.style.maxHeight = "";
       list.style.overflowY = "";
@@ -232,12 +200,8 @@
       return;
     }
 
-    // Otherwise cap, on a row boundary: a row is either fully visible or
-    // fully scrolled out, never sliced through the middle. Rows differ a
-    // lot in height — a server with three sessions is several times a
-    // quiet one — so cutting at exactly the height of the first two left
-    // the next row's name half-showing along the bottom edge. Two rows is
-    // the floor; past that fill whatever the card gives.
+    // Otherwise cap on a row boundary, never slicing a row: at least two
+    // rows, and as many more as the card has room for.
     var target = Math.max(heights[0] + heights[1], available);
     var total = 0, shown = 0;
     for (var i = 0; i < heights.length; i++) {
@@ -246,7 +210,6 @@
       shown++;
     }
     if (shown >= rows.length) {
-      // Everything fits inside two rows' worth: nothing to cap.
       list.style.maxHeight = "";
       list.style.overflowY = "";
       list.dataset.capFor = signature;
@@ -262,59 +225,32 @@
     entries.forEach(function (entry) { capList(entry.target); });
   }) : null;
 
-  // Always measured against the live document, never against a swap's
-  // target. The Dashboard's polled fragment swaps with outerHTML, so by
-  // the time htmx:afterSwap fires the target is the *old* element,
-  // already detached — every offsetHeight in it reads 0, capList bails
-  // on its !h guard, and the new list is left uncapped. That is why the
-  // card sat correct for one render and then expanded on the first poll.
-  //
-  // Disconnecting first also stops the observer accumulating references
-  // to the detached rows of every poll that has ever run.
+  // Measured against the live document, never a swap's target: after an
+  // outerHTML swap the target is the detached old element, which
+  // measures 0. Disconnecting first drops references to detached rows.
   function bindCaps() {
     if (observer) observer.disconnect();
     document.querySelectorAll("[data-cap-rows]").forEach(function (list) {
       capList(list);
       if (!observer) return;
       observer.observe(list);
-      // Each row too: a capped list stops changing size itself, so a
-      // row growing taller (a session line wrapping, a progress bar
-      // appearing) would otherwise never re-trigger the measurement.
+      // Each row too: a capped list no longer resizes when a row grows.
       list.querySelectorAll(":scope > *").forEach(function (row) { observer.observe(row); });
     });
   }
 
-  /* ── HTMX wiring ────────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () { bindCaps(); });
 
   /* ── Keeping the scroll containers alive ───────────────────────────
-     The Dashboard's live fragment is replaced wholesale every few
-     seconds, which recreates the list cards' scroll containers along
-     with it. Two things go wrong when that happens: a list you had
-     scrolled snaps back to the top on the next refresh, and a browser
-     that draws overlay scrollbars flashes one every time a scrollable
-     element is newly created.
-
-     So the element that is already there stays, and the incoming rows
-     are merged into it node by node rather than swapped in wholesale.
-     That distinction matters: replacing the children empties the
-     element and refills it, which drops scrollHeight to zero and back
-     on every refresh. Firefox reads that size change as a reason to
-     animate its overlay scrollbar in again, so the bar flashed every
-     five seconds. Chrome, and a headless Firefox drawing classic
-     always-visible scrollbars, show nothing — which is why this took a
-     real browser to see.
-
-     Merging in place means scrollHeight only changes when the rows
-     genuinely change, the scroll offset is never lost, and the measured
-     cap survives so capList finds its signature unchanged. */
+     Recreating a list's scroll container on refresh resets its scroll
+     offset, and Firefox flashes its overlay scrollbar whenever
+     scrollHeight changes — even when children are replaced in place. So
+     incoming rows are merged node by node into the existing element.
+     Headless browsers draw classic scrollbars and can't show the flash. */
   var liveScrollers = [];
 
-  /* Makes target's children match source's, reusing every node it can.
-     Only what actually differs is touched, so a row whose timecode moved
-     keeps its element and changes one string. Attributes on target
-     itself are deliberately not synced — that is where the measured cap
-     lives, and the incoming copy has none. */
+  /* Makes target's children match source's, touching only what differs.
+     target's own attributes are left alone: the measured cap lives there. */
   function mergeChildren(target, source) {
     var t = target.firstChild, s = source.firstChild;
     while (t && s) {
@@ -349,12 +285,8 @@
         target.setAttribute(attr.name, attr.value);
       }
     }
-    // A cap list carries state the server knows nothing about: the
-    // measured max-height and the signature it was measured for. The
-    // incoming copy has neither, so removing what the source lacks
-    // would strip the cap on every refresh and force a remeasure five
-    // times a minute — which is visible as the scrollbar coming and
-    // going.
+    // A cap list's measured style and signature are client state the
+    // server copy lacks; stripping them would remeasure on every refresh.
     var keepsOwnState = target.hasAttribute("data-cap-rows");
     for (var j = target.attributes.length - 1; j >= 0; j--) {
       var own = target.attributes[j];
@@ -365,8 +297,7 @@
   }
 
   function stashScrollers() {
-    // The offset has to be read now, while these are still in the
-    // document. Once the swap detaches them they all report zero.
+    // Read now: detached by the swap, they report zero.
     liveScrollers = [].slice.call(document.querySelectorAll("[data-cap-rows]"))
       .map(function (el) { return { el: el, offset: el.scrollTop }; });
   }
@@ -386,19 +317,9 @@
     liveScrollers = [];
   }
 
-  /* The Dashboard's live block is merged rather than swapped.
-
-     Keeping the scroll container alive was not enough on its own: the
-     card around it is rebuilt by every swap, and moving the surviving
-     list into that new card re-parents it. Firefox rebuilds the layout
-     frame of anything re-parented, and a scrollable element with a new
-     frame gets a new scrollbar — which animates in. That is a flash
-     every five seconds that no amount of preserving the list itself
-     could stop.
-
-     Cancelling the swap and merging in place means nothing on the
-     Dashboard is ever detached, re-parented or recreated. Only the text
-     and attributes that actually differ change. */
+  /* The Dashboard's live block is merged, never swapped: re-parenting a
+     kept list into a rebuilt card also makes Firefox redraw (and flash)
+     its scrollbar. Nothing is detached, re-parented or recreated. */
   function mergeLiveBlock(e) {
     var target = e.detail.target;
     if (!target || target.id !== "dash-live") return false;
@@ -416,11 +337,8 @@
   }
 
   document.body.addEventListener("htmx:beforeSwap", function (e) {
-    // A whole page — shell and sidebar — only ever belongs in the body.
-    // Aimed anywhere smaller, it nests a second app inside the first;
-    // that has happened twice, each time through a link or form that
-    // inherited a self-refreshing block's target. Whatever the next
-    // cause, the page is loaded properly instead.
+    // A whole page aimed anywhere but the body would nest a second app
+    // inside the first (an inherited hx-target does it). Load it instead.
     var body = e.detail.serverResponse;
     if (e.detail.target !== document.body && typeof body === "string" && body.indexOf('id="at-shell"') !== -1) {
       e.detail.shouldSwap = false;
@@ -428,21 +346,16 @@
       window.location.assign(e.detail.xhr.responseURL || window.location.href);
       return;
     }
-    // A rejected form comes back as 422 with the page re-rendered and the
-    // reason at the top. htmx drops non-2xx responses by default, so
-    // without this the button does nothing at all and the reason is
-    // never seen — which is worse than the mistake it is reporting.
+    // A rejected form comes back 422 with the reason; htmx drops non-2xx
+    // by default, which would leave the button looking dead.
     if (e.detail.xhr && e.detail.xhr.status === 422) {
       e.detail.shouldSwap = true;
       e.detail.isError = false;
       return;
     }
     if (mergeLiveBlock(e)) {
-      // Handled here; htmx must not then replace the element we just
-      // updated, or every gain above is undone.
       e.detail.shouldSwap = false;
-      // Cancelling the swap also cancels htmx:afterSwap, so the work
-      // that follows new content is announced here instead.
+      // No afterSwap follows a cancelled swap, so announce it instead.
       bindCaps();
       document.body.dispatchEvent(new CustomEvent("at:merged"));
       return;
@@ -452,17 +365,12 @@
 
   document.body.addEventListener("htmx:afterSwap", function (e) {
     restoreScrollers();
-    // A boosted navigation swaps in a fresh scrim, which arrives with its
-    // `hidden` attribute back while <body> still says the drawer is open.
-    // Re-apply the state so the scrim cannot go deaf.
+    // A boosted navigation brings a fresh, hidden scrim; re-sync it.
     setDrawer(document.body.getAttribute("data-drawer") === "1");
-    // Caps have to be re-measured: the swapped rows are new elements the
-    // old observer is no longer watching.
     bindCaps();
 
-    // A swap that replaces the focused element drops focus to <body>,
-    // which strands a keyboard user mid-page. Put it back on whatever
-    // they pressed.
+    // A swap that replaced the focused element drops focus to <body>;
+    // put it back on what was pressed.
     var trigger = e.detail.requestConfig && e.detail.requestConfig.elt;
     if (trigger && document.activeElement === document.body && document.contains(trigger)) {
       trigger.focus({ preventScroll: true });
@@ -471,9 +379,7 @@
 })();
 
 /* ── Credential method sub-tabs ───────────────────────────────────
-   Plex accepts either a pasted token or an account sign-in; Emby and
-   Jellyfin only take a key, so the choice is hidden for them rather
-   than offered and then rejected. */
+   Plex takes a token or a sign-in; Emby and Jellyfin only a key. */
 (function () {
   "use strict";
 
@@ -489,8 +395,7 @@
       var active = form.querySelector('[data-credtab][aria-selected="true"]');
       showPane(form, active ? active.dataset.credtab : "token");
     } else {
-      // Put the token pane back. The sign-in flow is Plex-only, so
-      // leaving it selected would show a control that cannot work.
+      // Sign-in is Plex-only, so fall back to the token pane.
       form.querySelectorAll("[data-credtab]").forEach(function (t) {
         t.setAttribute("aria-selected", String(t.dataset.credtab === "token"));
       });
@@ -499,9 +404,7 @@
     syncDisabled(form);
   }
 
-  // A hidden input still submits, so anything the user cannot see is
-  // disabled outright. Without this a blank field from the pane they are
-  // not using rides along with the one they filled in.
+  // Hidden inputs still submit, so whatever can't be seen is disabled.
   function syncDisabled(form) {
     form.querySelectorAll("[data-credgroup], [data-credpane]").forEach(function (box) {
       var off = box.hidden || !!box.closest("[data-credgroup][hidden]");
@@ -518,10 +421,8 @@
     syncDisabled(form);
   }
 
-  /* Playback clock: counts forward between server updates, the way a
-     player does, and re-syncs on each one. Every tick reads its state
-     from the element itself — the refresh merges values in place, and
-     rows reorder — so nothing holds a copy that can go stale. */
+  /* Playback clock: counts forward between server updates and re-syncs
+     on each, reading its state from the element so nothing goes stale. */
   function pad(n) { return String(n).padStart(2, "0"); }
 
   function timecode(ms) {
@@ -537,10 +438,7 @@
       var server = Number(el.dataset.positionMs) || 0;
       var paused = el.dataset.paused === "1";
 
-      // Re-baseline whenever the server reports something new, or the
-      // stream pauses or resumes. Between reports the clock runs on from
-      // the last figure, which is what makes a 5s refresh read as a
-      // per-second clock.
+      // Re-baseline on each new report, pause or resume.
       var state = el.__atPlay;
       if (!state || state.server !== server || state.paused !== paused) {
         state = el.__atPlay = { server: server, paused: paused, since: Date.now() };
@@ -555,17 +453,15 @@
   }
 
   function startPlaybackTick() {
-    // One interval for the life of the page. It walks whatever is on
-    // screen at the time, so it needs no restarting when content changes.
+    // One interval for the page's life; it walks whatever is on screen.
     if (!window.__atPlayTick) {
       window.__atPlayTick = setInterval(paintPlayback, 1000);
     }
     paintPlayback();
   }
 
-  // Uptime counts forward in the page. The server sends the boot
-  // timestamp and the first frame; recomputing from the timestamp keeps
-  // it right across a tab that was asleep, which incrementing would not.
+  // Uptime is recomputed from the boot timestamp, so a tab that slept
+  // stays right.
   var uptimeTimer = null;
   function startUptime() {
     clearInterval(uptimeTimer);
@@ -584,9 +480,8 @@
     tick();
   }
 
-  // Nothing can be submitted until the form can actually succeed. The
-  // rules differ per form, so each declares its own required set rather
-  // than this guessing from the markup.
+  // Nothing can be submitted until it can succeed; each form declares
+  // its own requirements.
   function gateSubmit(form) {
     var require = form.getAttribute("data-require");
     var submit = form.querySelector("[data-submit]");
@@ -595,19 +490,15 @@
       var el = form.querySelector('[name="' + name + '"]');
       return el && !el.disabled && !el.closest("[hidden]") ? el.value.trim() : "";
     };
-    // A passing connection test is required before a new connection can
-    // be saved: filled-in fields say nothing about whether the address
-    // answers or the credential works. When editing, the saved
-    // connection needs no new test until one of its own fields changes,
-    // and changing it back counts as unchanged.
+    // A new connection needs a passing test. An edit needs one only once
+    // a tested field changes; changing it back counts as unchanged.
     if (form.hasAttribute("data-editing") && form.__savedValues === undefined) {
       form.__savedValues = formValues(form);
       form.__savedUrl = val("url");
       form.__savedUser = val("username");
     }
-    // A saved credential is only ever sent to the address, and with the
-    // username, it was saved for; change either and it must be typed
-    // again. The server holds to the same rule.
+    // A saved credential only goes to its saved address and username;
+    // change either and it must be retyped (the server agrees).
     var stored = form.getAttribute("data-hascredential") === "1";
     var moved = stored && form.hasAttribute("data-editing") &&
       (!sameOrigin(form.__savedUrl, val("url")) || (form.__savedUser !== undefined && form.__savedUser !== val("username")));
@@ -618,21 +509,16 @@
       (form.hasAttribute("data-editing") && formValues(form) === form.__savedValues);
     require.split(",").forEach(function (need) {
       if (need === "credential") {
-        // A stored credential counts, and so does a token Plex just
-        // handed over — neither is typed into a visible field.
+        // A stored credential or a Plex sign-in token counts too.
         ok = ok && (!!val("token") || !!val("api_token") || !!val("plex_token") || (stored && !moved));
       } else {
         ok = ok && !!val(need);
       }
     });
-    // A downloader's credentials are optional, but saved ones cannot
-    // follow it to a new address unannounced.
     if (moved && form.querySelector('[name="password"]') && !val("password")) ok = false;
     submit.disabled = !ok;
   }
 
-  // Same scheme, host and port: what decides whether a saved credential
-  // may be used with an edited address.
   function sameOrigin(a, b) {
     try {
       var x = new URL(a), y = new URL(b);
@@ -646,12 +532,9 @@
     document.querySelectorAll("form[data-require]").forEach(gateSubmit);
   }
 
-  /* A pass covers the values that were tested, so changing any of them
-     retires it (a failure stays, to explain the outlined field).
-     "Changed" means the values differ, not that an event fired: leaving
-     a field fires change with nothing new typed. */
-  // Only what the test actually connects with. Renaming the entry, its
-  // rates or its checkboxes leaves a passing test standing.
+  /* A pass covers the values tested: changing one retires it (a failure
+     stays, to explain the outlined field). "Changed" compares values, not
+     events. Name, rates and checkboxes aren't tested, so don't count. */
   var TESTED_FIELDS = ["type", "url", "token", "api_token", "plex_token", "username", "password"];
   function formValues(form) {
     var pairs = [];
@@ -693,17 +576,13 @@
     }
   });
 
-  // A failed test names the field that caused it, so the card can outline
-  // it. The names differ per form, and a downloader's credential is two
-  // controls rather than one.
+  // A failed test names the field(s) to outline.
   var testFieldSelectors = {
     name: '[name="name"]',
     url: '[name="url"]',
     credential: '[name="token"], [name="api_token"], [name="password"], [name="username"]',
   };
 
-  // A failure can blame more than one field at once — an empty form
-  // blames all of them — so the attribute holds a space-separated list.
   function testFieldSelector(box) {
     var parts = (box.dataset.field || "").split(/\s+/).filter(Boolean)
       .map(function (f) { return testFieldSelectors[f]; }).filter(Boolean);
@@ -727,8 +606,7 @@
     document.querySelectorAll("form .at-testresult").forEach(markTestField);
   }
 
-  // Editing the field the failure blamed retires the result outright —
-  // it is describing a state that no longer exists.
+  // Editing a blamed field retires the failure.
   document.addEventListener("input", function (e) {
     var form = e.target.closest("form");
     if (!form) return;
@@ -743,10 +621,8 @@
     }
   });
 
-  // Plex sign-in runs in a popup the browser will only allow if it is
-  // opened inside the click itself. The auth URL is not known until the
-  // server answers, so the window is opened blank and pointed at Plex
-  // once the panel comes back carrying the URL.
+  // Browsers only allow the Plex popup inside the click, before the auth
+  // URL is known: open it blank, then point it at Plex.
   var plexWindow = null;
   var plexWatch = null;
 
@@ -759,9 +635,8 @@
     plexWatch = setInterval(function () {
       if (plexWindow && !plexWindow.closed) return;
       stopPlexWatch();
-      // One poll cycle of grace: approving can close the window a moment
-      // before the poll that collects the token comes back, and calling
-      // that a failure would throw away a sign-in that worked.
+      // Grace for one poll: approving closes the window just before the
+      // poll that collects the token.
       setTimeout(function () {
         var panel = document.querySelector('.at-plexsignin[data-state="waiting"]');
         if (!panel) return;
@@ -778,10 +653,8 @@
 
   document.addEventListener("click", function (e) {
     if (!e.target.closest("[data-plexstart]")) return;
-    // No "noopener" here, deliberately: the token is honoured whatever
-    // its value, and it makes window.open return null — which loses the
-    // handle this flow needs to point the window at Plex and to notice
-    // it being closed.
+    // No "noopener": it makes window.open return null, losing the handle
+    // needed to navigate the window and notice it closing.
     plexWindow = window.open("", "at-plex-signin", "width=620,height=760,menubar=no,toolbar=no,location=no");
   });
 
@@ -792,9 +665,7 @@
     if (!panel) return;
     var url = panel.dataset.authurl;
     if (url && plexWindow && !plexWindow.closed) {
-      // Only on a URL we have not sent yet. The panel re-renders on
-      // every poll, and re-navigating each time would throw away
-      // whatever the user had already done in that window.
+      // Once per URL: the panel re-renders on every poll.
       if (url !== plexSentTo) {
         plexWindow.location = url;
         plexSentTo = url;
@@ -808,9 +679,8 @@
     }
   }
 
-  // A connection test shows its pending state the instant it starts.
-  // The server only answers when the probe finishes, so without this the
-  // box would appear already-resolved and the test would look instant.
+  // A test shows its pending state at once; the server only answers when
+  // the probe finishes.
   function showTesting(elt) {
     var form = elt.closest("form");
     var sel = elt.getAttribute("hx-target") || (form && form.getAttribute("hx-target"));
@@ -837,11 +707,8 @@
     box.replaceChildren(node);
   }
 
-  // A test that never answers must not leave the spinner turning. htmx
-  // reports a transport failure and a non-2xx separately, and neither
-  // swaps anything in — so without this the box says "Testing…" for as
-  // long as the page stays open. Restarting the server mid-test is the
-  // easy way to see it.
+  // A test that never answers must not leave "Testing…" up: htmx swaps
+  // nothing in on a transport failure or a non-2xx.
   function testRequestFailed(e, why) {
     var elt = e.detail && e.detail.elt;
     if (!elt || !elt.matches("[data-testbtn]")) return;
@@ -875,9 +742,7 @@
       showTesting(elt);
       return;
     }
-    // The update check is the same shape of problem: the answer only
-    // comes back when GitHub has replied, so the checking state has to
-    // be put on screen before the request leaves.
+    // Likewise the update check, which waits on GitHub.
     if (elt.matches("[data-updatebtn]")) {
       var box = document.querySelector("#update-check");
       var tpl = document.getElementById("at-tpl-checking");
@@ -885,7 +750,6 @@
     }
   });
 
-  // Dismissing leaves nothing behind — no spacer, no residue.
   document.addEventListener("click", function (e) {
     var close = e.target.closest("[data-testdismiss]");
     if (!close) return;
@@ -907,9 +771,7 @@
     if (e.target.name === "type") syncCredentialUI(e.target.closest("form"));
   });
 
-  // Everything that has to be re-applied after the server replaces part
-  // of the page: the uptime counter, the sign-in panel's popup wiring,
-  // and which credential inputs are live.
+  // Re-applied whenever the server replaces part of the page.
   function syncAfterRender() {
     startUptime();
     startPlaybackTick();
@@ -920,15 +782,12 @@
   }
 
   document.body.addEventListener("htmx:afterSwap", syncAfterRender);
-  // The Dashboard's refresh merges in place and cancels the swap, so it
-  // announces itself this way instead.
   document.body.addEventListener("at:merged", syncAfterRender);
   document.addEventListener("DOMContentLoaded", syncAfterRender);
 })();
 
 /* ── Create account ─────────────────────────────────────────────
-   Show/Hide lets the owner check what they typed, since there is no
-   confirm field; Create stays off until both fields have something. */
+   Show/Hide stands in for a confirm field. */
 (function () {
   document.addEventListener("click", function (e) {
     var btn = e.target.closest("[data-reveal]");
@@ -958,28 +817,22 @@
 })();
 
 /* ── Live updates ───────────────────────────────────────────────
-   One event stream per tab names what changed — "dashboard", "logs",
-   "history" — and the parts of the page showing it fetch their own
-   fragment, the same request their timed refresh makes. The stream is
-   open only while the tab is visible and the page has something live
-   on it; without it, the old five-second poll takes over, so a proxy
-   that will not pass a stream costs a few seconds and nothing else. */
+   One event stream per visible tab names what changed ("dashboard",
+   "logs", "history"); each live block then fetches its own fragment.
+   Without the stream, the five-second poll takes over. */
 (function () {
   var source = null;
   var up = false;
   var everOpened = false;
   var retry = 0;
   var retryTimer = null;
-  // When each live block last refreshed, by id. Blocks that swap
-  // wholesale come back as new elements, so it cannot live on them.
+  // Keyed by id: blocks that swap wholesale come back as new elements.
   var refreshedAt = {};
-  // Even with the stream up, refresh now and then in case a signal was
-  // lost, and whenever the stream is down, as often as before.
+  // A safety refresh in case a signal was lost.
   var SAFETY = 30000;
 
   function blocks() { return document.querySelectorAll("[data-live]"); }
-  // Whether the stream is up, on the root element where anyone checking
-  // why a page is or is not updating can see it.
+  // Shown on <html> for debugging (and the E2E).
   function mark(state) { document.documentElement.setAttribute("data-live-stream", state); }
   function visible() { return document.visibilityState === "visible"; }
 
@@ -998,8 +851,7 @@
     if ((!topics || topics.history) && window.atRefreshHistory) window.atRefreshHistory();
   }
 
-  // A burst of changes (a session starting, then each downloader
-  // throttling) becomes one refresh.
+  // A burst of changes becomes one refresh.
   var pending = {};
   var flushTimer = null;
   function queue(topic) {
@@ -1027,9 +879,8 @@
     source.onerror = function () {
       up = false;
       mark("down");
-      // The browser retries a dropped stream by itself. One it has
-      // given up on (a sign-in redirect, a proxy refusing the type) is
-      // retried here, backing off, while the poll covers the gap.
+      // The browser retries a dropped stream itself; one it gave up on
+      // (sign-in redirect, a proxy refusing it) is retried here, backing off.
       if (source && source.readyState === EventSource.CLOSED) {
         source = null;
         retry = Math.min(retry + 1, 6);
@@ -1071,10 +922,9 @@
 })();
 
 /* ── Session timer and Throttle History ─────────────────────────────
-   The timer counts up from data-throttled-since, reading it on every
-   tick so the Dashboard's refresh can move it. The history card holds
-   all 30 days; switching range counts the total from the old figure to
-   the new one and animates the grid's height, both over 700ms. */
+   The timer re-reads data-throttled-since every tick, so a refresh can
+   move it. The history card holds all 30 days; switching range animates
+   the total and the grid's height. */
 (function () {
   "use strict";
 
@@ -1196,10 +1046,8 @@
     setRange(card, tab.dataset.historyRange);
   });
 
-  // The hour in progress keeps filling, so the card refreshes itself —
-  // but not while the pointer is reading a tooltip, or mid-animation.
-  // A period starting or ending refreshes it at once, through the live
-  // stream.
+  // The current hour keeps filling, so refresh — but not under a hovering
+  // pointer or mid-animation. The live stream refreshes it on changes.
   function refreshHistory() {
     var card = document.getElementById("throttle-history");
     if (!card || animating || document.visibilityState !== "visible" || card.matches(":hover") || !window.htmx) return;

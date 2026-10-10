@@ -8,9 +8,7 @@ import (
 	"encoding/base64"
 )
 
-// CSRF derives a per-session token via HMAC rather than storing one —
-// no extra session-keyed map to keep in sync, just a synchronizer token
-// tied to the session token that's already there.
+// CSRF derives each session's token by HMAC, so nothing extra is stored.
 type CSRF struct {
 	key []byte
 }

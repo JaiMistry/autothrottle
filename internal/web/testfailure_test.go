@@ -25,6 +25,8 @@ func TestClassifyProbeError(t *testing.T) {
 		{"dns points at the URL", probeServer, errors.New("dial tcp: lookup plex.example: no such host"), fieldURL, "did not resolve"},
 		{"a scheme-less URL is a URL problem", probeServer, errors.New(`Get "192.168.1.50:32400": unsupported protocol scheme ""`), fieldURL, "not a complete URL"},
 		{"nil is not a failure", probeServer, nil, "", ""},
+		// Nothing anticipated: the raw error shows, without invented advice.
+		{"unknown errors get no advice", probeServer, errors.New("something nobody has seen before"), "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -36,15 +38,14 @@ func TestClassifyProbeError(t *testing.T) {
 			if got != c.wantField {
 				t.Errorf("field = %q, want %q", got, c.wantField)
 			}
-			if c.wantIn != "" && !strings.Contains(hint, c.wantIn) {
+			if !strings.Contains(hint, c.wantIn) || (c.wantIn == "" && hint != "") {
 				t.Errorf("hint = %q, want it to contain %q", hint, c.wantIn)
 			}
 		})
 	}
 }
 
-// Every blank is named at once, so fixing one does not just surface the
-// next on the following attempt.
+// Every blank is named at once, not one per attempt.
 func TestMissingRequiredNamesEveryBlank(t *testing.T) {
 	fields, hint := missingRequired("", "", "", true)
 	if len(fields) != 3 {
@@ -63,14 +64,5 @@ func TestMissingRequiredNamesEveryBlank(t *testing.T) {
 	// A credential already stored counts as present.
 	if fields, _ := missingRequired("plex", "http://x", "stored-token", true); fields != nil {
 		t.Errorf("a supplied credential should satisfy the check, got %v", fields)
-	}
-}
-
-// An error nobody anticipated must not be given invented advice: the raw
-// text is still shown, and no field is outlined.
-func TestClassifyProbeErrorStaysQuietWhenUnsure(t *testing.T) {
-	fields, hint := classifyProbeError(probeServer, errors.New("something nobody has seen before"))
-	if len(fields) != 0 || hint != "" {
-		t.Fatalf("want no field and no hint, got %v / %q", fields, hint)
 	}
 }

@@ -26,17 +26,15 @@ type mediaServerView struct {
 	SkipLocalPlayback bool
 	Enabled           bool
 	HasCredential     bool
-	// Sessions is the live count, so the table answers "is this server
-	// doing anything" without a trip to the Dashboard.
-	Sessions int
-	Dot      statusDot
+	Sessions          int
+	Dot               statusDot
 }
 
 type downloaderView struct {
 	ID              int64
 	Name, Type, URL string
-	// Username is not a secret and is round-tripped so an edit doesn't
-	// silently blank it. The password never is — see CredentialField.
+	// Username is round-tripped so an edit doesn't blank it; the
+	// password never is.
 	Username                                 string
 	HasCredential                            bool
 	DefaultDownloadLimit, DefaultUploadLimit int64
@@ -67,8 +65,7 @@ func (s *Server) serverDot(ms db.MediaServer, sessions int) statusDot {
 }
 
 // downloaderDot reads the scheduler's view of one downloader. A failed
-// apply reads Unreachable, never Default rates: the rates on the client
-// are not the rates this app believes it set.
+// apply reads Unreachable, never Default rates.
 func (s *Server) downloaderDot(dl db.Downloader) statusDot {
 	switch state := s.scheduler.State(dl.ID); {
 	case !dl.Enabled:
@@ -88,9 +85,8 @@ func (s *Server) downloaderDot(dl db.Downloader) statusDot {
 	}
 }
 
-// authSummary states how login is configured. Read-only on purpose:
-// there is no password change in the browser, and a field here would
-// imply there is.
+// authSummary states how login is configured. Read-only: there is no
+// password change in the browser.
 func (s *Server) authSummary() string {
 	switch s.auth.Mode() {
 	case auth.ModeDisabled:
@@ -121,11 +117,8 @@ type configPageData struct {
 	EditDownloaderID  int64
 	EditDownloader    downloaderView
 	FormError         string
-	// Sheet is what the drawer holds: "server", "downloader", or
-	// nothing when it is shut.
-	Sheet string
-	// OOB marks the Connections tables for an out-of-band swap.
-	OOB bool
+	Sheet             string // drawer contents: "server", "downloader", or "" when shut
+	OOB               bool   // render the Connections tables for an out-of-band swap
 }
 
 func toMediaServerView(ms db.MediaServer) mediaServerView {
@@ -141,8 +134,6 @@ func toMediaServerView(ms db.MediaServer) mediaServerView {
 }
 
 func (s *Server) toDownloaderView(dl db.Downloader) downloaderView {
-	// Only the username is read back. The password is never rendered,
-	// not even masked at its real length.
 	username, _, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
 		slog.Warn("reading downloader username for the form", "downloader", dl.Name, "error", err)
@@ -191,8 +182,6 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		dlViews = append(dlViews, view)
 	}
 
-	// The matrix asks "is this pair on?" per cell, so the mappings are
-	// indexed by pair rather than scanned per cell.
 	enabled := make(map[string]bool, len(mappings))
 	for _, m := range mappings {
 		enabled[mappingKey(m.MediaServerID, m.DownloaderID)] = m.Enabled
@@ -212,8 +201,7 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 }
 
 func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, message string) {
-	// From the drawer, the error lands above the form and leaves it, and
-	// any test it passed, exactly as they were.
+	// From the drawer, the error lands above the form and leaves it as it was.
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Retarget", "#sheet-error")
 		w.Header().Set("HX-Reswap", "innerHTML")
@@ -234,8 +222,8 @@ func (s *Server) renderConfigError(w http.ResponseWriter, r *http.Request, messa
 func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	tab := q.Get("tab")
-	// Media servers and downloaders were separate tabs once; their links,
-	// edit links included, land on Connections.
+	// The old media-servers and downloaders tabs, edit links included,
+	// land on Connections.
 	var sheet string
 	switch tab {
 	case "media-servers":
@@ -265,12 +253,8 @@ func (s *Server) configurationPage(w http.ResponseWriter, r *http.Request) {
 // entry being edited. It reports false when there is no such entry.
 func (s *Server) fillSheet(data *configPageData, sheet string, id int64) bool {
 	data.Sheet = sheet
-	// A new server or downloader starts switched on. Left at the zero
-	// value, the box rendered unticked, so anyone who didn't notice it
-	// saved one that was never watched or throttled, with no error
-	// anywhere to say why nothing happened.
+	// New entries start enabled, and named after their default type.
 	data.EditMediaServer = mediaServerView{Name: "Plex", Enabled: true}
-	// A new entry is named after its type until someone names it.
 	data.EditDownloader = downloaderView{Name: "qBittorrent", Enabled: true}
 	if id == 0 {
 		return true
@@ -325,9 +309,9 @@ func (s *Server) connectionStatus(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "configuration", "connectionstatus", data)
 }
 
-// savedConnection answers a successful save. From the drawer, the
-// tables are swapped out of band and the drawer is told to close, so it
-// slides shut over the updated list; a plain form post is redirected.
+// savedConnection answers a successful save. From the drawer, the tables
+// are swapped out of band and the drawer told to close; a plain post is
+// redirected.
 func (s *Server) savedConnection(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("HX-Request") != "true" {
 		http.Redirect(w, r, "/configuration?tab=connections", http.StatusSeeOther)
@@ -360,13 +344,8 @@ func parseInt64Form(r *http.Request, name string) int64 {
 // --- media servers ---
 
 // mediaServerCredential picks the credential the user actually filled in.
-//
-// The form carries a field per credential style — a pasted Plex token, a
-// token handed over by Plex sign-in, an Emby or Jellyfin API key — and
-// the panes the user is not looking at stay in the DOM. Reading a single
-// shared name would let whichever blank field came first in the document
-// silently beat the one they filled in, which is exactly the bug that
-// made saving a Plex server after signing in do nothing at all.
+// Each credential style has its own field, and hidden panes stay in the
+// DOM, so a shared name would let a blank field beat the filled one.
 func mediaServerCredential(r *http.Request, msType string) string {
 	if msType != "plex" {
 		return r.FormValue("api_token")
@@ -453,9 +432,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		var newID int64
 		newID, err = s.db.CreateMediaServer(ms)
 		if err == nil {
-			// Seeding is a convenience, not part of the save. Failing the
-			// whole request here would report an error for a server that
-			// had in fact been created.
+			// Not fatal: the server was created.
 			if seedErr := s.db.EnableMappingsForMediaServer(newID); seedErr != nil {
 				slog.Error("seeding mappings for new media server", "error", seedErr)
 			}
@@ -487,11 +464,10 @@ func (s *Server) deleteMediaServer(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/configuration?tab=connections", http.StatusSeeOther)
 }
 
-// storedMediaServerCredential returns the credential already saved for
-// the server this form is editing, if there is one and the form still
-// points at the address it was saved for. A saved token is never sent
-// anywhere else: otherwise anyone signed in could read it out by
-// pointing the address at a machine of their own and pressing Test.
+// storedMediaServerCredential returns the saved credential of the server
+// being edited, only while the form keeps the address it was saved for:
+// otherwise anyone signed in could read it out by pointing the address at
+// their own machine and pressing Test.
 func (s *Server) storedMediaServerCredential(r *http.Request, rawURL string) (string, bool) {
 	idStr := r.FormValue("id")
 	if idStr == "" {
@@ -530,10 +506,8 @@ func (s *Server) storedDownloaderCredential(r *http.Request, rawURL, username st
 	return password, true
 }
 
-// sameOrigin reports whether two URLs reach the same scheme, host and
-// port, so a credential saved for one may be used with the other. A
-// different path on the same server — behind a reverse proxy, say — is
-// still the same server.
+// sameOrigin reports whether two URLs share scheme, host and port, so a
+// credential saved for one may be sent to the other. The path may differ.
 func sameOrigin(a, b string) bool {
 	ua, errA := url.Parse(strings.TrimSpace(a))
 	ub, errB := url.Parse(strings.TrimSpace(b))
@@ -576,9 +550,7 @@ func (s *Server) testMediaServerForm(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	token := mediaServerCredential(r, msType)
-	// Editing an existing server: an untouched credential field means
-	// "keep what is stored", so the test uses the stored one rather than
-	// demanding it be retyped.
+	// Editing: a blank credential means the stored one.
 	if token == "" {
 		if stored, ok := s.storedMediaServerCredential(r, rawURL); ok {
 			token = stored
@@ -679,8 +651,8 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		}
 		credentialEncrypted = sql.NullString{String: encrypted, Valid: true}
 	case credentialEncrypted.Valid:
-		// A blank password keeps the saved one — for the saved username,
-		// at the saved address, and nowhere else.
+		// A blank password keeps the saved one, for the saved username
+		// and address only.
 		if _, ok := s.storedDownloaderCredential(r, rawURL, username); !ok {
 			s.renderConfigError(w, r, "Enter the password again. A saved password is only ever used with the username and address it was saved for.")
 			return
@@ -747,9 +719,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 	dlType := r.FormValue("type")
 	name := strings.TrimSpace(r.FormValue("name"))
 	rawURL := strings.TrimSpace(r.FormValue("url"))
-	// A downloader's credentials are genuinely optional — a WebUI with
-	// authentication switched off is a legitimate setup — so only the
-	// name and the URL are required here.
+	// Credentials are optional: a WebUI may have authentication off.
 	if fields, hint := missingRequired(name, rawURL, "", false); fields != nil {
 		s.writeTestResult(w, testResult{Message: "Nothing to test", Fields: fields, Hint: hint})
 		return
@@ -772,8 +742,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
 			return err
 		}
-		// Testing a saved downloader from its edit form: if it was
-		// failing, it is reachable now, so its rates go back on at once.
+		// A failing saved downloader is reachable again: re-apply now.
 		if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil {
 			s.scheduler.RetryIfFailing(id)
 		}
@@ -803,8 +772,6 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
 			return err
 		}
-		// Reachable again: put its rates back now rather than at the
-		// next retry.
 		s.scheduler.RetryIfFailing(dl.ID)
 		return nil
 	})
@@ -812,9 +779,8 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 
 // --- mappings ---
 
-// setMapping turns one cell of the mappings matrix on or off. A cell
-// has no id until it is first ticked, so this addresses a mapping by
-// the pair it joins rather than by id.
+// setMapping turns one cell of the mappings matrix on or off, addressed
+// by pair since a cell has no id until first ticked.
 func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
@@ -835,9 +801,8 @@ func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 	}
 	s.applyConfigChange(false)
 
-	// Re-render the matrix rather than answering 204. HTMX does nothing
-	// with an empty response, so the cell kept its old label and the
-	// toggle read as broken even though the mapping had changed.
+	// Re-render rather than 204: HTMX ignores an empty response, and the
+	// cell would keep its old label.
 	if r.Header.Get("HX-Request") == "true" {
 		data, err := s.buildConfigPageData(r, "mappings")
 		if err != nil {
@@ -853,13 +818,9 @@ func (s *Server) setMapping(w http.ResponseWriter, r *http.Request) {
 
 // --- shared ---
 
-// applyConfigChange makes a just-saved configuration change take
-// effect immediately. Media-server changes additionally reconcile the
-// running watchers (start, stop, or reconnect under new credentials);
-// every change re-resolves throttle state, since a new mapping or an
-// edited rate has to reach the downloader without waiting for the next
-// playback event. Resolution is asynchronous so a slow or unreachable
-// downloader can't stall the redirect.
+// applyConfigChange makes a saved change take effect now: media-server
+// changes reconcile the watchers, and every change re-resolves throttle
+// state, asynchronously so a slow downloader can't stall the response.
 func (s *Server) applyConfigChange(mediaServersChanged bool) {
 	if mediaServersChanged && s.watchers != nil {
 		s.watchers.Reconcile()
@@ -881,9 +842,8 @@ type testResultView struct {
 	Dismissable bool
 }
 
-// minTestDuration holds a fast reply back briefly: a LAN client can
-// answer in milliseconds, which looked like no test had run. The
-// elapsed time shown stays the real one.
+// minTestDuration holds a fast reply back briefly, so a LAN answer in
+// milliseconds still reads as a test having run. The time shown is real.
 const minTestDuration = 550 * time.Millisecond
 
 // testResult is one probe's outcome, in the shape the card renders.
@@ -896,9 +856,9 @@ type testResult struct {
 	Elapsed time.Duration
 }
 
-// writeTestResult renders a connection test into its bounded box. The
-// backend's own error is shown verbatim under a plain headline: it is
-// usually the only thing that says what actually went wrong.
+// writeTestResult renders a connection test's result. The backend's own
+// error is shown verbatim: it is usually the only thing that says what
+// went wrong.
 func (s *Server) writeTestResult(w http.ResponseWriter, res testResult) {
 	if res.Elapsed > 0 && res.Elapsed < minTestDuration {
 		time.Sleep(minTestDuration - res.Elapsed)

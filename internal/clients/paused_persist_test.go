@@ -42,9 +42,7 @@ func tracker(store PauseStore, timeout time.Duration) *pausedTracker {
 	return p
 }
 
-// The bug this exists to prevent: a stream retired as abandoned came
-// back and throttled for another full timeout after every restart,
-// because the clock only ever lived in memory.
+// A stream retired as abandoned must stay retired across a restart.
 func TestPausedClockSurvivesRestart(t *testing.T) {
 	const limit = 30 * time.Minute
 	store := newMemPauseStore()
@@ -58,8 +56,7 @@ func TestPausedClockSurvivesRestart(t *testing.T) {
 		t.Fatal("past the timeout it should have been retired")
 	}
 
-	// A restart: brand new tracker, same store, stream still paused in
-	// the same place.
+	// A restart: new tracker, same store, still paused in the same place.
 	second := tracker(store, limit)
 	if second.counts("s1", true, 5*time.Minute, start.Add(limit+2*time.Minute)) {
 		t.Error("a retired session came back after a restart")
@@ -69,8 +66,8 @@ func TestPausedClockSurvivesRestart(t *testing.T) {
 	}
 }
 
-// Resuming while the app was down has to be recognised: the position
-// moved, so the old clock no longer applies.
+// Resuming while the app was down moved the position, so the old clock
+// no longer applies.
 func TestResumeWhileDownClearsTheClock(t *testing.T) {
 	const limit = 30 * time.Minute
 	store := newMemPauseStore()
@@ -88,7 +85,6 @@ func TestResumeWhileDownClearsTheClock(t *testing.T) {
 	}
 }
 
-// A session the server no longer lists must not leave a record behind.
 func TestRetainPrunesPersistedPauses(t *testing.T) {
 	store := newMemPauseStore()
 	p := tracker(store, time.Minute)

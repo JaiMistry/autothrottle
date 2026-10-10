@@ -15,20 +15,13 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
 
-// heroState is the Dashboard's one-sentence answer plus the line under
-// it. The page leads with a sentence rather than counts because the
-// question it exists to answer is "is it working right now, and why is
-// it doing what it's doing" — and a count answers neither half.
+// heroState is the Dashboard's one-sentence answer plus the line under it.
 type heroState struct {
 	Statement string
 	Reason    string
-	Tone      string // warn | good | dim | plain — colours the statement
-	// Missing names what setup still needs ("a media server"); the
-	// reason line then links to Configuration.
-	Missing string
-	// Since is when the current throttle period began, for the session
-	// timer that replaces the reason line while throttling.
-	Since time.Time
+	Tone      string    // warn | good | dim | plain — colours the statement
+	Missing   string    // what setup still needs, e.g. "a media server"
+	Since     time.Time // start of the current throttle period, for the timer
 }
 
 type serverRowView struct {
@@ -36,27 +29,20 @@ type serverRowView struct {
 	Type     string
 	State    string
 	Sessions int
-	// Detail is the one-line message for a server that is not playing
-	// anything. Playing servers use Playing instead, one entry per
-	// session, so each can carry its own progress.
-	Detail  string
-	Playing []sessionLineView
+	Detail   string // for a server not playing; playing ones use Playing
+	Playing  []sessionLineView
 }
 
-// sessionLineView is one playing session: what it is, where, and how
-// far in. Percent is -1 when the server reported no position, which is
-// the signal to draw no progress bar rather than an empty one.
+// sessionLineView is one playing session. Percent is -1 when the server
+// reported no position, so no progress bar is drawn.
 type sessionLineView struct {
 	Title  string
 	Device string
 	Local  bool
 	At     string
 	Of     string
-	// PositionMS and DurationMS let the page keep counting between
-	// updates. A player does not ask the server what time it is; it
-	// counts, and corrects when the server next speaks. Without this the
-	// timecode moves in whatever steps the upstream socket happens to
-	// push, which reads as a stutter rather than playback.
+	// The page counts on between updates from these, rather than moving
+	// in whatever steps the server reports.
 	PositionMS int64
 	DurationMS int64
 	Paused     bool
@@ -73,19 +59,16 @@ type downloaderRowView struct {
 }
 
 type logRowView struct {
-	Time    string
-	Level   string
-	Message string
-	// Attribution is structured rather than parsed back out of the
-	// message. Either half may stand alone: an event with only a
-	// downloader still names it.
+	Time       string
+	Level      string
+	Message    string
 	Downloader string
 	Server     string
 }
 
 type dashboardData struct {
-	// Fragment marks a poll response, which also carries the header
-	// pill and pause control as out-of-band swaps.
+	// Fragment marks a live refresh, which also swaps the header pill and
+	// pause control out of band.
 	Fragment bool
 	pageData
 	Hero            heroState
@@ -97,9 +80,8 @@ type dashboardData struct {
 	ThrottledTone   string
 	ThrottledCount  int
 	Paused          bool
-	// Empty is a first run: nothing configured at all. Ready is the
-	// minimum for AutoThrottle to act, one media server and one
-	// downloader; in between, the page shows what is there.
+	// Empty: nothing configured. Ready: at least one media server and one
+	// downloader, the minimum to act.
 	Empty       bool
 	Ready       bool
 	Unreachable []unreachableView
@@ -121,9 +103,7 @@ type overallFlag struct {
 	Icon  string
 }
 
-// dashboardLive serves the part of the Dashboard that changes on its
-// own — throttle state, sessions, playback position — so the page keeps
-// up without a refresh.
+// dashboardLive serves the part of the Dashboard that changes on its own.
 func (s *Server) dashboardLive(w http.ResponseWriter, r *http.Request) {
 	data, err := s.buildDashboardData(r)
 	if err != nil {
@@ -135,9 +115,8 @@ func (s *Server) dashboardLive(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "dashboard", "dashlive", data)
 }
 
-// buildDashboardData assembles the whole page's state, shared by the
-// full render and the polled live fragment so the two can never
-// disagree about what is happening.
+// buildDashboardData is shared by the full page and the live fragment, so
+// the two can never disagree.
 func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	mediaServers, err := s.db.ListMediaServers()
 	if err != nil {
@@ -149,7 +128,6 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	}
 	paused := s.scheduler.Paused()
 	data := dashboardData{
-		// The app's own name: the Dashboard is its home screen.
 		pageData: s.page(r, "AutoThrottle", "dashboard"),
 		Paused:   paused,
 		Empty:    len(mediaServers) == 0 && len(downloaders) == 0,
@@ -168,8 +146,6 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			row.State = "disabled"
 			row.Detail = "Not being watched."
 		case !s.watchers.Running(ms.ID):
-			// Configured and enabled but no live watcher: the connection
-			// is down or the type has no implementation.
 			row.State = "unreachable"
 			row.Detail = "Unable to connect"
 			unreachable = append(unreachable, unreachableView{ms.Name, "Media server"})
@@ -177,16 +153,12 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			conn, known := s.watchers.Connection(ms.ID)
 			switch {
 			case sessions > 0:
-				// Playback wins over a dropped live feed. The
-				// reconciliation poll finds sessions over REST whether
-				// or not the socket is up, so reporting "connecting"
-				// here would hide the thing that actually matters
-				// behind a transport detail.
+				// Playback wins over a dropped socket: the reconciliation
+				// poll still finds sessions over REST.
 				row.State = "playing"
 				row.Playing = sessionLines(s.scheduler.ActiveSessions(ms.ID))
 				if len(row.Playing) == 0 {
-					// Counted, but nothing described it yet — the event
-					// stream carries keys only, and no snapshot has landed.
+					// Counted, but no snapshot has described it yet.
 					row.Detail = s.playingDetail(ms.ID, sessions)
 				}
 			case known && !conn.Connected:
@@ -219,8 +191,7 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			row.Cause = "excluded from throttling"
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case state.Failure != "":
-			// A failed apply must never read Normal — the rates on the
-			// client are not the rates this app believes it set.
+			// A failed apply must never read Normal.
 			row.State = "unreachable"
 			row.Cause = state.Failure
 			unreachable = append(unreachable, unreachableView{dl.Name, "Downloader"})
@@ -232,9 +203,6 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 			unresolvedCount++
 			row.Down, row.Up = dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 		case paused:
-			// "Paused" renders as Normal: the configured default rate is
-			// in force, which is the same rate as any other unthrottled
-			// moment. The reason line carries the override.
 			row.State = "paused"
 			row.Cause = "throttling disabled"
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
@@ -321,8 +289,7 @@ type heroInput struct {
 	unresolved  bool
 }
 
-// buildHero writes the sentence at the top of the page. The wording is
-// exact per state — it is the product's headline, not a status string.
+// buildHero writes the sentence at the top of the page.
 func buildHero(in heroInput) heroState {
 	var missing []string
 	if in.servers == 0 {
@@ -358,10 +325,9 @@ func buildHero(in heroInput) heroState {
 	}
 }
 
-// livePosition carries a reported position forward to now. Servers
-// report in steps (Plex every ten seconds or so), and a stale figure
-// would make the page's ticking clock jump backwards on each refresh.
-// Paused sessions, and readings with no timestamp, are not advanced.
+// livePosition carries a reported position forward to now, or the page's
+// ticking clock would jump back on each refresh (Plex reports every ten
+// seconds or so). Paused or untimestamped readings are not advanced.
 func livePosition(session clients.Session, now time.Time) time.Duration {
 	if session.Paused || session.PositionAt.IsZero() {
 		return session.Position
@@ -411,8 +377,7 @@ func sessionFootnote(paused bool, sessions int, countsLocal bool) string {
 	return ""
 }
 
-// timecode renders a position the way a player does: h:mm:ss once past
-// an hour, m:ss below it.
+// timecode renders h:mm:ss past an hour, m:ss below it.
 func timecode(d time.Duration) string {
 	if d < 0 {
 		d = 0
@@ -425,8 +390,7 @@ func timecode(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", m, sec)
 }
 
-// sessionLines turns the scheduler's live sessions into rows. Anything
-// the server did not report is left out rather than guessed at.
+// sessionLines turns the scheduler's live sessions into rows.
 func sessionLines(sessions []clients.Session) []sessionLineView {
 	out := make([]sessionLineView, 0, len(sessions))
 	for _, session := range sessions {
@@ -454,10 +418,8 @@ func sessionLines(sessions []clients.Session) []sessionLineView {
 	return out
 }
 
-// playingDetail names what is playing and where — "Andor S1E4 — Living
-// Room TV · Study iPad". Sessions sharing a title collapse onto one
-// line, which is the usual case for a household watching together.
-// Anything the server did not report is simply left out.
+// playingDetail names what is playing and where — "Andor S1E4 on Living
+// Room TV · Study iPad" — with sessions sharing a title on one line.
 func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
 	records, err := s.db.OpenSessions(mediaServerID)
 	if err != nil {
@@ -488,8 +450,6 @@ func (s *Server) playingDetail(mediaServerID int64, sessions int) string {
 		}
 	}
 	if len(parts) == 0 {
-		// Nothing was reported, so say what is known rather than
-		// inventing a now-playing line.
 		return count(sessions, "session counting toward throttling", "sessions counting toward throttling")
 	}
 	return strings.Join(parts, " · ")
@@ -565,8 +525,8 @@ func (s *Server) pausedSince() string {
 	return since.In(time.Local).Format("3:04 PM")
 }
 
-// pausedBanner serves the banner on its own, so every page can follow
-// the pause switch live — flipped from another tab, say.
+// pausedBanner serves the banner on its own, so every page follows the
+// pause switch live.
 func (s *Server) pausedBanner(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "dashboard", "pausedbanner", s.page(r, "", ""))
 }
@@ -583,10 +543,9 @@ func (s *Server) renderFragment(w http.ResponseWriter, page, name string, data a
 	}
 }
 
-// sortServers puts playing servers first, so the one that matters is
-// visible in a list capped at two rows. Stable, and keyed only on
-// whether a server plays, so rows move only when playback starts or
-// stops — never on a refresh, or when a second stream starts.
+// sortServers puts playing servers first, so they show in a list capped at
+// two rows. Stable and keyed only on playing, so rows move only when
+// playback starts or stops.
 func sortServers(rows []serverRowView) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		return rows[i].State == "playing" && rows[j].State != "playing"

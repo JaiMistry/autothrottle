@@ -1,10 +1,7 @@
-// The end-to-end scenario: a fresh install set up and used entirely
-// through its web UI, against a real Jellyfin, Emby or Plex, qBittorrent
-// and Transmission. Every check that matters is made twice where it can be —
-// on the page, and on the download client itself — because the page
-// saying "throttled" proves nothing if qBittorrent was never told.
-//
-// Run by run.sh inside the Puppeteer image with host networking.
+// The end-to-end scenario: a fresh install driven through its web UI
+// against a real Jellyfin, Emby or Plex, qBittorrent and Transmission.
+// Checks are made on the download clients too: the page saying
+// "throttled" proves nothing if qBittorrent was never told. Run by run.sh.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -43,10 +40,8 @@ async function until(what, fn, timeoutMs = 90000) {
 
 // --- the outside world: a player, and the download clients ---------------
 
-// Each server hears about playback its own way. Jellyfin and Emby take
-// reports on their sessions API; Plex takes the timeline a Plex client
-// sends every few seconds. Either way the server then has a real session
-// it shows, and tells AutoThrottle about, as it would for a real player.
+// Jellyfin and Emby take playback reports on their sessions API; Plex takes
+// the timeline a client sends. Either way the server holds a real session.
 const AUTH = `MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0", Token="${MEDIA.userToken}"`;
 const mediaBrowserPlayer = {
   async send(endpoint, positionSeconds, paused) {
@@ -108,9 +103,7 @@ async function approvePlexPin(code) {
     method: 'PUT',
     headers: {
       'X-Plex-Token': PLEX_TOKEN, 'X-Plex-Client-Identifier': process.env.PLEX_E2E_CLIENT_ID || 'autothrottle-e2e',
-      // plex.tv only lets its own web app approve a sign-in, which is
-      // where a person would do it ("not available for this device"
-      // otherwise).
+      // plex.tv only lets its own web app approve a sign-in.
       'X-Plex-Product': 'Plex Web', Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({ code }).toString(),
@@ -131,8 +124,7 @@ const qbittorrent = {
     const get = async (p) => Number(await (await fetch(env.qbittorrent.base + p, { headers: { Cookie: cookie } })).text());
     return { down: await get('/api/v2/transfer/downloadLimit'), up: await get('/api/v2/transfer/uploadLimit') };
   },
-  // Changes the limits behind AutoThrottle's back, the way a person or a
-  // client restart would.
+  // Changes the limits behind AutoThrottle's back.
   async unlimit() {
     const cookie = await this.login();
     for (const p of ['/api/v2/transfer/setDownloadLimit', '/api/v2/transfer/setUploadLimit']) {
@@ -143,8 +135,7 @@ const qbittorrent = {
   },
 };
 
-// Stops and starts the AutoThrottle container through Docker's API, the
-// socket run.sh mounts in.
+// Stops and starts containers through the Docker socket run.sh mounts in.
 function docker(action, container = 'e2e-autothrottle') {
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath: '/var/run/docker.sock', method: 'POST', path: `/containers/${container}/${action}` }, (res) => {
@@ -185,12 +176,10 @@ const transmission = {
   page.setDefaultTimeout(30000);
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  // The nesting guard warns when it has to step in: that means some
-  // link or form aimed a whole page at part of one, which is a bug.
+  // The nesting guard warning means a page was aimed at part of a page.
   page.on('console', (m) => { if (m.text().includes('a full page was aimed at')) pageErrors.push(m.text()); });
   const oneShell = () => page.evaluate(() => document.querySelectorAll('.at-shell').length === 1 && document.querySelectorAll('.at-rail').length === 1);
-  // Every fetch of the Dashboard's live block, to tell pushed updates
-  // from polling.
+  // Counts live-block fetches, to tell pushed updates from polling.
   let liveFetches = 0;
   page.on('request', (r) => { if (r.url().includes('/dashboard/live')) liveFetches++; });
   const stream = () => page.evaluate(() => document.documentElement.dataset.liveStream || '');
@@ -202,8 +191,7 @@ const transmission = {
     await page.$eval(sel, (e) => { e.value = ''; });
     await page.type(sel, value);
   }
-  // Forms and links are boosted by htmx: a submit swaps the page over XHR
-  // rather than navigating, so wait for the network to settle instead.
+  // htmx-boosted submits swap over XHR; wait for the network to settle.
   async function settle(action) {
     await Promise.all([page.waitForNetworkIdle({ idleTime: 400, timeout: 30000 }), action()]);
   }
@@ -214,8 +202,7 @@ const transmission = {
     for (const b of buttons) {
       if (/test connection/i.test(await b.evaluate((el) => el.textContent))) { await b.click(); break; }
     }
-    // The card shows a "testing" placeholder the instant the button is
-    // pressed; wait for the answer, not for that.
+    // Wait past the "testing" placeholder for the answer.
     await page.waitForFunction((f) => {
       const r = document.querySelector(`${f} .at-testresult[data-state]`);
       return r && r.dataset.state !== 'testing';
@@ -236,8 +223,7 @@ const transmission = {
   const addServer = '.at-addrow[hx-get="/configuration/media-servers/new"]';
   const addDownloader = '.at-addrow[hx-get="/configuration/downloaders/new"]';
   const sheetOpen = () => page.$eval('#sheet', (e) => e.classList.contains('open'));
-  // Names in the saved-entries table, not anywhere on the page: the type
-  // dropdown also names the server type.
+  // Names in the saved-entries table; the type dropdown names types too.
   const savedNames = () => page.$$eval('tbody tr td:first-child', (cells) => cells.map((c) => c.innerText.trim()));
   const dashboard = async () => page.evaluate(() => ({
     hero: document.querySelector('#dash-live p')?.innerText.trim() || '',
@@ -372,8 +358,7 @@ const transmission = {
 
     section('Playback starts — watched live, no reloads');
     const player = startPlayer();
-    // The moment qBittorrent is actually limited, then the moment the
-    // page says so: the gap is this app's own latency, push included.
+    // From qBittorrent being limited to the page saying so: the app's own latency.
     let appliedAt = 0;
     while (!appliedAt) {
       if ((await qbittorrent.limits()).down === 1500 * 1024) appliedAt = Date.now();
@@ -459,8 +444,7 @@ const transmission = {
     await settle(() => page.click('.at-paused form button'));
     check(at() === '/logs' && !(await page.$('.at-paused')), 'Resume on the banner stays on the page it was pressed on', at());
     await navigate('/');
-    // Off and on again, twice, from the Dashboard and from Logs: the
-    // page must stay one page, never a sidebar inside a sidebar.
+    // Off and on again: the page must never nest a second sidebar.
     for (const p of ['/', '/', '/logs']) {
       if (p !== '/') await navigate(p);
       if (p === '/') await settle(() => page.click('#dash-actions form button'));
@@ -491,8 +475,7 @@ const transmission = {
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
 
     section('A download client restarting');
-    // qBittorrent restarts (an update, say) and is still coming up when
-    // AutoThrottle applies its rates. It must not stay Unreachable.
+    // qBittorrent still coming up when rates are applied must not stay Unreachable.
     await docker('stop', 'e2e-qbittorrent');
     await docker('restart');
     await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
@@ -512,8 +495,7 @@ const transmission = {
     check((logText0.match(/failed to apply rate limits to qBittorrent/g) || []).length === 1, 'the outage is logged once, not once per retry');
 
     section('Local playback exemption');
-    // The player runs on this machine, so the server sees a private
-    // address: local playback.
+    // The player runs on this machine, so the server sees local playback.
     async function setExempt(on) {
       await navigate('/configuration?tab=connections');
       await openSheet('button[hx-get^="/configuration/media-servers/"][hx-get$="/edit"]');

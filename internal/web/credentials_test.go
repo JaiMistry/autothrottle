@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// listener is a server that records every secret sent to it — someone's
-// own machine, standing in for a server's real address.
+// listener records everything sent to it: someone else's machine.
 type listener struct {
 	*httptest.Server
 	mu   sync.Mutex
@@ -43,8 +42,8 @@ func (l *listener) heard(secret string) bool {
 	return false
 }
 
-// Pointing a saved server at another address and pressing Test, or
-// saving, must not send the saved token there.
+// Pointing a saved server elsewhere and pressing Test or Save must not
+// send the saved token there.
 func TestSavedTokenNeverGoesToANewAddress(t *testing.T) {
 	app := newApp(t)
 	jf := fakeJellyfin(t)
@@ -68,8 +67,7 @@ func TestSavedTokenNeverGoesToANewAddress(t *testing.T) {
 		t.Errorf("the address changed to %s with the saved token", after.URL)
 	}
 
-	// The same server by another path is still that server: the saved
-	// token is used, and works.
+	// Another path on the same server is still that server.
 	same := mediaServerForm("JF", "jellyfin", jf.URL+"/", "")
 	same.Set("id", id)
 	expectBody(t, app.post("/configuration/media-servers/test", same), `data-state="connected"`)
@@ -81,8 +79,8 @@ func TestSavedTokenNeverGoesToANewAddress(t *testing.T) {
 	expectRedirect(t, app.post("/configuration/media-servers", moved), "/configuration?tab=connections")
 }
 
-// The same for a downloader's saved password — and editing one without
-// retyping its password, which used to be refused, now keeps it.
+// The same for a downloader's password; an edit that leaves it blank
+// keeps it.
 func TestSavedPasswordStaysWithItsAddress(t *testing.T) {
 	app := newApp(t)
 	form := url.Values{"name": {"qBit"}, "type": {"qbittorrent"}, "url": {app.qbit.URL}, "enabled": {"on"},

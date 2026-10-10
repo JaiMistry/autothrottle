@@ -11,9 +11,7 @@ import (
 	"github.com/coder/websocket"
 )
 
-// embyFakeServer stands in for an Emby/Jellyfin notification socket:
-// it records what the client sends and lets the test drive what the
-// server pushes back.
+// embyFakeServer is an Emby/Jellyfin notification socket the test drives.
 type embyFakeServer struct {
 	subscribed chan string
 	keepAlives chan string
@@ -43,8 +41,7 @@ func newEmbyFakeServer(t *testing.T) (*embyFakeServer, *httptest.Server) {
 		default:
 		}
 
-		// Everything the client sends lands here: the initial
-		// subscribe first, then keepalives.
+		// The subscribe first, then keepalives.
 		go func() {
 			first := true
 			for {
@@ -92,8 +89,7 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- w.connectAndListen(ctx) }()
 
-	// The credential has to reach the server on the handshake — these
-	// sockets take it as a query parameter, not a header.
+	// These sockets take the key as a query parameter, not a header.
 	select {
 	case q := <-fake.query:
 		if !strings.Contains(q, "api_key=sekrit") {
@@ -116,7 +112,7 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 		t.Fatal("client never subscribed; no sessions would ever arrive")
 	}
 
-	// A short keepalive timeout so the test does not sit for 15s.
+	// A short keepalive, so the test does not sit for 15s.
 	fake.push <- `{"MessageType":"ForceKeepAlive","Data":2}`
 
 	fake.push <- `{"MessageType":"Sessions","Data":[
@@ -132,8 +128,7 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 	fake.push <- `{"MessageType":"Sessions","Data":[]}`
 	assertEvent(t, w, "remote", false)
 
-	// The server disconnects a client that goes quiet, so the
-	// keepalive is not optional.
+	// The server drops a client that goes quiet.
 	select {
 	case msg := <-fake.keepAlives:
 		if !strings.Contains(msg, `"MessageType":"KeepAlive"`) {
@@ -151,8 +146,7 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 	}
 }
 
-// Both servers send message types this app has no interest in. They
-// must be ignored rather than breaking the read loop.
+// Message types of no interest must not break the read loop.
 func TestEmbyWatcherIgnoresUnknownMessages(t *testing.T) {
 	fake, srv := newEmbyFakeServer(t)
 
@@ -171,8 +165,7 @@ func TestEmbyWatcherIgnoresUnknownMessages(t *testing.T) {
 	assertEvent(t, w, "a", true)
 }
 
-// A malformed Sessions payload must not be read as "the list is now
-// empty", which would stop every session the watcher is tracking.
+// A malformed Sessions payload is not "the list is now empty".
 func TestEmbyWatcherIgnoresMalformedSessionList(t *testing.T) {
 	fake, srv := newEmbyFakeServer(t)
 

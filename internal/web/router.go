@@ -22,16 +22,10 @@ var templateFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
-// pages lists the page templates that get paired with layout.html.
-// Each is parsed as its own *template.Template — sharing one set across
-// pages would collide, since every page defines a template named
-// "content" and html/template's named templates share one namespace
-// per *template.Template instance.
+// pages lists the page templates paired with layout.html.
 var pages = []string{"login", "setup", "dashboard", "configuration", "logs", "notfound"}
 
-// watcherManager is the watcher-lifecycle surface the web layer needs:
-// after any media-server change, reconcile the running watchers so the
-// change is live immediately rather than at next restart.
+// watcherManager is the watcher surface the web layer needs.
 type watcherManager interface {
 	Reconcile()
 	Running(mediaServerID int64) bool
@@ -55,10 +49,8 @@ type Server struct {
 	notFoundLog   notFoundLog
 }
 
-// parsePage builds one page's template set: the shared layout, the
-// shared components, and the page itself. Each page is its own
-// *template.Template because every one defines a template named
-// "content", and those share a namespace per instance.
+// parsePage builds one page's template set: layout, components and the
+// page. Each page gets its own set because every one defines "content".
 func parsePage(page string, funcs template.FuncMap) (*template.Template, error) {
 	return template.New(page).Funcs(funcs).ParseFS(
 		templateFS, "templates/layout.html", "templates/components.html", "templates/"+page+".html")
@@ -100,14 +92,9 @@ func New(database *db.DB, authenticator *auth.Authenticator, encryptionKey []byt
 	}, nil
 }
 
-// noStoreHTML makes every generated page revalidate.
-//
-// Without a directive a browser is free to apply its own heuristic and
-// reuse the page — and iOS does. A stale page still references the
-// previous build's content-hashed CSS, so a deploy appears not to have
-// landed and a refresh does not fix it, because the refresh reuses the
-// same cached HTML. Static assets are unaffected: they are hashed and
-// set their own immutable headers.
+// noStoreHTML makes every generated page revalidate. Otherwise browsers
+// (iOS especially) reuse a page that points at the previous build's
+// hashed CSS, and a refresh does not fix it.
 func noStoreHTML(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
@@ -115,13 +102,10 @@ func noStoreHTML(next http.Handler) http.Handler {
 	})
 }
 
-// securityHeaders goes on every response. nosniff keeps a browser from
-// reading a response as anything but its declared type; the referrer
-// policy keeps this app's addresses — often a private IP and port — out
-// of the requests its outside links make (GitHub, Plex's help pages).
-// Framing is left alone on purpose: the session cookie is SameSite=Lax,
-// so another site's frame never arrives signed in, and dashboards that
-// embed self-hosted apps in a frame keep working.
+// securityHeaders goes on every response. The referrer policy keeps this
+// app's (often private) address out of requests its outside links make.
+// Framing is allowed on purpose: the SameSite=Lax cookie keeps another
+// site's frame signed out, and dashboards that embed the app keep working.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -174,19 +158,16 @@ func (s *Server) Router() http.Handler {
 	protected.HandleFunc("GET /configuration/plex-signin/poll", s.pollPlexSignIn)
 	protected.HandleFunc("POST /configuration/plex-signin/cancel", s.cancelPlexSignIn)
 
-	// Wraps "/" only. "/static/" is a more specific pattern registered
-	// below, so hashed assets keep their immutable headers.
+	// "/static/" below is more specific, so assets skip noStoreHTML.
 	app := auth.RequireAuth(s.auth, s.sessions)(auth.RequireCSRF(s.auth, s.csrf)(protected))
 	mux.Handle("/", noStoreHTML(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Until an account exists, every address is the create-account
-		// screen: there is nothing else to see without one.
+		// Until an account exists, every address is the create-account screen.
 		if s.auth.NeedsSetup() {
 			http.Redirect(w, r, "/setup", http.StatusSeeOther)
 			return
 		}
-		// Every page that exists asks for a sign-in first. An address no
-		// page lives at gets the 404 whether signed in or not: there is
-		// nothing behind it to protect.
+		// Real pages ask for a sign-in; an address with no page gets the
+		// 404 signed in or not, as there is nothing behind it to protect.
 		if _, pattern := protected.Handler(r); pattern == "" {
 			s.notFound(w, r)
 			return

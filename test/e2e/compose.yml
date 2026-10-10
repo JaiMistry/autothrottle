@@ -2,10 +2,9 @@
 # Plex (one per run, chosen by profile), qBittorrent and Transmission.
 # Driven by test/e2e/run.sh — see the README there.
 #
-# Everything is published on 1xxxx ports so the stack can run beside a
-# normal install without a clash. The linuxserver images come straight
-# from ghcr.io: lscr.io is only a redirector in front of it, and the
-# one that rate-limits.
+# Ports are 1xxxx so the stack runs beside a normal install. The
+# linuxserver images come from ghcr.io directly: lscr.io, a redirector in
+# front of it, rate-limits.
 name: autothrottle-e2e
 
 services:
@@ -53,12 +52,10 @@ services:
     image: plexinc/pms-docker:1.43.4.10903-e5521bd8c
     profiles: [plex]
     container_name: e2e-plex
-    # Plex names the server after its host, and the run's cleanup finds
-    # it on the account by this name.
+    # The server's name on the account, which cleanup looks for.
     hostname: e2e-plex
     environment:
-      # A one-time code from plex.tv, fetched just before start, that
-      # claims this server for the test account.
+      # One-time code from plex.tv that claims the server for the test account.
       - PLEX_CLAIM=${PLEX_CLAIM:-}
       - TZ=America/Los_Angeles
     volumes:

@@ -2,18 +2,14 @@ package scheduler
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/JaiMistry/autothrottle/internal/clients"
-	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
-// The drift case reconciliation exists for: a session that started via
-// the event stream and whose "stopped" notification never arrived,
-// because the WebSocket dropped. A snapshot that no longer lists it
-// has to clear it, or the downloader stays throttled forever.
+// A "stopped" event lost with a dropped socket: the snapshot must clear
+// the session, or the downloader stays throttled forever.
 func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -27,7 +23,6 @@ func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 		t.Fatalf("expected the session to throttle first, got %+v", got)
 	}
 
-	// Plex now reports nothing playing.
 	s.ReplaceSessions(msID, nil)
 	if n := s.ActiveSessionCount(msID); n != 0 {
 		t.Fatalf("ActiveSessionCount = %d, want 0 after the snapshot cleared it", n)
@@ -40,8 +35,7 @@ func TestReplaceSessionsClearsSessionsTheEventStreamMissed(t *testing.T) {
 	}
 }
 
-// The mirror case: a session that started while the connection was
-// down, so no event ever announced it. The snapshot has to add it.
+// The mirror case: a session that started while the socket was down.
 func TestReplaceSessionsAddsSessionsTheEventStreamMissed(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -64,9 +58,7 @@ func TestReplaceSessionsAddsSessionsTheEventStreamMissed(t *testing.T) {
 	}
 }
 
-// A snapshot matching what's already tracked must not re-resolve.
-// Reconciliation runs on a timer for every server, so a no-op poll
-// firing a downloader API call would mean constant pointless traffic.
+// The poll runs constantly, so an unchanged snapshot must not re-apply.
 func TestReplaceSessionsWithNoChangeDoesNotReapply(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -86,23 +78,11 @@ func TestReplaceSessionsWithNoChangeDoesNotReapply(t *testing.T) {
 	}
 }
 
-// Pausing has to survive a restart: someone who paused throttling
-// before rebooting the host should not come back to it re-enabled.
+// A scheduler started over the same database restores the pause.
 func TestPauseStateIsRestoredFromSettings(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := db.Open(dbPath)
-	if err != nil {
-		t.Fatalf("opening test db: %v", err)
-	}
-	defer func() { _ = database.Close() }()
-
-	store := settings.New(database)
-	first := New(database, make([]byte, 32), store)
-	first.limiterFor = func(string) clients.RateLimiter { return &fakeLimiter{} }
+	first, database, _ := newTestScheduler(t)
 	first.SetPaused(context.Background(), true)
-
-	// A fresh scheduler over the same database stands in for a restart.
-	second := New(database, make([]byte, 32), store)
+	second := New(database, make([]byte, 32), settings.New(database))
 	if !second.Paused() {
 		t.Fatal("expected pause state to be restored from the settings table")
 	}

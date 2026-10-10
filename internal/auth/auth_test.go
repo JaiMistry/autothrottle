@@ -6,8 +6,7 @@ import (
 )
 
 func TestLoginLimiter(t *testing.T) {
-	l := newLoginLimiter(3, time.Minute)
-
+	l := newLoginLimiter(3, 30*time.Millisecond)
 	for i := 0; i < 3; i++ {
 		if !l.Allow() {
 			t.Fatalf("attempt %d should be allowed", i+1)
@@ -16,18 +15,7 @@ func TestLoginLimiter(t *testing.T) {
 	if l.Allow() {
 		t.Fatal("4th attempt within the window should be blocked")
 	}
-}
-
-func TestLoginLimiterWindowSlides(t *testing.T) {
-	l := newLoginLimiter(1, 20*time.Millisecond)
-
-	if !l.Allow() {
-		t.Fatal("first attempt should be allowed")
-	}
-	if l.Allow() {
-		t.Fatal("second attempt within the window should be blocked")
-	}
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(40 * time.Millisecond)
 	if !l.Allow() {
 		t.Fatal("attempt after the window elapses should be allowed again")
 	}

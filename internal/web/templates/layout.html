@@ -8,11 +8,8 @@
   <link rel="preload" href="/static/fonts/lexend-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/lexend-700.woff2" as="font" type="font/woff2" crossorigin>
   <script>
-    /* Blocking, in <head>, before any stylesheet paints. Anywhere later
-       and a dark-theme user gets a white flash on every navigation —
-       which on a server-rendered app is every click.
-       "System" is the absence of data-theme, so prefers-color-scheme
-       can apply; only an explicit pick sets the attribute. */
+    /* Blocking, before anything paints, or a dark-theme user sees a white
+       flash. "System" is the absence of data-theme. */
     (function () {
       var m = "system";
       try { m = localStorage.getItem("at-theme") || "system"; } catch (e) {}
@@ -21,19 +18,14 @@
       else { r.removeAttribute("data-theme"); m = "system"; }
       r.setAttribute("data-theme-mode", m);
       try { if (sessionStorage.getItem("at-rail") === "1") r.setAttribute("data-rail", "collapsed"); } catch (e) {}
-      // Suppressed until the first frame, so nothing that is merely
-      // arriving animates as though it changed.
+      // No transitions until the first frame (app.js lifts it).
       r.className = "at-boot";
     })();
   </script>
   <style>
-    /* Critical, inline, before the stylesheet: the page's ground
-       colour has to be correct on the very first paint. Left to the
-       external sheet, every navigation flashes the browser default
-       white before the CSS lands — and on a server-rendered app that
-       is every click. Values are the palette's raw ink and paper; the
-       full token layer redefines them a moment later with the same
-       numbers. */
+    /* Inline, so the ground colour is right on the first paint rather
+       than flashing white until the stylesheet lands. Raw palette values;
+       the tokens repeat them. */
     :root { color-scheme: light; background: #f2f5f9; }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) { color-scheme: dark; background: #0a0f1a; }
@@ -42,7 +34,6 @@
     :root[data-theme="light"] { color-scheme: light; background: #f2f5f9; }
     html { margin: 0; }
     body { margin: 0; background: inherit; }
-    /* Nothing transitions while the document is still arriving. */
     html.at-boot *, html.at-boot *::before, html.at-boot *::after { transition: none !important; }
   </style>
   <link rel="stylesheet" href="{{call .Asset "/static/css/tailwind.css"}}">
@@ -51,12 +42,8 @@
 </head>
 <body>
 {{if .Authenticated}}
-  {{/* Navigation is boosted: HTMX fetches the next page and swaps the
-     body instead of the browser tearing the document down and building
-     it again. A full navigation re-parses the stylesheet, re-runs every
-     script and flickers the tab on each click — which on an app whose
-     nav is a sidebar is every interaction. Scoped to the shell so the
-     login form is left as a plain POST. */}}
+  {{/* Navigation is boosted, so a click swaps the body rather than reloading
+       the page. Scoped to the shell, leaving login a plain POST. */}}
 <div class="at-shell" id="at-shell" hx-boost="true">
     <header class="at-topbar">
       <button type="button" class="at-barbtn" data-drawer-open aria-label="Open menu" aria-expanded="false">
@@ -89,8 +76,6 @@
 </html>
 {{end}}
 
-{{/* The mark is the way back to the Dashboard from anywhere, which is
-     what people reach for first on a phone. */}}
 {{define "brand"}}<a class="at-brand" href="/" aria-label="AutoThrottle: go to the Dashboard">
   <img src="/static/img/logo-mark.svg" width="{{.Size}}" height="{{.Size}}" alt="">
   {{if .ShowName}}<span class="at-rail-name">AutoThrottle</span>{{end}}
@@ -129,8 +114,6 @@
   <button type="button" class="at-drawer-close" data-drawer-close aria-label="Close menu">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
-  {{/* Log out beside the icon-only theme pill; collapsed, the pill
-       stacks above it. On a phone the pill is in the top bar instead. */}}
   <div class="at-rail-foot">
     <span class="at-rail-theme">{{template "themetoggle" .}}</span>
     <form method="post" action="/logout">
@@ -150,6 +133,5 @@
   <span class="at-nav-label" style="flex:1">{{.Label}}</span>
 </a>{{end}}
 
-{{/* Page icons drawn in-house on a 24px grid: a gauge, sliders, a
-     trend line, a clock. This product ships no icon library. */}}
+{{/* Page icons drawn in-house on a 24px grid; there is no icon library. */}}
 {{define "navicon"}}{{if eq . "dashboard"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17.5a8.5 8.5 0 1 1 16 0"/><path d="M12 17.5l4-4.6"/></svg>{{else if eq . "configuration"}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h11M18.5 8H20"/><path d="M4 16h5M12.5 16H20"/><path d="M16.5 8a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 0 0-3.2 0z"/><path d="M9 16a1.6 1.6 0 1 0 3.2 0A1.6 1.6 0 0 0 9 16z"/></svg>{{else}}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 12a7.8 7.8 0 1 0 2.6-5.8"/><path d="M4 5v3.4h3.4"/><path d="M12 8.4V12l2.6 1.8"/></svg>{{end}}{{end}}

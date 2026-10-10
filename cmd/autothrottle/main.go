@@ -14,10 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	// The final image is distroless and carries no zoneinfo, so TZ would
-	// silently fall back to UTC and every timestamp in the UI would be
-	// wrong for everyone outside it. Embedding the database costs about
-	// 450 KB and makes TZ work the way an operator expects.
+	// The distroless image has no zoneinfo; without this TZ silently
+	// falls back to UTC. Costs about 450 KB.
 	_ "time/tzdata"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
@@ -35,11 +33,7 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	// Everything AutoThrottle keeps lives in /data: the database and the
-	// key that encrypts stored credentials. Fixed rather than
-	// configurable — where it lives on the host is the bind mount's
-	// business, so a second setting for the same thing would only be a
-	// way for the two to disagree.
+	// Fixed: where it lives on the host is the bind mount's business.
 	const dataDir = "/data"
 	if err := dropPrivileges(dataDir); err != nil {
 		logger.Error("switching to PUID/PGID", "error", err)
@@ -49,9 +43,7 @@ func main() {
 		logger.Error("data directory is not usable", "dir", dataDir, "error", err)
 		os.Exit(1)
 	}
-	// Not fatal: a directory this process may write but not chmod (owned
-	// by someone else, mounted from a share) still works, just less
-	// privately.
+	// Not fatal: a directory we can write but not chmod still works.
 	if err := restrictDataDir(dataDir); err != nil {
 		logger.Warn("could not restrict the data directory to its owner", "dir", dataDir, "error", err)
 	}
@@ -67,8 +59,6 @@ func main() {
 		}
 	}()
 
-	// Auth reads the database for an account created on the setup
-	// screen, so it loads after the database rather than first.
 	authenticator, err := auth.Load(database)
 	if err != nil {
 		logger.Error("loading auth config", "error", err)
@@ -81,20 +71,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Recorded before anything reads history: this also closes the
-	// sessions and throttle period the previous run left open, at its
-	// last heartbeat, so a stopped process never reads as one that was
-	// throttling for the whole time it was down.
+	// Before anything reads history: this closes what the previous run
+	// left open at its last heartbeat, so downtime never reads as throttling.
 	runID, err := database.StartRun(time.Now())
 	if err != nil {
 		logger.Error("recording this run", "error", err)
 		os.Exit(1)
 	}
 
-	// Fixed, like the data path: the host port is the port mapping's
-	// business. Not 8080, which is qBittorrent's default.
+	// Not 8080, which is qBittorrent's default.
 	const addr = ":7676"
-	// After the database opens, so the banner reports what was found.
 	printBanner(os.Stdout, version.Current(), startupInfo{
 		DatabasePath: dbPath,
 		Address:      addr,
@@ -115,7 +101,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Open pages hear about changes as they happen rather than polling.
 	hub := srv.Live()
 	sched.SetNotifier(hub)
 	watchers.SetNotifier(hub)
@@ -128,27 +113,18 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	// Open streams never finish on their own, so shutdown would wait
-	// out its whole timeout on them; ending them first lets it be quick.
+	// Open event streams never end on their own; without this, shutdown
+	// waits out its whole timeout on them.
 	httpServer.RegisterOnShutdown(hub.Close)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Watchers run for the lifetime of ctx. Configuration changes
-	// reconcile this set live, from the web handlers — no restart.
 	watchers.Start(ctx)
 
-	// Resolve once at startup, after a first snapshot has said what is
-	// actually playing.
-	//
-	// Without this the app sits in "state not resolved yet" until some
-	// session event happens to arrive, which on a quiet evening can be
-	// hours: every downloader reads Unknown, and — worse than the
-	// display — a client left throttled by the previous run stays
-	// throttled, because nothing re-asserts the default rate. Snapshot
-	// first so a stream that is already playing is seen before rates are
-	// applied, rather than being briefly released and then re-throttled.
+	// Resolve once at startup, or a client left throttled by the previous
+	// run stays throttled until some session event arrives. Snapshot first
+	// so a stream already playing is not briefly released.
 	go func() {
 		watchers.SnapshotAll(ctx)
 		if ctx.Err() != nil {
@@ -182,8 +158,7 @@ func main() {
 }
 
 // heartbeat keeps this run's last-seen time current, so the throttle
-// history can tell the hours AutoThrottle was down from hours in which
-// nothing was throttled.
+// history can tell downtime from hours in which nothing was throttled.
 func heartbeat(ctx context.Context, database *db.DB, runID int64) {
 	beat := func() {
 		if err := database.Heartbeat(runID, time.Now()); err != nil {
@@ -201,10 +176,8 @@ func heartbeat(ctx context.Context, database *db.DB, runID int64) {
 	}
 }
 
-// countRows is for the banner only: a count that cannot be read is
-// reported as zero rather than stopping startup, because a decorative
-// line is never worth failing a boot over. Anything genuinely wrong
-// with the database has already failed louder than this.
+// countRows is for the banner only: an unreadable count reads as zero
+// rather than failing startup.
 func countRows[T any](rows []T, err error) int {
 	if err != nil {
 		return 0
@@ -212,10 +185,9 @@ func countRows[T any](rows []T, err error) int {
 	return len(rows)
 }
 
-// checkWritable fails early, and plainly, when the data directory can't
-// be written. The usual cause is a bind mount the container's user does
-// not own — Docker creates a missing host directory as root — and left
-// to SQLite that surfaces as an opaque "unable to open database file".
+// checkWritable fails early and plainly when the data directory can't be
+// written (usually a bind mount Docker created as root), rather than as
+// SQLite's opaque "unable to open database file".
 func checkWritable(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("%w (check the bind mount for /data)", err)

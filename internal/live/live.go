@@ -1,9 +1,6 @@
 // Package live tells open pages that something they show has changed.
-//
-// It carries no data, only which part of the app changed. A page that
-// hears about a change fetches its own fragment exactly as it would on
-// a timer, so there is one way to render each view rather than a second
-// one for the stream, and holding a stream open never holds a database
+// It names only what changed; a page fetches its own fragment, so there
+// is one way to render each view and a stream holds no database
 // connection.
 package live
 
@@ -13,8 +10,7 @@ import "sync"
 type Topic string
 
 const (
-	// Dashboard is anything on the Dashboard's live block: sessions,
-	// throttle state, connection health, the pause switch.
+	// Dashboard is anything in the Dashboard's live block.
 	Dashboard Topic = "dashboard"
 	// History is a throttle period starting or ending.
 	History Topic = "history"
@@ -22,14 +18,12 @@ const (
 	Logs Topic = "logs"
 )
 
-// Notifier is what the parts that change state need: somewhere to say
-// so. A nil Notifier is never called; see Notify.
+// Notifier is where state changes are announced.
 type Notifier interface {
 	Notify(Topic)
 }
 
-// Notify calls n.Notify, or does nothing when n is nil, so components
-// built without a hub (tests, mostly) need no special case.
+// Notify calls n.Notify, or nothing when n is nil.
 func Notify(n Notifier, t Topic) {
 	if n != nil {
 		n.Notify(t)
@@ -48,8 +42,7 @@ func NewHub() *Hub {
 }
 
 // Subscription is one open stream's view of the hub. Changes that land
-// while the stream is busy writing collapse into one wake-up carrying
-// every topic that changed, so a burst of events costs a burst of one.
+// while it is busy collapse into one wake-up naming every topic.
 type Subscription struct {
 	hub     *Hub
 	wake    chan struct{}
@@ -93,8 +86,7 @@ func (h *Hub) Notify(t Topic) {
 	}
 }
 
-// Close ends every subscription, so open streams return and a server
-// shutting down is not left waiting on them.
+// Close ends every subscription, so shutdown is not held up by streams.
 func (h *Hub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()

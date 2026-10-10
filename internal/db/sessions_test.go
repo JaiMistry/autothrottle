@@ -52,8 +52,11 @@ func TestOpenAndCloseSession(t *testing.T) {
 		t.Error("a freshly opened session must read as still playing")
 	}
 
-	if err := d.CloseSession(server, "42"); err != nil {
-		t.Fatalf("CloseSession: %v", err)
+	// Closing is idempotent, and closing something never opened is fine.
+	for _, key := range []string{"42", "42", "never"} {
+		if err := d.CloseSession(server, key); err != nil {
+			t.Fatalf("CloseSession(%q): %v", key, err)
+		}
 	}
 	sessions = allSessions(t, d)
 	if len(sessions) != 1 || !sessions[0].Ended() {
@@ -61,9 +64,8 @@ func TestOpenAndCloseSession(t *testing.T) {
 	}
 }
 
-// The scheduler learns a session is playing from both the event stream
-// and the reconciliation snapshot, and they overlap constantly. A
-// second open must not create a second row.
+// The event stream and the snapshot both open sessions, constantly
+// overlapping; a second open must not add a row.
 func TestOpenSessionIsIdempotent(t *testing.T) {
 	d := newTestDB(t)
 	server := addTestMediaServer(t, d, "Plex")
@@ -78,27 +80,7 @@ func TestOpenSessionIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestCloseSessionIsIdempotent(t *testing.T) {
-	d := newTestDB(t)
-	server := addTestMediaServer(t, d, "Plex")
-
-	// Closing something never opened is not an error.
-	if err := d.CloseSession(server, "never"); err != nil {
-		t.Fatalf("closing an unknown session: %v", err)
-	}
-	if err := d.OpenSession(server, "42", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.CloseSession(server, "42"); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.CloseSession(server, "42"); err != nil {
-		t.Fatalf("closing twice: %v", err)
-	}
-}
-
-// Media servers reuse session keys, so a new session with a key seen
-// before must open a fresh row rather than reviving the old one.
+// Servers reuse session keys: a new session opens a row, not revives one.
 func TestReusedSessionKeyOpensNewRow(t *testing.T) {
 	d := newTestDB(t)
 	server := addTestMediaServer(t, d, "Plex")
@@ -153,8 +135,7 @@ func TestCloseSessionsForServerOnlyAffectsThatServer(t *testing.T) {
 	}
 }
 
-// An open session older than the retention window is still playing;
-// deleting it would strand it as permanently open.
+// An open session past the retention window is still playing.
 func TestPruneSessionHistoryKeepsOpenSessions(t *testing.T) {
 	d := newTestDB(t)
 	server := addTestMediaServer(t, d, "Plex")

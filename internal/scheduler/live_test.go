@@ -10,7 +10,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/live"
 )
 
-// heard counts the changes the scheduler announces.
 type heard struct {
 	mu     sync.Mutex
 	topics map[live.Topic]int
@@ -45,8 +44,7 @@ func eventually(t *testing.T, what string, ok func() bool) {
 	}
 }
 
-// Playback starting is announced at once, before the downloaders have
-// answered, and again when the throttle lands and a period opens.
+// A session start is announced at once, and again when the throttle lands.
 func TestSessionChangesAreAnnounced(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	h := &heard{topics: map[live.Topic]int{}}
@@ -81,9 +79,8 @@ func TestSessionChangesAreAnnounced(t *testing.T) {
 	}
 }
 
-// Sockets report position every second or so. Those reports are not
-// news while they agree with the page's own clock; a seek, a pause or
-// a new title is.
+// Position reports that agree with the page's own clock are not news; a
+// seek, a pause or a new title is.
 func TestDetailUpdatesAnnounceOnlyWhatShows(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
@@ -105,7 +102,6 @@ func TestDetailUpdatesAnnounceOnlyWhatShows(t *testing.T) {
 		t.Error("a pause was not announced")
 	}
 
-	// A snapshot that matches is quiet; one that adds a session is not.
 	h.reset()
 	s.ReplaceSessions(msID, []clients.Session{{Key: "a", Title: "Andor", Position: 20 * time.Minute, PositionAt: t0.Add(30 * time.Second), Paused: true}})
 	if n := h.count(live.Dashboard); n != 0 {

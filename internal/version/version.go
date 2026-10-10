@@ -1,6 +1,4 @@
-// Package version carries the build's identity. Set at link time; the
-// fallback is what a plain `go build` or `go run` produces, which is
-// exactly when "dev" is the honest answer.
+// Package version carries the build's identity, set at link time.
 package version
 
 import (
@@ -14,34 +12,24 @@ import (
 // Version is overridden with -ldflags "-X .../internal/version.Version=1.2.3".
 var Version = "dev"
 
-// Label renders the running version for display: "v1.0.0" for a
-// release, "dev" for a build with no release number.
-//
-// The stamp comes straight from the git tag, so it may or may not
-// already carry a leading "v" — release.yml passes the ref name
-// verbatim, which is "v1.0.0". Trimming before re-adding is what stops
-// a real tagged release rendering as "vv1.0.0".
+// Label renders the version for display: "v1.0.0" for a release, the
+// stamp as is otherwise. Tags already carry the "v", so it is trimmed
+// before being added.
 func Label() string {
 	v := strings.TrimPrefix(Version, "v")
 	if v == "" || v == "dev" {
 		return "dev"
 	}
-	// Only a release number gets dressed up with the "v". A local build
-	// off an untagged repo is stamped with what `git describe` could
-	// manage — "f3d60f3-dirty" — and printing that as "vf3d60f3-dirty"
-	// would assert a release that does not exist.
+	// Only a release number gets the "v"; an untagged build's stamp
+	// ("f3d60f3-dirty") is not a release.
 	if !isReleaseNumber(v) {
 		return v
 	}
 	return "v" + v
 }
 
-// isReleaseNumber reports whether a stamp looks like a version rather
-// than a commit description. A leading digit is not enough on its own:
-// plenty of commit shas start with one, and "5812252-dirty" would then
-// be printed as "v5812252-dirty". Requiring digit-dot-digit is what
-// separates a release number from a sha, since every tag here is
-// semver-shaped.
+// isReleaseNumber tells a release number from a commit description by
+// digit-dot-digit: shas can start with a digit too.
 func isReleaseNumber(v string) bool {
 	dot := strings.IndexByte(v, '.')
 	if dot <= 0 || dot == len(v)-1 {
@@ -79,10 +67,8 @@ type Build struct {
 	Docker  bool
 }
 
-// Current reads the build's identity, preferring what was stamped at
-// link time and falling back to the VCS metadata the toolchain embeds
-// on its own. A Docker build has no .git to read, so the stamp is what
-// carries there; a local `go build` has no stamp, so the metadata is.
+// Current reads the build's identity: the link-time stamp (Docker
+// builds), else the VCS metadata the toolchain embeds (plain go build).
 func Current() Build {
 	b := Build{
 		Version: Version,
@@ -118,9 +104,8 @@ func Current() Build {
 	return b
 }
 
-// inDocker reports whether this process is running inside a container.
-// The marker file is what Docker itself writes; it is a hint for a
-// display line, not a security boundary.
+// inDocker reports whether this runs in a container, from the marker
+// file Docker writes. A display hint only.
 func inDocker() bool {
 	if _, err := os.Stat("/.dockerenv"); err == nil {
 		return true

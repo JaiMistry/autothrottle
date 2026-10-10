@@ -84,9 +84,8 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
     req.add_header("X-Emby-Authorization", auth)
     if token:
         req.add_header("X-Emby-Token", token)
-    # A server can report itself ready and still answer 503, or drop the
-    # connection, for a few seconds while it finishes starting, so those
-    # alone are retried. The wizard's calls are safe to repeat.
+    # A server reporting ready can still answer 503, or drop the connection,
+    # while it finishes starting. The wizard's calls are safe to repeat.
     for attempt in range(30):
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
@@ -96,8 +95,7 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
             if e.code != 503 or attempt == 29:
                 raise
             time.sleep(2)
-        # Any dropped connection: a reset, a broken pipe, a server closing
-        # mid-reply. urllib wraps some of these in URLError.
+        # A reset, broken pipe or close mid-reply; urllib wraps some in URLError.
         except (urllib.error.URLError, ConnectionError, http.client.HTTPException):
             if attempt == 29:
                 raise
@@ -179,6 +177,12 @@ def configure_plex():
         return bool(found)
     wait_for("the library scan", scanned)
 
+    # Matching and analysing the new item keeps Plex busy, and slow to
+    # answer, for a while after it appears.
+    def idle():
+        return not plex(f"{base}/activities")["MediaContainer"].get("Activity")
+    wait_for("Plex to finish with the library", idle)
+
     write_env({"kind": "plex", "label": SERVER["label"], "base": base, "internal": SERVER["internal"],
                "itemId": item["ratingKey"], "itemName": item["title"], "durationMs": int(item.get("duration", 600000))})
     log(f"ready: {item['title']}, server {identity['machineIdentifier'][:8]}…")
@@ -255,8 +259,8 @@ def configure():
         return bool(items)
     wait_for("the library scan", scanned)
 
-    # The key AutoThrottle is given, made the way a person would: as an
-    # app key from the server's dashboard, not the user's session token.
+    # An app key from the dashboard, as a person would make it, not the
+    # user's session token.
     call("/Auth/Keys?app=AutoThrottle", {}, token=token)
     keys = call("/Auth/Keys", token=token)["Items"]
     api_key = next(k["AccessToken"] for k in keys if k.get("AppName") == "AutoThrottle")

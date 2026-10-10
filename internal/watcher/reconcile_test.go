@@ -50,10 +50,8 @@ func TestReconcileOnceForwardsSnapshotToScheduler(t *testing.T) {
 	}
 }
 
-// An unreachable server must leave the tracked session set alone.
-// Treating a failed snapshot as "nothing is playing" would drop
-// throttling every time the server hiccuped mid-playback — worse than
-// the drift the poll exists to correct.
+// A failed snapshot is not "nothing is playing": that would drop the
+// throttle whenever the server hiccuped.
 func TestReconcileOnceLeavesStateAloneWhenSnapshotFails(t *testing.T) {
 	m, _, sink, _ := newTestManager(t)
 	w := &fakeWatcher{err: errors.New("connection refused")}
@@ -67,9 +65,7 @@ func TestReconcileOnceLeavesStateAloneWhenSnapshotFails(t *testing.T) {
 	}
 }
 
-// An empty snapshot is a real answer — "nothing is playing" — and must
-// be forwarded, since that's exactly the drift case where a session
-// stopped without the event stream ever saying so.
+// An empty snapshot is a real answer, and the drift case the poll is for.
 func TestReconcileOnceForwardsEmptySnapshot(t *testing.T) {
 	m, _, sink, _ := newTestManager(t)
 	w := &fakeWatcher{snapshot: nil}
@@ -84,13 +80,10 @@ func TestReconcileOnceForwardsEmptySnapshot(t *testing.T) {
 	}
 }
 
-// Connection satisfies the interface; these tests do not exercise the
-// live-feed health surface.
 func (f *fakeWatcher) Connection() clients.ConnectionState {
 	return clients.ConnectionState{Connected: true}
 }
 
-// sessionsFrom builds the snapshot shape from bare keys.
 func sessionsFrom(keys ...string) []clients.Session {
 	out := make([]clients.Session, 0, len(keys))
 	for _, key := range keys {

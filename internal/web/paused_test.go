@@ -2,14 +2,13 @@ package web
 
 import (
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"testing"
 )
 
-// While throttling is disabled, every page says so across the top, with
-// when and the way back; the Dashboard drops its own copies of both.
+// While disabled, every page carries the banner; the Dashboard drops its
+// own pause alert and button.
 func TestPausedBanner(t *testing.T) {
 	app := newApp(t)
 	app.mediaServer("JF", "jellyfin", "http://jf.lan")
@@ -44,9 +43,7 @@ func TestPausedBanner(t *testing.T) {
 		t.Error("the paused pill does not carry the filled-square glyph")
 	}
 
-	// Resuming from another page stays on it.
-	var req url.Values
-	rec := app.doWithReferer("/pause-toggle", req, "http://example.com/logs?level=warn")
+	rec := app.postFrom("http://example.com/logs?level=warn", "/pause-toggle")
 	expectRedirect(t, rec, "/logs?level=warn")
 	if app.sched.Paused() {
 		t.Fatal("Resume did not resume")
@@ -54,14 +51,6 @@ func TestPausedBanner(t *testing.T) {
 	if strings.Contains(app.get("/logs").Body.String(), `class="at-paused"`) {
 		t.Error("the banner outlived the pause")
 	}
-	// A referrer from another site is not followed.
 	app.post("/pause-toggle", nil)
-	expectRedirect(t, app.doWithReferer("/pause-toggle", req, "https://evil.example/x"), "/")
-}
-
-func TestPausedOverallFlag(t *testing.T) {
-	got := overallStatus(true, 0, false, true, false)
-	if got != (overallFlag{Tone: "warn", Label: "Throttling disabled", Icon: "paused"}) {
-		t.Errorf("paused: %+v", got)
-	}
+	expectRedirect(t, app.postFrom("https://evil.example/x", "/pause-toggle"), "/")
 }

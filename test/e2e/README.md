@@ -10,7 +10,7 @@ test/e2e/run.sh
 ```
 
 Needs Docker and Python 3. The first run pulls about 2 GB of images; after
-that each media server takes about a minute. The test video is committed
+that each media server takes about two minutes. The test video is committed
 (`fixtures/`, a 200 KB, ten-minute H.264 file), so nothing is rendered.
 
 | | |
@@ -22,15 +22,15 @@ that each media server takes about a minute. The test video is committed
 
 ## What it covers
 
-First-run setup · adding a media server, with a wrong and a
-right key · refusing a duplicate · adding both download clients · the
-mapping matrix · the idle Dashboard · playback starting, watched live with
-no reloads, and the real limits on both clients · the timecode advancing ·
-a restart mid-playback re-applying limits the client lost, without signing
-you out · pause holding the throttle and the clock · turning throttling off
-and on · the local-playback exemption ·
-playback stopping and the limits restored · the log recording all of it ·
-clearing the log and new events still arriving.
+Creating the account · adding a media server in the drawer, with a wrong
+and a right credential · refusing a duplicate · both download clients ·
+the mapping matrix · live updates over the event stream, and the fallback
+poll when it is blocked · playback throttling both clients for real,
+shown within 1.5s · the timecode and session timer · a restart
+mid-playback · pause holding the throttle · disabling and resuming
+throttling from the banner · a download client restarting and recovering
+· the local-playback exemption · the log · deleting a connection · the
+404 page and returning to a page after signing in.
 
 With Plex, the run also covers **Sign in with Plex**: the request is
 approved on plex.tv with the test account's token, as its owner would.

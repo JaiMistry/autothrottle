@@ -97,9 +97,7 @@ func TestListEventsFiltered(t *testing.T) {
 	})
 }
 
-// A search string containing LIKE wildcards must be matched literally,
-// not treated as a pattern — otherwise searching "100%" returns
-// everything.
+// LIKE wildcards in a search match literally: "100%" is not "everything".
 func TestListEventsFilteredEscapesSearchWildcards(t *testing.T) {
 	d := newTestDB(t)
 	insertEvent(t, d, Event{Level: "info", Message: "disk usage at 100% on media volume"})

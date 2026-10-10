@@ -5,9 +5,8 @@ import (
 	"errors"
 )
 
-// GetSetting returns the raw stored value for key. ok is false when the
-// key has never been written — callers apply their own default rather
-// than the zero value being mistaken for a real setting.
+// GetSetting returns the stored value for key; ok is false when it was
+// never written, so callers apply their own default.
 func (d *DB) GetSetting(key string) (value string, ok bool, err error) {
 	err = d.conn.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {

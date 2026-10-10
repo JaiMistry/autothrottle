@@ -9,18 +9,12 @@ import (
 	"strings"
 )
 
-// Transmission's RPC lives at one endpoint and dispatches on a method
-// name in the request body, rather than qBittorrent's one-path-per-
-// operation REST layout.
+// transmissionRPCPath is the one endpoint; the method is in the body.
 const transmissionRPCPath = "/transmission/rpc"
 
-// transmissionSessionHeader carries Transmission's CSRF token.
-//
-// The handshake is unusual enough to be worth stating plainly: the
-// first request of a connection is *expected* to fail. Transmission
-// answers it with 409 and puts a session id in this header, which the
-// client must echo on every subsequent request. So a 409 here is not an
-// error, it is step one of the protocol — see transmissionCall.
+// transmissionSessionHeader carries Transmission's CSRF token. The first
+// request is expected to fail with 409 and this header, which every
+// later request must echo; see transmissionCall.
 const transmissionSessionHeader = "X-Transmission-Session-Id"
 
 type transmissionRequest struct {
@@ -29,28 +23,22 @@ type transmissionRequest struct {
 }
 
 type transmissionResponse struct {
-	// Result is "success" or a human-readable failure string.
-	// Transmission reports application-level failures in here with a
-	// 200 status, so the status code alone never confirms anything —
-	// the same trap qBittorrent's login endpoint sets with "Fails."
+	// Result is "success" or a failure message: Transmission reports
+	// failures here with a 200 status.
 	Result    string          `json:"result"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
 // TestTransmission checks that baseURL reaches a Transmission daemon
-// and that the credentials, if any, are accepted. session-get is the
-// cheapest authenticated method that proves all three.
+// and that the credentials, if any, are accepted.
 func TestTransmission(ctx context.Context, baseURL, username, password string) error {
 	_, err := transmissionCall(ctx, baseURL, username, password, "session-get", nil)
 	return err
 }
 
-// SetTransmissionLimits sets Transmission's global speed limits.
-//
-// The ordinary limits, not turtle mode, which is the user's own toggle
-// and would be fought over. Limits are KB/s, which the RPC takes as is.
-// 0 means unlimited, so it disables the limit: a literal 0 would stop
-// all traffic.
+// SetTransmissionLimits sets the ordinary global limits, not turtle
+// mode (the user's own toggle). 0 disables a limit, since a literal 0
+// would stop all traffic.
 func SetTransmissionLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	args := map[string]any{
 		"speed-limit-down":         downloadLimitKBps,
@@ -65,11 +53,8 @@ func SetTransmissionLimits(ctx context.Context, baseURL, username, password stri
 }
 
 // transmissionCall performs one RPC, completing the session-id
-// handshake if the daemon asks for it.
-//
-// At most one retry: the 409 either yields a usable session id or the
-// server is not behaving like Transmission, and retrying past that
-// would just loop against a broken endpoint.
+// handshake if asked. One retry at most: a second 409 means the server
+// is not behaving like Transmission.
 func transmissionCall(ctx context.Context, baseURL, username, password, method string, args any) (json.RawMessage, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 	rpcURL := baseURL + transmissionRPCPath
@@ -107,8 +92,7 @@ func transmissionAttempt(ctx context.Context, client *http.Client, rpcURL, usern
 	if sessionID != "" {
 		req.Header.Set(transmissionSessionHeader, sessionID)
 	}
-	// Transmission's RPC can be left unauthenticated, in which case
-	// sending an empty Basic header would be worse than sending none.
+	// Unauthenticated RPC must get no Basic header at all.
 	if username != "" || password != "" {
 		req.SetBasicAuth(username, password)
 	}

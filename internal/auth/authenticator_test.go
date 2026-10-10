@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// accountMem is an AccountStore with the same once-only rule the database
-// enforces.
+// accountMem enforces the database's once-only rule.
 type accountMem struct {
 	mu         sync.Mutex
 	user, hash string
@@ -67,8 +66,7 @@ func TestModes(t *testing.T) {
 	}
 }
 
-// Half a credential pair is always a mistake; quietly falling through
-// to the setup screen would hide it.
+// Half a pair is a mistake that falling through to setup would hide.
 func TestHalfACredentialPairIsRefused(t *testing.T) {
 	if _, err := load(t, "", "admin", "", &accountMem{}); err == nil {
 		t.Error("AUTH_USERNAME without AUTH_PASSWORD should be refused")

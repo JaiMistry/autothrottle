@@ -7,15 +7,13 @@ import (
 	"testing"
 )
 
-// Every page behind login, as a visitor without a session sees it.
 func TestProtectedPagesRedirectToLogin(t *testing.T) {
 	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
 	expectRedirect(t, app.get("/"), "/login")
-	// Asked for by address, a page is where signing in returns to.
+	// Signing in returns to the page asked for.
 	for _, path := range []string{"/configuration", "/logs?level=warn", "/dashboard/live", "/dashboard/history"} {
 		expectRedirect(t, app.get(path), "/login?next="+url.QueryEscape(path))
 	}
-	// A state change without a session must not happen either.
 	expectRedirect(t, app.do("POST", "/pause-toggle", url.Values{}), "/login")
 	if app.sched.Paused() {
 		t.Error("an anonymous POST paused throttling")
@@ -38,8 +36,8 @@ func TestLogin(t *testing.T) {
 	}
 	expectStatus(t, app.get("/"), http.StatusOK)
 
-	// A restart (a new server over the same database) keeps you signed in.
-	app.restart()
+	app.restart() // a restart keeps you signed in
+
 	expectStatus(t, app.get("/"), http.StatusOK)
 
 	app.csrf = csrfField.FindStringSubmatch(app.get("/configuration").Body.String())[1]
@@ -47,8 +45,7 @@ func TestLogin(t *testing.T) {
 	expectRedirect(t, app.get("/"), "/login")
 }
 
-// setupForm loads the create-account screen, as a browser would, and
-// returns its form with the CSRF field filled in.
+// setupForm loads the create-account screen and fills in its CSRF field.
 func (a *testApp) setupForm(user, pass string) url.Values {
 	a.t.Helper()
 	m := csrfField.FindStringSubmatch(a.get("/setup").Body.String())
@@ -58,8 +55,6 @@ func (a *testApp) setupForm(user, pass string) url.Values {
 	return url.Values{"username": {user}, "password": {pass}, "csrf_token": {m[1]}}
 }
 
-// The setup form is the one page open to anyone, so it is throttled
-// like the login form.
 func TestSetupIsRateLimited(t *testing.T) {
 	app := newAppWith(t, nil)
 	var last int
@@ -106,15 +101,13 @@ func TestStateChangesNeedTheCSRFToken(t *testing.T) {
 func TestDisabledAuthLetsEveryoneIn(t *testing.T) {
 	app := newAppWith(t, map[string]string{"AUTH_DISABLED": "true"})
 	expectStatus(t, app.get("/"), http.StatusOK)
-	// Nothing to log in to, so the login page steps aside.
 	expectRedirect(t, app.get("/login"), "/")
 }
 
 func TestFirstRunSetup(t *testing.T) {
 	app := newAppWith(t, nil)
 
-	// Nothing can log in yet, so every address leads to setup — real
-	// pages, the login page and made-up ones alike.
+	// Every address leads to setup, made-up ones included.
 	for _, path := range []string{"/", "/login", "/logs", "/no-such-page"} {
 		expectRedirect(t, app.get(path), "/setup")
 	}
@@ -127,8 +120,7 @@ func TestFirstRunSetup(t *testing.T) {
 		t.Error("the screen still asks for a confirmation or sets a length")
 	}
 
-	// Another site making the browser post the form gets nothing: it has
-	// no way to the token.
+	// A cross-site post has no way to the token.
 	forged := app.do("POST", "/setup", url.Values{"username": {"intruder"}, "password": {"pw"}})
 	expectStatus(t, forged, http.StatusForbidden)
 	if !app.srv.auth.NeedsSetup() {
@@ -140,10 +132,9 @@ func TestFirstRunSetup(t *testing.T) {
 	// No password rules: one character is a password.
 	rec := app.do("POST", "/setup", app.setupForm("jai", "x"))
 	expectRedirect(t, rec, "/")
-	// Setup signs you straight in, to the first-run Dashboard.
 	expectBody(t, app.get("/"), "Nothing configured yet")
 
-	// And the screen and its address are gone for good.
+	// Then the screen and its address are gone for good.
 	expectStatus(t, app.get("/setup"), http.StatusNotFound)
 	expectStatus(t, app.do("POST", "/setup", url.Values{"username": {"intruder"}, "password": {"pw"}}), http.StatusNotFound)
 	if !app.srv.auth.Verify("jai", "x") || app.srv.auth.Verify("intruder", "pw") {

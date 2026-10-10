@@ -1,14 +1,6 @@
-/* The design system's components, as CSS classes.
- *
- * Written against the tokens rather than as Tailwind utility strings:
- * the design is authored as explicit token values (exact pixel type
- * scale, asymmetric pill padding, container-query breakpoints), and
- * expressing that as utilities would both round the values and bury
- * the intent in forty-class attributes. Tailwind still handles layout.
- *
- * Class names mirror the design system's component names one-to-one,
- * so a change there has one obvious place to land here.
- */
+/* The design system's components as CSS classes, named one-to-one after
+   them. Written against the tokens: as utilities the exact values would
+   round off and drown in class lists. Tailwind still handles layout. */
 
 /* ── Shell ────────────────────────────────────────────────────────── */
 
@@ -16,15 +8,12 @@
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
-  /* Mobile browsers report 100vh as the viewport with the URL bar
-     retracted, so the shell is the wrong height whenever it is not —
-     which is what left the footer stranded mid-screen. dvh follows the
-     area actually on screen; the vh above stays for anything older. */
+  /* dvh tracks the visible area as mobile URL bars come and go; vh above
+     is the fallback. */
   min-height: 100dvh;
   background: var(--bg);
-  /* The design animates the nav's own width. Here the width comes from
-     the grid track, so the track is what has to move — otherwise the
-     rail snaps and only its padding eases. */
+  /* The width comes from the grid track, so the track animates; otherwise
+     the rail snaps and only its padding eases. */
   transition: grid-template-columns var(--dur-base) var(--ease-out);
 }
 html[data-rail="collapsed"] .at-shell { grid-template-columns: 58px 1fr; }
@@ -40,11 +29,8 @@ html[data-rail="collapsed"] .at-shell { grid-template-columns: 58px 1fr; }
   position: sticky;
   top: 0;
   align-self: start;
-  /* Its grid area, not the viewport. A hardcoded 100vh forced the shell's
-     row to that height whatever space was actually available — and on a
-     browser where dvh is smaller than vh, that is taller than the shell
-     itself, which is what pushed the footer out of view. Height comes
-     from grid stretch everywhere below the outermost wrapper. */
+  /* Height from grid stretch, not 100vh: where dvh < vh, 100vh is taller
+     than the shell and pushes the footer out of view. */
   height: 100%;
   overflow-y: auto;
   transition: width var(--dur-base) var(--ease-out), padding var(--dur-base) var(--ease-out);
@@ -77,15 +63,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-head { justify-content: center; p
   line-height: 1;
 }
 .at-rail-toggle:hover { color: var(--text-dim); }
-/* Expanded is the default, so the expand control only appears once the
-   rail is collapsed. */
 .at-rail-toggle-expand { display: none; }
 html[data-rail="collapsed"] .at-rail-toggle-expand { display: inline-flex; }
 html[data-rail="collapsed"] .at-rail-toggle-collapse { display: none; }
 html[data-rail="collapsed"] .at-shell .at-rail-toggle-expand { align-self: center; margin-bottom: var(--space-6); }
 
-/* The active nav item is the only elevated thing on the page — a
-   raised surface, not an accent bar. */
 .at-nav-item {
   display: flex;
   align-items: center;
@@ -113,8 +95,7 @@ html[data-rail="collapsed"] .at-shell .at-nav-item { justify-content: center; pa
 html[data-rail="collapsed"] .at-shell .at-nav-label,
 html[data-rail="collapsed"] .at-shell .at-rail-name { display: none; }
 
-/* Log out takes the row; the icon-only theme pill sits at its end.
-   Collapsed, the pill stacks above Log out, both centred. */
+/* Collapsed, the theme pill stacks above Log out. */
 .at-rail-foot { margin-top: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
 .at-rail-foot form { grid-row: 1; grid-column: 1; }
 .at-rail-theme { grid-row: 1; grid-column: 2; display: inline-flex; }
@@ -134,11 +115,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   font-size: var(--text-ui);
   color: var(--text);
 }
-/* The mark is user-replaceable, so it is always a plain square file
-   with the radius applied here rather than baked into the asset. */
+/* The mark is user-replaceable, so the radius is applied here. */
 .at-brand img { border-radius: var(--radius-md); }
-/* The rail's lockup overrides the component's defaults, as AppShell
-   does: a larger mark and body-size text. */
 .at-rail .at-brand, .at-topbar .at-brand { gap: var(--space-5); }
 .at-brand { color: inherit; text-decoration: none; }
 .at-brand:hover { color: inherit; }
@@ -146,8 +124,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-brand img { display: block; flex-shrink: 0; }
 .at-rail-name {
   font-size: var(--text-section);
-  /* A safety net that should never fire at rest: the rail is sized to
-     hold the whole wordmark on one row. */
+  /* A safety net: the rail is sized to fit the wordmark. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,9 +133,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-brand { transition: opacity var(--dur-fast) var(--ease-standard); }
 .at-brand:hover { opacity: .82; }
 
-/* min-height: 0, not 100%. A percentage resolves against the indefinite
-   1fr row and re-inflates it; default stretch alignment already fills
-   the area, so main takes the 1fr and the footer lands at the bottom. */
+/* min-height: 0, not 100%: a percentage of the indefinite 1fr row
+   re-inflates it. */
 .at-main-col { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; }
 .at-main { padding: var(--space-9) 26px var(--space-9); min-width: 0; }
 .at-foot {
@@ -174,10 +150,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   font-size: var(--text-caption);
   color: var(--text-faint);
 }
-/* The design pins this mark at #8593a5 in both themes — it bakes the
-   colour into the icon URL — and dims it to 75%. Using --text-faint
-   instead made it #5c6a80 on the dark ground and then dimmed that again,
-   so it came out muddy where the design reads as a clear grey. */
+/* The design pins this mark at #8593a5 in both themes, dimmed to 75%;
+   --text-faint dimmed again comes out muddy. */
 .at-gh {
   display: inline-flex;
   color: #8593a5;
@@ -186,13 +160,9 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-gh:hover { opacity: 1; color: var(--accent); }
 
-/* Mobile top bar + drawer.
-   One rail in the DOM, not two: a second copy for the drawer would
-   mean two <nav> landmarks and two aria-current items, which a screen
-   reader reads out twice. Below the breakpoint the same element is
-   lifted out of the grid, fixed to the edge and translated off-canvas
-   — mounted always, because a conditionally rendered drawer has
-   nothing to transition from and snaps open. */
+/* Mobile top bar + drawer. The same rail element, lifted out of the grid
+   and slid off-canvas: a second copy would duplicate the nav landmark for
+   screen readers. */
 .at-topbar { display: none; }
 .at-drawer-scrim {
   position: fixed;
@@ -218,11 +188,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
     height: 100%;
     box-shadow: var(--shadow);
     transform: translateX(-100%);
-    /* visibility, not just transform: an off-canvas drawer that is
-       merely moved is still in the accessibility tree and still
-       focusable, so a keyboard user tabs into an invisible menu.
-       Delaying it by the slide duration keeps the close animation
-       visible instead of cutting it off. */
+    /* visibility too: a merely moved drawer stays focusable. Delayed by the
+       slide so the close animation still shows. */
     visibility: hidden;
     transition: transform var(--dur-base) var(--ease-out),
                 visibility 0s linear var(--dur-base);
@@ -233,8 +200,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
     visibility: visible;
     transition: transform var(--dur-base) var(--ease-out), visibility 0s;
   }
-  /* Collapsing is a desktop affordance; the drawer is already the
-     narrow answer. */
   .at-rail-toggle { display: none; }
   html[data-rail="collapsed"] .at-shell .at-nav-label,
   html[data-rail="collapsed"] .at-shell .at-rail-name { display: inline; }
@@ -266,28 +231,20 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
     border-bottom: 1px solid var(--border);
   }
   .at-main { padding: var(--space-9) 16px var(--space-9); }
-  /* The theme pill lives in the top bar here, so the drawer's footer is
-     Log out alone. */
+  /* The theme pill is in the top bar here. */
   .at-rail-foot { grid-template-columns: minmax(0, 1fr); }
   .at-rail-theme { display: none; }
   .at-foot { padding: 10px 16px 16px; }
 
-  /* An absolutely-positioned bubble still counts toward the document's
-     width even while hidden, and at 280px of nowrap text it pushed the
-     page wider than the screen — which is what made the browser zoom the
-     whole app out. Capping it is not enough, because how far it starts
-     across depends on how long the legend is. Instead it measures itself
-     against the whole rate group here: spanning a box that already fits
-     the card, it cannot stick out however wide the text is. */
+  /* A hidden absolute bubble still widens the document, which made phones
+     zoom the app out. Positioned against the whole rate group, it can't
+     stick out however long the text. */
   .at-ratepair { position: relative; }
   .at-ratepair .at-hint { position: static; }
   .at-ratepair .at-hint-anchor { left: 0; right: 0; width: auto; max-width: none; }
   .at-ratepair .at-hint-bubble { white-space: normal; }
 
-  /* Only where it is asked for: a tab bar told to fill does so edge to
-     edge here, and stays fit-content everywhere else. The compound
-     selector is deliberate — .at-tabs sets width later in this file and
-     would otherwise win on source order. */
+  /* Compound selector: .at-tabs sets width later and would win on order. */
   .at-tabs.at-tabs--fill { width: 100%; }
   .at-tabs.at-tabs--fill .at-tab { flex: 1 1 0; justify-content: center; }
 }
@@ -329,8 +286,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Card ─────────────────────────────────────────────────────────── */
 
-/* Cards never carry a shadow — density over depth. A 1px border and a
-   surface change do the separating. */
 .at-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -400,10 +355,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
               color var(--dur-fast) var(--ease-standard),
               border-color var(--dur-fast) var(--ease-standard);
 }
-/* Every variant pins its own hover colour. A button rendered as an <a>
-   otherwise inherits the global `a:hover { color: var(--accent-dim) }`,
-   which on a primary button is the same colour as its background — the
-   label simply disappears. Any new variant must set one too. */
+/* Every variant pins its hover colour: an <a> button would otherwise
+   take the global a:hover, invisible on primary. New variants must too. */
 .at-btn:hover { background: var(--border); color: var(--text); }
 .at-btn:active { transition-duration: var(--dur-instant); }
 .at-btn[disabled], .at-btn[aria-disabled="true"] { opacity: .45; pointer-events: none; }
@@ -415,17 +368,14 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-btn--primary:hover { background: var(--accent-dim); color: var(--accent-contrast); }
 .at-btn--ghost { background: transparent; color: var(--text-dim); border-color: transparent; }
 .at-btn--ghost:hover { background: var(--fill-neutral); color: var(--text); }
-.at-btn--warning { background: var(--warn); color: var(--at-ink); border-color: transparent; }
-.at-btn--warning:hover { background: color-mix(in srgb, var(--warn) 86%, #000); color: var(--at-ink); }
 .at-btn--danger { background: transparent; color: var(--critical); border-color: var(--critical); }
 .at-btn--danger:hover { background: var(--fill-critical); color: var(--critical); }
-/* Solid, for the drawer's Delete: it sits beside a ghost Close and has
-   to read as the one thing there that destroys something. */
+/* Solid, for the drawer's Delete beside a ghost Close. */
 .at-btn--critical { background: var(--critical); color: var(--surface); border-color: var(--critical); }
 .at-btn--critical:hover { background: color-mix(in srgb, var(--critical) 86%, #000); color: var(--surface); }
 
-/* Touch targets, keyed to the pointer rather than to viewport width —
-   a mouse on a small window still gets the dense control. */
+/* Keyed to the pointer, not the width: a mouse on a small window keeps
+   the dense control. */
 @media (pointer: coarse) {
   .at-btn { min-height: 44px; }
 }
@@ -446,19 +396,12 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   background: var(--fill-neutral);
   color: var(--text-dim);
 }
-.at-badge--good { background: var(--fill-good); color: var(--good); }
 .at-badge--warn { background: var(--fill-warn); color: var(--warn); }
 .at-badge--error { background: var(--fill-critical); color: var(--critical); }
 
 /* ── StatusFlag ───────────────────────────────────────────────────── */
 
-/* Not a badge and not a pill: no plate, no fill, no background. The
-   icon carries the colour and the motion, so a column of these reads
-   as instrumentation rather than as a row of badges.
-   Motion IS the state — a trace pulsing left to right means the rate
-   is being held down, undulating bars mean a session is playing, a
-   still dot means the rate runs free. Faults hold perfectly still and
-   let colour carry the alarm. */
+/* StatusFlag: no plate or fill. Only live states move; faults hold still. */
 .at-flag {
   display: inline-flex;
   align-items: center;
@@ -481,8 +424,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-flag[data-tone="warn"] .at-flag-icon { color: var(--warn); }
 .at-flag[data-tone="critical"] .at-flag-icon { color: var(--critical); }
 .at-flag[data-tone="accent"] .at-flag-icon { color: var(--accent); }
-/* Only the alarm tones colour their label; the rest stay in --text so a
-   list of states doesn't turn into a colour chart. */
 .at-flag[data-tone="warn"] { color: var(--warn); }
 .at-flag[data-tone="critical"] { color: var(--critical); }
 
@@ -494,15 +435,12 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-pulse-trace { animation: atFlagTrace 1.45s linear infinite; }
 .at-flag-spin { animation: atFlagSpin 1.1s linear infinite; transform-box: view-box; transform-origin: 12px 12px; }
 
-/* Zeroing the duration tokens is not enough on its own — these loops
-   would keep running at 0s. Both halves are required. */
+/* Zeroed duration tokens don't stop these loops; both are needed. */
 @media (prefers-reduced-motion: reduce) {
   .at-wave-bar, .at-pulse-trace, .at-flag-spin, .at-spin { animation: none; }
 }
 
-/* Plex sign-in: one button, and the live state sits beside it rather
-   than in a box of its own — nothing below the button moves while an
-   attempt runs. */
+/* Plex sign-in: the state sits beside the button, so nothing below moves. */
 .at-plexsignin { display: grid; gap: var(--space-4); }
 .at-plexsignin-row { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
 .at-plexsignin-status { display: inline-flex; align-items: center; gap: var(--space-4); min-width: 0; }
@@ -528,10 +466,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-spin { display: inline-flex; animation: atSpin 1.1s linear infinite; }
 @keyframes atSpin { to { transform: rotate(360deg); } }
 
-/* The body of a Dashboard list card. Rows share the height evenly until
-   the two-row cap takes over, at which point it scrolls inside the card
-   rather than stretching the page. min-height:0 is what allows a grid
-   item to shrink below its content and actually scroll. */
+/* A Dashboard list card's body. min-height:0 lets the grid item shrink
+   below its content and scroll. */
 .at-listshell {
   display: grid;
   grid-auto-rows: minmax(min-content, 1fr);
@@ -540,7 +476,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   overflow-y: auto;
 }
 
-/* A playing session: what it is, where, and how far in. */
 .at-sessions { display: grid; gap: var(--space-4); font-size: var(--text-caption); color: var(--text-dim); }
 .at-session { display: grid; gap: 4px; font-size: var(--text-caption); min-width: 0; }
 .at-session-head { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; min-width: 0; }
@@ -560,9 +495,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-session-fill { position: absolute; inset: 0; background: var(--accent); opacity: .75; }
 .at-session-time {
   flex-shrink: 0;
-  /* Fixed width, so the bar beside it keeps one length for the whole
-     stream. Sized to the longest timecode rather than the current one:
-     otherwise every tick that changes the text width resizes the bar. */
+  /* Sized to the longest timecode, so ticks don't resize the bar. */
   width: 17ch;
   text-align: right;
   font-family: var(--font-mono);
@@ -574,10 +507,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Rows ─────────────────────────────────────────────────────────── */
 
-/* RateFigure: a download/upload pair as one readout. Download is
-   --good, upload is --accent — arrow and number take the same colour,
-   so direction is legible before the digits are read. Each side
-   carries its own unit and the two are split by a faint slash. */
+/* RateFigure: download in --good, upload in --accent, arrow and number alike. */
 .at-rate {
   display: inline-flex;
   align-items: center;
@@ -596,14 +526,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 /* Both sides unlimited collapses to one word rather than repeating it. */
 .at-rate--unlimited { color: var(--text-dim); }
 
-/* DownloaderRow — the most important row in the product. Three
-   layouts, chosen by the width of the row itself rather than the
-   viewport, so it behaves the same in a narrow card as on a narrow
-   screen. Wide: name line and reason stack on the left, rates centred
-   against the right edge across both. Medium: the name line takes the
-   full width and the rates sit on the reason's own line, on its first
-   baseline. Narrow: nothing shares a line — a shared line here would
-   starve the reason down to three wrapped words. */
+/* DownloaderRow: three layouts chosen by the row's own width (container
+   queries), so a narrow card behaves like a narrow screen. */
 .at-dlrow-wrap {
   container-type: inline-size;
   display: grid;
@@ -638,8 +562,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   .at-dlrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "reason" "rates"; }
   .at-dlrow-side { justify-self: start; align-self: center; }
 }
-/* Below this the type token is dropped rather than allowed to take a
-   line of its own — the name and its status pill always stay together. */
+/* The type token goes first, so the name and its flag stay together. */
 @container (max-width: 330px) {
   .at-rowtype { display: none; }
 }
@@ -651,9 +574,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-dlrow-wrap[data-state="throttled"] .at-dlrow-rates { color: var(--warn); }
 .at-dlrow-wrap[data-state="unreachable"] .at-dlrow-reason { color: var(--critical); }
 
-/* ServerRow: a media server and its active-session count. Sessions
-   exempted by skip_local_playback never enter the count, so there is
-   no "ignored" state to render. */
 .at-serverrow {
   container-type: inline-size;
   display: grid;
@@ -669,7 +589,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-serverrow-detail { font-size: var(--text-caption); color: var(--text-dim); }
 .at-serverrow[data-state="unreachable"] .at-serverrow-detail { color: var(--critical); }
 
-/* LogRow: timestamp, level, message verbatim, optional attribution. */
 .at-logrow {
   display: flex;
   flex-wrap: wrap;
@@ -687,13 +606,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   color: var(--text-faint);
   white-space: nowrap;
 }
-/* A fixed minimum keeps the message column from stepping left and
-   right as levels change down the list. */
+/* Fixed, so the message column doesn't step as levels change. */
 .at-logrow-level { flex: 0 0 auto; display: inline-flex; min-width: 46px; }
 .at-logrow-msg { flex: 1 1 200px; min-width: 0; color: var(--text-dim); text-wrap: pretty; }
 .at-logrow[data-level="error"] .at-logrow-msg { color: var(--text); }
-/* Attribution reads cause → effect: the server, then the downloader it
-   throttled, each in its own tag. */
 .at-logrow-cause {
   display: inline-flex;
   align-items: center;
@@ -708,8 +624,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-logrow-tag { background: var(--fill-neutral); border-radius: var(--radius-xs); padding: 1px 6px; }
 .at-logrow-arrow { color: var(--text-faint); }
 
-/* Every live number gets tabular figures: without them, a swapped rate
-   visibly jitters as digit widths change, and this page polls. */
+/* Tabular figures, so polled numbers don't jitter. */
 .at-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -717,8 +632,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Feedback ─────────────────────────────────────────────────────── */
 
-/* Inline and persistent. This app has no toasts — a condition that
-   matters stays on screen until it stops being true. */
 .at-alert {
   display: grid;
   gap: var(--space-2);
@@ -731,13 +644,9 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-alert-title { font-weight: var(--weight-bold); color: var(--text); }
 .at-alert-body { color: var(--text-dim); }
-.at-alert--warn { background: var(--fill-warn); border-color: var(--warn); }
-.at-alert--warn .at-alert-title { color: var(--warn); }
 .at-alert--error { background: var(--fill-critical); border-color: var(--critical); }
 .at-alert--error .at-alert-title { color: var(--critical); }
 
-/* What is missing, why the page is blank, and one way forward. The
-   dashed edge says "nothing here yet" rather than "something broke". */
 .at-empty {
   display: grid;
   gap: var(--space-4);
@@ -750,16 +659,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-empty--accent { border-color: var(--accent); }
 .at-empty-title { margin: 0; font-size: var(--text-ui); font-weight: var(--weight-bold); color: var(--text); }
-/* balance, not pretty: pretty only shortens the last line, which is
-   what stranded "anything." on a line of its own. balance evens every
-   line instead, so no single word is left behind. */
+/* balance, not pretty: pretty left one word stranded. */
 .at-empty-body { margin: 0; font-size: var(--text-caption); color: var(--text-dim); max-width: 52ch; text-wrap: balance; }
 .at-empty-action { margin-top: var(--space-2); }
 
-/* The swap target for a connection test. Four states, one bounded box,
-   so the result never shifts the form around it. Dismissed by hand — it
-   holds still until closed, then goes at once. No exit animation, and
-   no timer racing the reader. */
+/* A connection test result: one bounded box, so the form doesn't shift. */
 .at-testresult {
   display: grid;
   gap: var(--space-3);
@@ -784,14 +688,11 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 /* The plain-language line under the raw error: what to do about it. */
 .at-testresult-hint { font-size: var(--text-caption); color: var(--text-dim); text-wrap: pretty; }
 
-/* The test button says what it is doing. htmx marks the element it is
-   requesting for, so the swap needs no script of its own. */
+/* htmx marks the requesting element, so this needs no script. */
 .at-btn-busy { display: none; }
 .at-btn.htmx-request .at-btn-idle { display: none; }
 .at-btn.htmx-request .at-btn-busy { display: inline; }
-/* Pushed right on its own; only when an elapsed time is already holding
-   that edge does it sit beside it instead. A validation failure has no
-   elapsed time, and without this the button landed mid-row. */
+/* Pushed right unless an elapsed time already holds that edge. */
 .at-testresult-close {
   margin-left: auto;
   display: inline-flex;
@@ -809,15 +710,10 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   font-weight: var(--weight-bold);
   font-family: var(--font-sans);
 }
-/* The idle state is an empty box of the same height, so running a test
-   never nudges the row below it. */
-/* The result row spans the full table width, so it has to shed the
-   table cell's own padding or it stops short of the rule above it. */
+/* Sheds the cell padding so the result spans the full row. */
 .at-table td.at-testcell { border-bottom: 0; padding: 0 0 10px; }
 
-/* A modal dialog centres itself with the UA's `margin: auto`, which the
-   Tailwind reset zeroes along with every other element's margin. Without
-   this it opens against the top-left corner. */
+/* The Tailwind reset zeroes the UA's margin: auto that centres a dialog. */
 .at-dialog { border: 0; padding: 0; background: transparent; margin: auto; color: var(--text); width: min(420px, calc(100% - 2 * var(--space-9))); }
 .at-dialog::backdrop { background: var(--scrim); }
 .at-dialog-panel {
@@ -836,9 +732,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Forms ───────────────────────────────────────────────────────── */
 
-/* Label above the control, hint beneath it. alignContent:start keeps
-   rows at their natural height when a field sits beside a taller
-   sibling in a grid — otherwise the gaps stretch to fill. */
+/* align-content: start keeps fields their natural height beside taller ones. */
 .at-field { display: grid; align-content: start; gap: var(--space-2); }
 .at-field-label {
   font-size: var(--text-label);
@@ -861,9 +755,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   line-height: var(--leading-ui);
   text-align: left;
 }
-/* The design leaves the native arrow in place, which sits hard against
-   the right edge. Drawing it ourselves is the only way to give it room,
-   so the chevron is redrawn to match and inset from the border. */
+/* The chevron is redrawn so it can sit inset from the border. */
 .at-select {
   appearance: none;
   padding-right: 34px;
@@ -909,8 +801,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 .at-input--mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .at-input--invalid { border-color: var(--critical); }
 
-/* Checkbox with an inline label, and an optional description under it.
-   Top-aligned so a wrapping description does not drag the box down. */
+/* Top-aligned, so a wrapping description doesn't drag the box down. */
 .at-check-label {
   display: flex;
   gap: var(--space-4);
@@ -926,13 +817,8 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-check-text { display: grid; gap: 2px; }
 .at-check-text > span:first-child { font-size: var(--text-ui); color: var(--text); }
-.at-check-desc { font-size: var(--text-caption); color: var(--text-faint); }
 
-/* The rate pair solves "0 means unlimited" in place: the suffix inside
-   each field reads "unlimited" instead of "KB/s" the moment the value
-   is 0, so the meaning is visible without reading a hint. Each field
-   carries its direction arrow at the head of the number — green down,
-   cyan up — matching how rates read everywhere else. */
+/* The suffix reads "unlimited" at 0, so the meaning is visible as you type. */
 .at-ratepair { border: 0; margin: 0; padding: 0; display: grid; gap: var(--space-8); }
 .at-ratepair-legend {
   padding: 0;
@@ -945,9 +831,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-ratepair-legend--default { color: var(--accent); }
 
-/* The legend's "?" and its bubble. The bubble stays in the DOM so the
-   button can point at it with aria-describedby, which lets the hint
-   carry a link instead of being a plain title attribute. */
+/* The bubble stays in the DOM for aria-describedby, so the hint can hold a link. */
 .at-hint { position: relative; display: inline-flex; vertical-align: middle; margin-left: 5px; }
 .at-hint-dot {
   display: inline-flex;
@@ -966,9 +850,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   line-height: 1;
   cursor: help;
 }
-/* The positioner carries the gap as padding, so hovering from the dot to
-   the link never crosses dead space. Sizing lives here; the bubble
-   inside only paints. */
+/* The gap is padding, so moving from dot to link never crosses dead space. */
 .at-hint-anchor {
   position: absolute;
   left: -6px;
@@ -1012,8 +894,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   color: var(--text-faint);
   font-weight: var(--weight-semibold);
 }
-/* The box is the control; the input inside it is bare, so the arrow
-   and the unit sit inside the same border as the number. */
+/* The box is the control; the bare input shares its border with arrow and unit. */
 .at-ratebox {
   width: 100%;
   background: var(--bg);
@@ -1027,8 +908,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   align-items: center;
   gap: 7px;
   box-sizing: border-box;
-  /* Without this the box cannot shrink below the width of "unlimited"
-     and overflows its grid track into the field beside it. */
+  /* Or it can't shrink below "unlimited" and overflows into its neighbour. */
   min-width: 0;
 }
 .at-ratebox-arrow { display: flex; flex-shrink: 0; color: var(--good); }
@@ -1061,9 +941,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 
-/* Configuration's sections, the Logs filter and the history range. Wraps to a
-   second row when the container is too narrow — a tab that scrolls out
-   of sight is a tab nobody finds. */
+/* Wraps rather than scrolling, so no tab is out of sight. */
 .at-tabs {
   display: flex;
   gap: var(--space-2);
@@ -1094,8 +972,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
-/* These are anchors, so the global a:hover accent applies unless it is
-   answered here. The design gives a tab no hover colour at all. */
+/* Anchors, so the global a:hover needs answering; the design has no tab hover. */
 .at-tab:hover, .at-tab:focus-visible { color: var(--text-dim); }
 .at-tab[aria-selected="true"]:hover { color: var(--text); }
 .at-tab[aria-selected="true"] {
@@ -1109,9 +986,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Table ───────────────────────────────────────────────────────── */
 
-/* Dense admin table: an uppercase caption row over hairline-separated
-   rows, never zebra striping. Keeps its width and scrolls inside its
-   card rather than squeezing its columns. */
+/* Keeps its width and scrolls inside its card rather than squeezing columns. */
 .at-tablewrap { overflow-x: auto; min-width: 0; }
 .at-table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: var(--text-ui); }
 .at-table th {
@@ -1140,19 +1015,14 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   font-size: var(--text-caption);
 }
 .at-table td.at-cell--dim { color: var(--text-dim); }
-/* The actions column takes only what its buttons need, so the columns
-   that carry real content get the rest of the width. Zero, not the
-   usual 1%: against min-width:max-content a percentage column makes
-   the table's max-content width its own width divided by that
-   percentage, and a 113px column at 1% stretched the table to 11,000px
-   with the buttons scrolled out of sight. */
+/* Zero, not the usual 1%: against min-width:max-content a percentage
+   column inflates the table to its own width ÷ that percentage (11,000px). */
 .at-table th.at-col-actions { width: 0; white-space: nowrap; }
 
 .at-table-empty { padding: 22px 0; text-align: center; color: var(--text-faint); font-size: var(--text-caption); }
 .at-rowactions { display: inline-flex; gap: var(--space-4); justify-content: flex-end; align-items: center; }
-/* A POST needs a form around its button, but the form must not become
-   the flex item — otherwise the button stops being one and loses the
-   blockification and min-width:auto that every sibling control has. */
+/* The form must not be the flex item, or its button loses the sizing
+   every sibling control has. */
 .at-rowactions form, .at-dialog-actions form { display: contents; }
 
 /* ── Grids ────────────────────────────────────────────────────────── */
@@ -1161,8 +1031,6 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 
 /* ── Theme toggle ─────────────────────────────────────────────────── */
 
-/* One of the three places a shadow is allowed: it floats above the
-   content area rather than sitting in it. */
 .at-themetoggle {
   display: inline-flex;
   align-items: center;
@@ -1182,8 +1050,7 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 }
 .at-themetoggle:hover { color: var(--text); }
 .at-themetoggle-icon { color: var(--accent); font-size: 14px; display: inline-flex; align-items: center; }
-/* Only the mode matching the document's state shows; the inline head
-   script sets data-theme-mode before first paint. */
+/* Only the current mode shows; the head script sets it before first paint. */
 .at-themetoggle [data-mode] { display: none; }
 html[data-theme-mode="system"] .at-themetoggle [data-mode="system"],
 html[data-theme-mode="light"] .at-themetoggle [data-mode="light"],
@@ -1195,10 +1062,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── Login ───────────────────────────────────────────────────────── */
 
-/* The sign-in failure reads centred, unlike alerts elsewhere: there is
-   one line of text in a narrow card with nothing to align against, so
-   left-aligning it just looks off-centre. A deliberate departure from
-   the Alert component's default. */
+/* Centred, unlike other alerts: one line in a narrow card. */
 .at-login .at-alert { justify-items: center; text-align: center; }
 
 .at-login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; background: var(--bg); padding: var(--space-10); }
@@ -1269,8 +1133,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── Mapping matrix ──────────────────────────────────────────────── */
 
-/* A cell is a control, not a checkbox: it states which of the two
-   things it is doing rather than making the reader decode a tick. */
 .at-matrix { border-collapse: collapse; font-size: var(--text-ui); min-width: 460px; }
 .at-matrix th, .at-matrix td { line-height: normal; }
 .at-matrix thead th { text-align: left; vertical-align: bottom; }
@@ -1317,14 +1179,11 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── Plex sign-in ────────────────────────────────────────────────── */
 
-/* A bounded block so switching between the two credential methods, or
-   moving through the sign-in, never shifts the form around it. */
+/* Bounded, so switching method or signing in never shifts the form. */
 .at-plexsignin { min-height: 96px; }
 
 /* ── Dashboard hero ──────────────────────────────────────────────── */
 
-/* The one card that borrows a state colour for its outline: warn while
-   anything is throttled, good while every downloader runs free. */
 .at-hero { padding: 20px; }
 .at-hero[data-border="warn"] { border-color: var(--warn); }
 .at-hero[data-border="good"] { border-color: var(--good); }
@@ -1365,7 +1224,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-timer-u { font-size: var(--text-caption); color: var(--text-dim); }
 .at-timer-colon { color: var(--text-faint); }
 
-/* Backends unreachable: one hairline row per backend. */
 .at-unreachable { display: grid; gap: var(--space-3); margin-top: var(--space-2); }
 .at-unreachable-list { display: grid; gap: 1px; border-top: 1px solid color-mix(in srgb, var(--critical) 25%, transparent); }
 .at-unreachable-row {
@@ -1425,8 +1283,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-hm-month { grid-column: 1 / -1; color: var(--text-dim); font-weight: var(--weight-semibold); padding: 8px 0 3px; }
 .at-hm-day { color: var(--text-faint); white-space: nowrap; }
 .at-hm-day[data-today] { color: var(--text); font-weight: var(--weight-semibold); }
-/* One cell height for both ranges, so the first 7 rows of 30 days are
-   identical to the 7-day view and the range can animate between them. */
+/* One cell height for both ranges, so 7d and 30d animate between each other. */
 .at-hm-cell { height: 16px; border-radius: 2px; }
 .at-hm-future { opacity: 0.5; }
 #throttle-history[data-range="7d"] .at-hm-extra { display: none; }
@@ -1435,8 +1292,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
   .at-hm-minor { visibility: hidden; }
 }
 
-/* The one fill table: the grid and the legend both use it. Hours
-   AutoThrottle was not running share the 0 fill. */
+/* The one fill table, for grid and legend. Hours it wasn't running use 0. */
 .at-hm-s0 { background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
 .at-hm-s1 { background: color-mix(in srgb, var(--warn) 26%, var(--surface)); }
 .at-hm-s2 { background: color-mix(in srgb, var(--warn) 48%, var(--surface)); }
@@ -1502,8 +1358,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 }
 .at-named { display: inline-flex; align-items: center; gap: 10px; }
 
-/* The dot is small; its padding is the hit area, given back by the
-   negative margin so the name does not move. */
+/* Padding is the hit area; the negative margin keeps the name in place. */
 .at-st { display: inline-flex; padding: 4px; margin: -4px; cursor: default; }
 .at-st-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--st); }
 .at-st, .at-st-tip { --st: var(--text-faint); }
@@ -1534,7 +1389,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-st-tip-label { font-weight: var(--weight-semibold); color: var(--st); }
 .at-st-tip-detail { color: var(--text-dim); }
 
-/* A quiet add row closing each table, in the same column as the names. */
 .at-addrow {
   display: flex;
   align-items: center;
@@ -1556,8 +1410,7 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-addrow:hover { color: var(--accent); background: var(--fill-accent); }
 .at-addrow > span { font-size: 15px; line-height: 1; }
 
-/* The add/edit drawer. Always mounted and translated off-canvas, so it
-   has something to slide from. */
+/* The add/edit drawer, always mounted so it can slide. */
 .at-sheet-scrim {
   position: fixed;
   inset: 0;
@@ -1596,8 +1449,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── 404 ─────────────────────────────────────────────────────────── */
 
-/* Standalone, like Login: no shell, and nothing to navigate from but
-   its own buttons. */
 .at-login:has(.at-nf) { padding: 40px; }
 .at-nf { width: min(620px, 100%); display: grid; gap: 26px; }
 .at-nf-head { display: grid; gap: 10px; }
@@ -1647,7 +1498,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-setup-head { display: grid; gap: 4px; }
 .at-setup-title { margin: 0; font-size: var(--text-section); font-weight: var(--weight-bold); color: var(--text); }
 .at-setup-sub { margin: 0; font-size: var(--text-caption); color: var(--text-dim); }
-/* Show/Hide sits inside the field, against its right edge. */
 .at-reveal { position: relative; display: block; }
 .at-reveal .at-input { padding-right: 64px; }
 .at-reveal-btn {
@@ -1667,8 +1517,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── Throttling disabled ─────────────────────────────────────────── */
 
-/* Across the top of the page column on every page while paused: the
-   one state that changes what every other screen means. */
 .at-paused {
   display: flex;
   align-items: center;

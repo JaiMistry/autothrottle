@@ -10,9 +10,8 @@ type pagedLog struct {
 	Title    string
 	TargetID string
 	Endpoint string
-	// Query is appended to every control's URL, already prefixed with
-	// "&" so it can follow a parameter; QueryNoAmp is the same without
-	// the leading separator, for a URL that starts with it.
+	// Query is appended to every control's URL, prefixed with "&";
+	// QueryNoAmp is the same without it.
 	Query      template.URL
 	QueryNoAmp template.URL
 
@@ -28,12 +27,9 @@ type pagedLog struct {
 	HasNext    bool
 	PrevPage   int
 	NextPage   int
-	// ClearEndpoint is where Clear posts to. Empty leaves the button
-	// out entirely, for a view that has no business deleting anything.
-	// ClearTarget is what that response replaces — the same element the
-	// live refresh swaps, never the card itself: the confirmation form
-	// lives inside the card, and a swap that removes the element the
-	// form sits in leaves htmx with nothing to re-arm the poll on.
+	// ClearEndpoint is where Clear posts; empty leaves the button out.
+	// ClearTarget is what the response replaces: the live-refreshed
+	// element, never the card, or htmx loses the element its refresh is on.
 	ClearEndpoint string
 	ClearTarget   string
 	CSRFToken     string

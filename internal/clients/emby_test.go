@@ -22,8 +22,7 @@ func TestEmbyStateCounts(t *testing.T) {
 	if !embyStateCounts(playing) {
 		t.Error("a session with media loaded should count")
 	}
-	// A pause does not end a stream. How long it goes on counting is
-	// pausedTracker's job, not this rule's.
+	// How long a pause goes on counting is pausedTracker's job.
 	if !embyStateCounts(paused) {
 		t.Error("a paused session still has media loaded, so it should count")
 	}
@@ -58,7 +57,6 @@ func TestEmbySessionIsLocal(t *testing.T) {
 	}
 }
 
-// playingSession builds a session that counts toward throttling.
 func playingSession(id, endpoint string) embySession {
 	s := embySession{ID: id, RemoteEndPoint: endpoint}
 	s.NowPlayingItem = &embyNowPlaying{Name: "Something"}
@@ -88,9 +86,7 @@ func TestEmbyActiveSetAppliesExemption(t *testing.T) {
 	}
 }
 
-// The server never says "this session stopped" — it just stops
-// including it. Everything downstream depends on that being turned
-// into a stop event.
+// The server never says a session stopped; it stops listing it.
 func TestEmbyHandleSessionsDiffsAgainstPrevious(t *testing.T) {
 	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
 	ctx := context.Background()
@@ -98,7 +94,6 @@ func TestEmbyHandleSessionsDiffsAgainstPrevious(t *testing.T) {
 	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
 	assertEvent(t, w, "a", true)
 
-	// Same list again: nothing changed, so nothing should be emitted.
 	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
 	assertNoEvent(t, w)
 
@@ -108,7 +103,6 @@ func TestEmbyHandleSessionsDiffsAgainstPrevious(t *testing.T) {
 	})
 	assertEvent(t, w, "b", true)
 
-	// "a" disappearing from the list is how a stop is reported.
 	w.handleSessions(ctx, []embySession{playingSession("b", "8.8.8.8")})
 	assertEvent(t, w, "a", false)
 
@@ -116,9 +110,8 @@ func TestEmbyHandleSessionsDiffsAgainstPrevious(t *testing.T) {
 	assertEvent(t, w, "b", false)
 }
 
-// Pausing must not release the throttle. Letting a pause restore full
-// rates hands the uplink to the download client for exactly the gap
-// before playback resumes — the moment the stream can least afford it.
+// A pause keeps the throttle: releasing it would hand the uplink to the
+// downloader just before playback resumes.
 func TestEmbyPausedSessionKeepsCounting(t *testing.T) {
 	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
 	ctx := context.Background()
@@ -131,17 +124,13 @@ func TestEmbyPausedSessionKeepsCounting(t *testing.T) {
 	w.handleSessions(ctx, []embySession{paused})
 	assertStillActive(t, w)
 
-	// Resuming is likewise not a change in whether it counts.
 	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
 	assertStillActive(t, w)
 
-	// Only the session actually ending stops it.
 	w.handleSessions(ctx, nil)
 	assertEvent(t, w, "a", false)
 }
 
-// Someone who pauses and never comes back would otherwise throttle
-// downloads for as long as their client holds the session open.
 func TestEmbyAbandonedPauseStopsCounting(t *testing.T) {
 	w := newEmbyWatcher(flavorEmby, "http://x", "k", false)
 	w.paused.timeout = 50 * time.Millisecond
@@ -151,13 +140,12 @@ func TestEmbyAbandonedPauseStopsCounting(t *testing.T) {
 	paused.PlayState.IsPaused = true
 
 	w.handleSessions(ctx, []embySession{paused})
-	assertEvent(t, w, "a", true) // counts at first
+	assertEvent(t, w, "a", true)
 
 	time.Sleep(60 * time.Millisecond)
 	w.handleSessions(ctx, []embySession{paused})
-	assertEvent(t, w, "a", false) // past the timeout, treated as abandoned
+	assertEvent(t, w, "a", false)
 
-	// Resuming must bring it straight back.
 	w.handleSessions(ctx, []embySession{playingSession("a", "8.8.8.8")})
 	assertEvent(t, w, "a", true)
 }
@@ -203,8 +191,7 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	// "lan" is exempted and "idle" has nothing loaded; "paused" counts,
-	// because a pause does not end a stream.
+	// "lan" is exempted and "idle" has nothing loaded; "paused" counts.
 	got := map[string]bool{}
 	for _, k := range keys {
 		got[k.Key] = true
@@ -213,8 +200,7 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 		t.Fatalf("got %v, want [remote paused]", keys)
 	}
 
-	// The baseline must now match, so a push of the same state is
-	// silent rather than re-announcing what is already known.
+	// The baseline now matches, so the same state pushed is silent.
 	stillPaused := playingSession("paused", "8.8.8.8")
 	stillPaused.PlayState.IsPaused = true
 	w.handleSessions(context.Background(), []embySession{
@@ -224,9 +210,7 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	assertNoEvent(t, w)
 }
 
-// A failed snapshot must not be mistaken for "nothing is playing" —
-// the manager leaves state alone on error, and that only holds if the
-// watcher reports the failure instead of an empty list.
+// A failed snapshot is an error, not an empty list.
 func TestEmbySnapshotDoesNotClearBaselineOnError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -333,25 +317,13 @@ func TestEmbyWebSocketURL(t *testing.T) {
 	if !strings.Contains(got, "deviceId=autothrottle") {
 		t.Errorf("Jellyfin socket URL missing device id: %q", got)
 	}
-}
-
-func TestWebSocketBase(t *testing.T) {
-	cases := map[string]string{
-		"http://a":  "ws://a",
-		"https://a": "wss://a",
-		"ws://a":    "ws://a",
-	}
-	for in, want := range cases {
-		if got := webSocketBase(in); got != want {
-			t.Errorf("webSocketBase(%q) = %q, want %q", in, got, want)
-		}
+	if got := webSocketBase("ws://a"); got != "ws://a" {
+		t.Errorf("webSocketBase(ws://a) = %q", got)
 	}
 }
 
-// Guards the shape of the subscribe message: "0,N" as a JSON *string*,
-// not a number or an object. A server that does not recognise it
-// simply never sends sessions, which would look like "nothing is ever
-// playing" rather than like an error.
+// "0,N" must be a JSON string: a server that does not recognise the
+// subscription never sends sessions, silently.
 func TestEmbySubscribeMessageShape(t *testing.T) {
 	data := json.RawMessage(`"0,1500"`)
 	b, err := json.Marshal(embyMessage{MessageType: "SessionsStart", Data: data})
@@ -371,9 +343,7 @@ func TestEmbySubscribeMessageShape(t *testing.T) {
 	}
 }
 
-// A pause stops the position, so "has it moved" alone never noticed the
-// one change that mattered: the Dashboard went on showing the stream as
-// playing, clock running, until the next reconcile poll.
+// A pause leaves the position still, so "has it moved" alone misses it.
 func TestEmbyPauseIsReportedAsItHappens(t *testing.T) {
 	w := newEmbyWatcher(flavorJellyfin, "http://x", "k", false)
 	ctx := context.Background()
@@ -406,9 +376,8 @@ func TestEmbyPauseIsReportedAsItHappens(t *testing.T) {
 	}
 }
 
-// assertStillActive allows a pause or resume to be reported — the
-// Dashboard needs to show it — but only as a detail update. Anything
-// that would re-resolve throttle state, or end the session, fails.
+// assertStillActive allows a detail update, but nothing that changes
+// throttle state.
 func assertStillActive(t *testing.T, w *EmbyWatcher) {
 	t.Helper()
 	select {

@@ -6,13 +6,9 @@ import (
 	"strings"
 )
 
-// sameEndpoint reports whether two addresses point at the same service.
-//
-// Compared on scheme, host and path rather than as raw strings, so the
-// trailing slash and the capitalisation someone happens to type do not
-// disguise a server that is already configured. Anything that will not
-// parse falls back to a trimmed string comparison — being wrong here
-// only costs a duplicate warning that does not fire.
+// sameEndpoint reports whether two addresses point at the same service,
+// ignoring case, a trailing slash and default ports. Unparseable input
+// falls back to a trimmed string comparison.
 func sameEndpoint(a, b string) bool {
 	norm := func(raw string) string {
 		raw = strings.TrimSpace(raw)
@@ -21,8 +17,6 @@ func sameEndpoint(a, b string) bool {
 			return strings.ToLower(strings.TrimRight(raw, "/"))
 		}
 		host := strings.ToLower(parsed.Host)
-		// Default ports are implied, so :80 and :443 must not make an
-		// address look different from the same one without them.
 		switch {
 		case parsed.Scheme == "http" && strings.HasSuffix(host, ":80"):
 			host = strings.TrimSuffix(host, ":80")
@@ -60,9 +54,8 @@ func (s *Server) duplicateMediaServer(skipID int64, name, rawURL string) string 
 	return ""
 }
 
-// duplicateDownloader is the same check for download clients. Two
-// entries pointed at one client would fight over its rate limits, each
-// resolving throttle state from its own mappings.
+// duplicateDownloader is the same check for download clients, two of
+// which on one client would fight over its rate limits.
 func (s *Server) duplicateDownloader(skipID int64, name, rawURL string) string {
 	downloaders, err := s.db.ListDownloaders()
 	if err != nil {

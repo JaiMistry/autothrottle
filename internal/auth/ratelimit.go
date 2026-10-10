@@ -5,11 +5,8 @@ import (
 	"time"
 )
 
-// LoginLimiter is a simple sliding-window rate limiter for the login
-// endpoint. A single global window (not per-IP) is deliberate: this is
-// a single-admin tool behind a home network, not a multi-tenant
-// service, so the goal is just blocking brute-force guessing, not
-// per-client fairness.
+// LoginLimiter is one sliding window for the whole app, not per IP: a
+// single-admin tool needs only to stop brute-force guessing.
 type LoginLimiter struct {
 	mu       sync.Mutex
 	attempts []time.Time
@@ -26,8 +23,7 @@ func newLoginLimiter(max int, window time.Duration) *LoginLimiter {
 	return &LoginLimiter{max: max, window: window}
 }
 
-// Allow reports whether another login attempt is permitted right now,
-// and records this attempt if so.
+// Allow reports whether another attempt is permitted, recording it if so.
 func (l *LoginLimiter) Allow() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()

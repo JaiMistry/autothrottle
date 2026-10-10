@@ -6,14 +6,11 @@ import (
 	"testing"
 )
 
-// openTag matches an element's opening tag, attributes and all.
 var openTag = regexp.MustCompile(`<[a-z]+\s[^>]*>`)
 
-// Every block that refreshes itself on a timer or the live stream
-// targets itself, and anything inside that does not set its own
-// target — a boosted link, a boosted form — would inherit that and load
-// the next whole page into the block: a second sidebar inside the first.
-// That has happened twice. hx-disinherit="*" on the block prevents it.
+// A self-refreshing block targets itself; a boosted link or form inside
+// would inherit that and load a whole page into the block — a second
+// sidebar. hx-disinherit="*" prevents it.
 func TestSelfRefreshingBlocksDoNotLendTheirTarget(t *testing.T) {
 	app := newApp(t)
 	app.mediaServer("JF", "jellyfin", "http://jf.lan")

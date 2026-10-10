@@ -11,14 +11,11 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
-// logsWindow is how far back the page looks. The header says so
-// explicitly ("34 of the last 200 events") rather than implying the
-// list is everything that ever happened.
+// logsWindow is how far back the page looks, as its header says ("34 of
+// the last 200 events").
 const logsWindow = 200
 
-const (
-	logsPerPageDefault = 20
-)
+const logsPerPageDefault = 20
 
 type logsData struct {
 	pageData
@@ -29,11 +26,8 @@ type logsData struct {
 	Matching int
 	NoEvents bool
 	Log      pagedLog
-	// LivePanel is the refresh endpoint, held on the panel rather than
-	// on the card inside it. The card is not rendered at all when there
-	// is nothing to show, so a trigger living there stops the page
-	// refreshing exactly when it is emptied — which is precisely when
-	// someone is watching for the next event to arrive.
+	// LivePanel is the refresh endpoint, on the panel rather than the card:
+	// an empty log renders no card, and the refresh must survive that.
 	LivePanel string
 }
 
@@ -47,10 +41,9 @@ func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "logs", data)
 }
 
-// logPanelFragment serves the tabs and the results together, for a
-// change of filter or search term. They have to move as one: the tabs
-// carry the selection, and a filter that matches nothing replaces the
-// card with an empty state rather than emptying it.
+// logPanelFragment serves the tabs and results together, for a change of
+// filter or search: the tabs carry the selection, and no match replaces
+// the card with an empty state.
 func (s *Server) logPanelFragment(w http.ResponseWriter, r *http.Request) {
 	data, err := s.buildLogsPage(r)
 	if err != nil {
@@ -61,8 +54,7 @@ func (s *Server) logPanelFragment(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "logs", "logpanelfragment", data)
 }
 
-// logRowsFragment serves the card on its own, for paging within a
-// filter that is already applied.
+// logRowsFragment serves the card on its own, for paging.
 func (s *Server) logRowsFragment(w http.ResponseWriter, r *http.Request) {
 	data, err := s.buildLogsPage(r)
 	if err != nil {
@@ -95,9 +87,7 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	if total > logsWindow {
 		total = logsWindow
 	}
-	// Whether there are any events at all is a different question from
-	// whether any match the filter, and the two get different empty
-	// states — one points at Configuration, the other at the filter.
+	// No events at all and none matching get different empty states.
 	unfiltered, err := s.db.CountEvents(db.EventFilter{})
 	if err != nil {
 		return logsData{}, err
@@ -126,8 +116,8 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 		NoEvents: unfiltered == 0,
 		Log:      newPagedLog("Events", "log-card", "/logs/rows", rows, total, perPage, page, extra),
 	}
-	// The whole panel refreshes, not just the card, so the level counts
-	// move with the rows. Not while a search is showing.
+	// The whole panel refreshes so the level counts move with the rows;
+	// not while a search is showing.
 	if search == "" {
 		q := url.Values{"per": {strconv.Itoa(perPage)}}
 		if level != "" {
@@ -141,8 +131,7 @@ func (s *Server) buildLogsPage(r *http.Request) (logsData, error) {
 	return data, nil
 }
 
-// pageOfEvents reads one page of the filtered log, clamped to the
-// window the page advertises.
+// pageOfEvents reads one page of the filtered log, clamped to the window.
 func (s *Server) pageOfEvents(filter db.EventFilter, perPage, page, total int) ([]logRowView, int, error) {
 	page, _ = clampPage(page, total, perPage)
 	filter.Limit = perPage
@@ -175,11 +164,8 @@ func intParam(r *http.Request, name string, fallback, min, max int) int {
 	return n
 }
 
-// clearLogs empties the event log and re-renders the Logs page's card.
-// A real delete rather than a filter: the page is cleared so that
-// whatever happens next can be watched from a clean slate, which a
-// view-only "cleared" flag could not give — it also stopped the live
-// refresh, so nothing new appeared at all.
+// clearLogs deletes every event and re-renders the panel, so what happens
+// next can be watched from a clean slate.
 func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 	if !s.clearEvents(w) {
 		return

@@ -19,8 +19,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
-// fakeWatchers stands in for the watcher manager, the one part of the
-// app that would otherwise open real sockets to media servers.
+// fakeWatchers stands in for the one part that would open real sockets.
 type fakeWatchers struct {
 	mu         sync.Mutex
 	reconciles int
@@ -54,11 +53,10 @@ type testApp struct {
 	handler  http.Handler
 	cookies  []*http.Cookie
 	csrf     string
-	// htmx marks requests as HTMX's, as the drawer's are.
-	htmx bool
-	// qbit is a stand-in qBittorrent that accepts everything, so the
-	// scheduler's real rate-setting calls succeed rather than failing in
-	// the background and writing error events a test then trips over.
+	htmx     bool   // send requests as HTMX does
+	referer  string // send this Referer
+	// qbit accepts everything, so the scheduler's real rate changes succeed
+	// instead of writing error events a test then trips over.
 	qbit *httptest.Server
 }
 
@@ -67,8 +65,7 @@ const (
 	testPass = "correct-horse-battery"
 )
 
-// newApp starts an instance with environment credentials, already
-// signed in. newAppWith lets a test choose the auth setup itself.
+// newApp starts an instance with environment credentials, signed in.
 func newApp(t *testing.T) *testApp {
 	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
 	app.login()
@@ -106,15 +103,14 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	}))
 	t.Cleanup(qbit.Close)
 
-	// Wired as the real binary wires them, so a change reaches the stream.
+	// Wired as main wires them, so changes reach the stream.
 	sched.SetNotifier(srv.Live())
 	database.OnEventsChanged(func() { srv.Live().Notify(live.Logs) })
 
 	return &testApp{t: t, srv: srv, db: database, sched: sched, watchers: watchers, handler: srv.Router(), qbit: qbit}
 }
 
-// restart replaces the server with a fresh one over the same database,
-// the way a container restart does; the browser's cookies carry over.
+// restart replaces the server over the same database; cookies carry over.
 func (a *testApp) restart() {
 	a.t.Helper()
 	srv, err := New(a.db, a.srv.auth, a.srv.encryptionKey, a.sched, a.watchers)
@@ -128,8 +124,7 @@ func (a *testApp) restart() {
 
 var csrfField = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 
-// do sends a request carrying the session cookie, and keeps any cookie
-// the response sets — enough of a browser for these tests.
+// do sends the session cookie and keeps any cookie set: enough of a browser.
 func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRecorder {
 	a.t.Helper()
 	var req *http.Request
@@ -145,6 +140,9 @@ func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRec
 	if a.htmx {
 		req.Header.Set("HX-Request", "true")
 	}
+	if a.referer != "" {
+		req.Header.Set("Referer", a.referer)
+	}
 	rec := httptest.NewRecorder()
 	a.handler.ServeHTTP(rec, req)
 	for _, c := range rec.Result().Cookies() {
@@ -155,25 +153,13 @@ func (a *testApp) do(method, path string, form url.Values) *httptest.ResponseRec
 
 func (a *testApp) get(path string) *httptest.ResponseRecorder { return a.do("GET", path, nil) }
 
-// doWithReferer posts a form as if from a page at referer. httptest
-// requests are for example.com, so that is the app's own host here.
-func (a *testApp) doWithReferer(path string, form url.Values, referer string) *httptest.ResponseRecorder {
+// postFrom posts as if from a page at referer. httptest requests are for
+// example.com, so that is the app's own host.
+func (a *testApp) postFrom(referer, path string) *httptest.ResponseRecorder {
 	a.t.Helper()
-	if form == nil {
-		form = url.Values{}
-	}
-	if a.csrf != "" && form.Get("csrf_token") == "" {
-		form.Set("csrf_token", a.csrf)
-	}
-	req := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Referer", referer)
-	for _, c := range a.cookies {
-		req.AddCookie(c)
-	}
-	rec := httptest.NewRecorder()
-	a.handler.ServeHTTP(rec, req)
-	return rec
+	a.referer = referer
+	defer func() { a.referer = "" }()
+	return a.post(path, nil)
 }
 
 // post submits a form the way the app's own pages do, CSRF token included.
@@ -201,8 +187,7 @@ func (a *testApp) login() {
 	a.csrf = m[1]
 }
 
-// mediaServer and downloader create records through the database, for
-// tests whose subject is something other than the create form itself.
+// mediaServer and downloader create records directly, skipping the form.
 func (a *testApp) mediaServer(name, msType, rawURL string) int64 {
 	a.t.Helper()
 	id, err := a.db.CreateMediaServer(db.MediaServer{Name: name, Type: msType, URL: rawURL, Enabled: true})

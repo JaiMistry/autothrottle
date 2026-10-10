@@ -1,9 +1,7 @@
-// Package scheduler resolves media-server session activity into
-// downloader throttle state via the mappings table, and applies it.
-// The whole design in one sentence: rates live on the downloader,
-// mappings only decide which servers' sessions count toward it, and a
-// downloader is throttled if any enabled mapping points at a server
-// with active sessions.
+// Package scheduler turns media-server sessions into downloader throttle
+// state and applies it. Rates live on the downloader; a downloader is
+// throttled while any enabled mapping points at a server with an active
+// session.
 package scheduler
 
 import (
@@ -31,47 +29,32 @@ type Scheduler struct {
 
 	mu     sync.Mutex
 	active map[int64]map[string]bool // media server ID -> active session keys
-	// live holds the last full description of each active session —
-	// what is playing, on what, and how far in. The active set is only
-	// keys because that is all throttling needs; the Dashboard needs
-	// more, and position changes constantly, so it cannot come from the
-	// session history table.
+	// live is each active session's latest description (title, device,
+	// position) for the Dashboard; throttling needs only the keys.
 	live map[int64]map[string]clients.Session
-	// applied tracks what was last successfully pushed to each
-	// downloader — not just whether it's throttled, but the actual
-	// rate pair, so editing a limit while a downloader is already in
-	// that state still pushes the new numbers.
+	// applied is what was last pushed to each downloader, rate pair
+	// included, so editing a limit in the same state still pushes it.
 	applied map[int64]appliedState
-	// paused mirrors the persisted throttle.paused setting. Held in
-	// memory as well so resolve — which runs on every session event —
-	// never has to hit the database for it.
+	// paused mirrors the persisted setting so resolve never reads it.
 	paused bool
 
-	// throttlingSince is when the current throttle period began: the
-	// moment at least one downloader became throttled, zero while none
-	// is. historyMu serialises the period records that follow it.
+	// throttlingSince is when the current throttle period began, zero
+	// while nothing is throttled. historyMu serialises period records.
 	throttlingSince time.Time
 	historyMu       sync.Mutex
 
-	// notify tells open pages when what they show has changed.
 	notify live.Notifier
 
-	// limiterFor resolves a downloader type to its rate-limit client.
-	// A field rather than a direct call so tests can substitute a fake
-	// and never touch a real download client.
+	// limiterFor is a field so tests can substitute a fake client.
 	limiterFor func(downloaderType string) clients.RateLimiter
 }
 
 type appliedState struct {
 	throttled                  bool
 	downloadLimit, uploadLimit int64
-	// cause names the media server whose sessions produced this
-	// state, for the Dashboard's "because Living Room Plex is playing".
-	cause string
-	// failure holds the last error from applying this downloader's
-	// limits, so a row can read Unreachable with the machine's own
-	// words rather than a guess.
-	failure string
+
+	cause   string // the media server that caused it
+	failure string // the last apply error, verbatim
 }
 
 // DownloaderState is one downloader's live state, for the Dashboard.
@@ -93,9 +76,7 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		live:          make(map[int64]map[string]clients.Session),
 		applied:       make(map[int64]appliedState),
 		limiterFor:    clients.RateLimiterFor,
-		// Restored from the settings table rather than defaulting to
-		// false: someone who paused throttling and then restarted the
-		// container should not silently come back to it re-enabled.
+		// Persisted, so a restart does not silently re-enable throttling.
 		paused: store.Paused(),
 	}
 }
@@ -104,17 +85,14 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 // once, before anything runs.
 func (s *Scheduler) SetNotifier(n live.Notifier) { s.notify = n }
 
-// SetPaused toggles the manual dashboard override, which forces every
-// downloader back to its default rate regardless of
-// session activity, without discarding the tracked session state —
-// unpausing immediately re-resolves against whatever's still playing.
+// SetPaused toggles the override that holds every downloader at its
+// default rate. Sessions are still tracked, so resuming re-resolves
+// against whatever is playing.
 func (s *Scheduler) SetPaused(ctx context.Context, paused bool) {
 	s.mu.Lock()
 	s.paused = paused
 	s.mu.Unlock()
 	if err := s.settings.SetPaused(paused); err != nil {
-		// The in-memory state is already applied, so throttling behaves
-		// as asked right now; only persistence across a restart is lost.
 		slog.Error("scheduler: persisting pause state", "error", err)
 	}
 	s.resolve(ctx)
@@ -130,19 +108,16 @@ func (s *Scheduler) Paused() bool {
 	return s.paused
 }
 
-// ActiveSessionCount returns how many sessions are currently counted
-// as active for a given media server — for the Dashboard's live view.
+// ActiveSessionCount is how many sessions count as active on a server.
 func (s *Scheduler) ActiveSessionCount(mediaServerID int64) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.active[mediaServerID])
 }
 
-// UpdateSessionDetail refreshes a running session's description — its
-// position, its title — without disturbing the active set and without
-// re-resolving throttle state. Live sockets send these every second or
-// so, and re-resolving on each would mean an API call per tick to every
-// mapped downloader for an outcome that cannot have changed.
+// UpdateSessionDetail refreshes a running session's description without
+// touching the active set or re-resolving: sockets send these every
+// second or so, and the throttle outcome cannot have changed.
 func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,12 +127,8 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 	if s.live[mediaServerID] == nil {
 		s.live[mediaServerID] = map[string]clients.Session{}
 	}
-	// Merge rather than replace. A detail update carries whatever its
-	// source could tell us, and that is not always everything: Plex's
-	// socket notification has a position and a state but no title,
-	// device or duration. Overwriting wholesale would blank the row's
-	// identity every time its timecode moved. Emby and Jellyfin send
-	// full sessions, so for them this is a no-op.
+	// Merge, not replace: Plex's socket notification has a position and
+	// state but no title, device or duration.
 	prev, known := s.live[mediaServerID][session.Key]
 	if known {
 		if session.Title == "" {
@@ -182,16 +153,12 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 	}
 }
 
-// positionDrift is how far a reported position may stray from where
-// the page's own clock has it before the page is told: it runs the
-// timecode forward itself between reports, so a report that agrees
-// with it is not news.
+// positionDrift is how far a report may stray from the page's own
+// running timecode before the page is told.
 const positionDrift = 2500 * time.Millisecond
 
-// detailChanged reports whether a session's new description differs
-// from the old in anything the Dashboard shows. Position counts only
-// when it is off from where steady playback would have taken it — a
-// seek, a stall — since sockets report it every second or so.
+// detailChanged reports a change the Dashboard shows. Position counts
+// only when it is off from steady playback: a seek or a stall.
 func detailChanged(prev, next clients.Session) bool {
 	if prev.Title != next.Title || prev.Device != next.Device || prev.Duration != next.Duration ||
 		prev.Paused != next.Paused || prev.Local != next.Local {
@@ -205,10 +172,8 @@ func detailChanged(prev, next clients.Session) bool {
 	return drift > positionDrift || drift < -positionDrift
 }
 
-// ActiveSessions describes what is currently playing on one media
-// server, in a stable order so the Dashboard's rows do not shuffle
-// between refreshes. Sessions the event stream started but no snapshot
-// has described yet appear with only their key filled in.
+// ActiveSessions is what is playing on a server, in a stable order.
+// Sessions no snapshot has described yet carry only their key.
 func (s *Scheduler) ActiveSessions(mediaServerID int64) []clients.Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -240,11 +205,8 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 	}
 }
 
-// ClearSessions drops every tracked session for a media server and
-// re-resolves. Called when a server's watcher stops (removed, disabled,
-// or reconnecting under new config) so a stopped server can't keep
-// downloaders throttled on the strength of sessions nobody is watching
-// any more.
+// ClearSessions drops a server's sessions and re-resolves, for when its
+// watcher stops: unwatched sessions must not keep anything throttled.
 func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Lock()
 	delete(s.active, mediaServerID)
@@ -252,23 +214,16 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Unlock()
 	live.Notify(s.notify, live.Dashboard)
 
-	// Nothing is watching this server any more, so its open sessions
-	// can never be observed ending; left open, they would read as
-	// still playing.
+	// Nothing will see them end, so close them now.
 	if err := s.db.CloseSessionsForServer(mediaServerID); err != nil {
 		slog.Error("scheduler: closing session history", "media_server_id", mediaServerID, "error", err)
 	}
 	s.ResolveAsync()
 }
 
-// ReplaceSessions overwrites a media server's active session set with
-// an authoritative snapshot, re-resolving only if it actually differs.
-//
-// This is the correction path for event-stream drift (see the watcher
-// manager's reconcileSessions). The no-change fast path matters: this
-// runs on a timer for every server, and the overwhelming majority of
-// polls find exactly what's already tracked — re-resolving each time
-// would mean a pointless downloader API call per poll per server.
+// ReplaceSessions overwrites a server's active set with an authoritative
+// snapshot, correcting event-stream drift. It runs on a timer, so it
+// re-resolves only when the set actually changed.
 func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Session) {
 	next := make(map[string]bool, len(sessions))
 	detail := make(map[string]clients.Session, len(sessions))
@@ -277,9 +232,8 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 		detail[session.Key] = session
 	}
 
-	// Detail is written on every poll, even when the set is unchanged:
-	// position moves, and a session that started via the event stream
-	// has no title until a snapshot supplies one.
+	// Detail is written even when the set is unchanged: position moves,
+	// and event-started sessions get their title from snapshots.
 	s.mu.Lock()
 	unchanged := sameSessionSet(s.active[mediaServerID], next)
 	shown := !unchanged || len(s.live[mediaServerID]) != len(detail)
@@ -318,8 +272,7 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	}
 	s.mu.Unlock()
 
-	// The snapshot is authoritative, so anything it reveals as started
-	// or ended is history the event stream missed.
+	// What the snapshot reveals is history the event stream missed.
 	for _, key := range started {
 		s.recordSession(mediaServerID, detail[key], true)
 	}
@@ -332,8 +285,7 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 }
 
 // changedSessionKeys names the sessions that started and ended between
-// two sets — what session history records, and what the correction log
-// line counts.
+// two sets.
 func changedSessionKeys(current, next map[string]bool) (started, ended []string) {
 	for key := range next {
 		if !current[key] {
@@ -360,9 +312,8 @@ func sameSessionSet(a, b map[string]bool) bool {
 	return true
 }
 
-// ResolveAsync runs resolve on its own timeout-bound context, for
-// callers that must not block on downloader API calls — HTTP handlers
-// and the WebSocket read loop both use this.
+// ResolveAsync resolves in the background, for callers that must not
+// block on downloader API calls.
 func (s *Scheduler) ResolveAsync() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
@@ -371,11 +322,8 @@ func (s *Scheduler) ResolveAsync() {
 	}()
 }
 
-// HandleSessionEvent updates a media server's active-session set and
-// re-resolves throttle state for every downloader. Resolution runs in
-// its own goroutine (with its own timeout-bound context) so a slow
-// downloader API call never blocks the WebSocket read loop that fed
-// this event.
+// HandleSessionEvent updates a server's active set and re-resolves in
+// the background, so a slow downloader never blocks the socket reader.
 func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Session, active bool) {
 	s.mu.Lock()
 	set, ok := s.active[mediaServerID]
@@ -385,8 +333,7 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 	}
 	if active {
 		set[session.Key] = true
-		// The event stream carries a key and little else, so a sparse
-		// event must not erase detail a snapshot already supplied.
+		// A sparse event must not erase detail a snapshot supplied.
 		if session.Title != "" || session.Device != "" || session.Duration > 0 {
 			if s.live[mediaServerID] == nil {
 				s.live[mediaServerID] = map[string]clients.Session{}
@@ -398,16 +345,15 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 		delete(s.live[mediaServerID], session.Key)
 	}
 	s.mu.Unlock()
-	// Shown now, before the downloaders answer: the session appears the
-	// moment it starts, and the throttle follows when resolve has run.
+	// Shown before the downloaders answer; the throttle follows.
 	live.Notify(s.notify, live.Dashboard)
 
 	s.recordSession(mediaServerID, session, active)
 	s.ResolveAsync()
 }
 
-// recordSession persists a session's start or end. Failures are logged
-// and swallowed: losing a history row must never stop throttling.
+// recordSession persists a session's start or end. A failure is only
+// logged: losing a history row must never stop throttling.
 func (s *Scheduler) recordSession(mediaServerID int64, session clients.Session, active bool) {
 	var err error
 	if active {
@@ -425,9 +371,7 @@ type resolution struct {
 	downloader      db.Downloader
 	throttled       bool
 	causeServerName string
-	// causeServerID attributes the throttle event to its server, for
-	// the log's cause tags.
-	causeServerID int64
+	causeServerID   int64 // for the log's cause tags
 }
 
 func (s *Scheduler) resolve(ctx context.Context) {
@@ -447,9 +391,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		return
 	}
 
-	// A disabled media server's watcher is stopped, but defence in
-	// depth: its sessions must not count even if a stale entry
-	// survives somewhere.
+	// A disabled server's sessions never count, even if some survive.
 	msNameByID := make(map[int64]string, len(mediaServers))
 	for _, ms := range mediaServers {
 		if !ms.Enabled {
@@ -497,9 +439,8 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		})
 	}
 
-	// Forget downloaders that are gone or switched off, so a later
-	// re-enable re-applies its rates from scratch rather than being
-	// short-circuited by state remembered from before.
+	// Forget downloaders that are gone or off, so re-enabling one
+	// re-applies its rates from scratch.
 	kept := make(map[int64]bool, len(toApply))
 	for _, r := range toApply {
 		kept[r.downloader.ID] = true
@@ -519,8 +460,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 }
 
 // recordThrottlePeriod opens or closes the throttle period when
-// throttling as a whole starts or stops. Which downloaders are
-// throttled can change inside a period without starting a new one.
+// throttling as a whole starts or stops.
 func (s *Scheduler) recordThrottlePeriod() {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
@@ -558,8 +498,8 @@ func (s *Scheduler) recordThrottlePeriod() {
 	}
 }
 
-// ThrottlingSince reports when the current throttle period began, for
-// the Dashboard's session timer. ok is false while nothing is throttled.
+// ThrottlingSince is when the current throttle period began; ok is
+// false while nothing is throttled.
 func (s *Scheduler) ThrottlingSince() (since time.Time, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -591,13 +531,12 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 		s.mu.Unlock()
 		return
 	}
-	// Recorded optimistically so concurrent resolves don't both fire
-	// the same call; a failure below un-records it.
+	// Recorded first so concurrent resolves don't both apply it; a
+	// failure below replaces it.
 	s.applied[dl.ID] = want
 	s.mu.Unlock()
 
-	// After a failure nothing is known about what the client is running,
-	// so the state applied is named in full rather than as an update.
+	// After a failure the client's state is unknown, so name it in full.
 	if known && prev.failure == "" && prev.throttled == throttled {
 		message = fmt.Sprintf("updated rate limits for %s", dl.Name)
 	}
@@ -629,18 +568,15 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	}
 }
 
-// recordFailure logs and persists an error. The attempted state is
-// replaced by the failure, so the next resolve retries, and the
-// Dashboard shows the downloader as unreachable rather than normal.
-// recordFailure marks a downloader failing. previous is its failure
-// before this attempt, if any: applyState has already overwritten it.
+// recordFailure marks a downloader failing, so the next resolve retries
+// and it reads Unreachable, never Normal. previous is its failure before
+// this attempt: applyState has already overwritten it.
 func (s *Scheduler) recordFailure(downloaderID int64, previous, message string) {
 	slog.Error("scheduler: applying throttle state", "downloader_id", downloaderID, "error", message)
 	s.mu.Lock()
 	s.applied[downloaderID] = appliedState{failure: message}
 	s.mu.Unlock()
-	// Retries hit the same wall until the client is back; the log gets
-	// the error once, not once per attempt.
+	// Logged once per outage, not once per retry.
 	if previous == message {
 		return
 	}
@@ -653,9 +589,8 @@ func (s *Scheduler) recordFailure(downloaderID int64, previous, message string) 
 	}
 }
 
-// Retry backoff for downloaders whose last apply failed: soon at first,
-// for a client that was only restarting, then less often for one that
-// is down for longer. Variables so tests need not wait them out.
+// Retry backoff after a failed apply: soon, for a client that was only
+// restarting, then less often. Variables so tests can shorten them.
 var (
 	retryFirst = 15 * time.Second
 	retryMax   = 2 * time.Minute
@@ -674,11 +609,8 @@ func (s *Scheduler) failing() bool {
 	return false
 }
 
-// RetryFailed re-applies throttle state while a downloader is failing,
-// until ctx ends. Without it a client that was briefly down — restarting
-// for an update, say — stayed Unreachable, with its rates not
-// re-asserted, until some unrelated playback event or save happened to
-// resolve again.
+// RetryFailed re-applies throttle state while any downloader is failing,
+// until ctx ends, so a client back from a restart gets its rates.
 func (s *Scheduler) RetryFailed(ctx context.Context) {
 	t := time.NewTicker(retryCheck)
 	defer t.Stop()
@@ -714,8 +646,8 @@ func (s *Scheduler) resolveNow() {
 	s.resolve(ctx)
 }
 
-// RetryIfFailing re-applies at once when the downloader's last apply
-// failed — for a connection test that has just shown it reachable.
+// RetryIfFailing re-applies at once if the downloader is failing, for a
+// connection test that has just shown it reachable.
 func (s *Scheduler) RetryIfFailing(downloaderID int64) {
 	if s.State(downloaderID).Failure != "" {
 		s.ResolveAsync()

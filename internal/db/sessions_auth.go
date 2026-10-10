@@ -9,10 +9,9 @@ import (
 	"time"
 )
 
-// sessionKey is what is stored for a login token: its SHA-256, never
-// the token itself. The cookie holds the token; a copy of the database
-// holds nothing that can sign anyone in. The token is 32 random bytes,
-// so a plain hash is enough — there is nothing to guess.
+// sessionKey is what is stored for a login token: its SHA-256, so a copy
+// of the database cannot sign anyone in. The token is 32 random bytes,
+// so a plain hash suffices.
 func sessionKey(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -30,11 +29,8 @@ func (d *DB) CreateAuthSession(token string, expiresAt time.Time) error {
 	return nil
 }
 
-// AuthSessionValid reports whether a token is known and unexpired.
-//
-// Expired rows are deleted as they are found rather than on a timer:
-// the table only grows on login, so the natural moment to clean one up
-// is the request that discovers it.
+// AuthSessionValid reports whether a token is known and unexpired,
+// deleting an expired row as it finds it.
 func (d *DB) AuthSessionValid(token string, now time.Time) (bool, error) {
 	var raw string
 	key := sessionKey(token)

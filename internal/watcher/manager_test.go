@@ -13,8 +13,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/live"
 )
 
-// fakeSink stands in for the scheduler. Watchers started here dial a
-// .invalid host, so they never reach any real media server.
+// fakeSink stands in for the scheduler. Watchers here dial .invalid hosts.
 type fakeSink struct {
 	detail   []clients.Session
 	mu       sync.Mutex
@@ -94,7 +93,6 @@ func addServer(t *testing.T, database *db.DB, key []byte, name, url string, enab
 	return id
 }
 
-// Adding a server must start watching it without a restart.
 func TestReconcileStartsNewServer(t *testing.T) {
 	m, database, _, key := newTestManager(t)
 
@@ -109,52 +107,39 @@ func TestReconcileStartsNewServer(t *testing.T) {
 	}
 }
 
-// Disabling a server must stop its watcher and release its sessions,
-// so it can't keep downloaders throttled from beyond the grave.
-func TestReconcileStopsDisabledServer(t *testing.T) {
-	m, database, sink, key := newTestManager(t)
-	id := addServer(t, database, key, "Plex", "http://plex-b.invalid:32400", true)
-	m.Reconcile()
-
-	ms, err := database.GetMediaServer(id)
-	if err != nil {
-		t.Fatalf("getting media server: %v", err)
-	}
-	ms.Enabled = false
-	if err := database.UpdateMediaServer(ms); err != nil {
-		t.Fatalf("disabling media server: %v", err)
-	}
-	m.Reconcile()
-
-	if m.Running(id) {
-		t.Error("expected the watcher to stop when its server is disabled")
-	}
-	if got := sink.clearedIDs(); len(got) != 1 || got[0] != id {
-		t.Errorf("expected sessions cleared for %d, got %v", id, got)
-	}
-}
-
-// Deleting a server must stop its watcher.
-func TestReconcileStopsDeletedServer(t *testing.T) {
-	m, database, sink, key := newTestManager(t)
-	id := addServer(t, database, key, "Plex", "http://plex-c.invalid:32400", true)
-	m.Reconcile()
-
-	if err := database.DeleteMediaServer(id); err != nil {
-		t.Fatalf("deleting media server: %v", err)
-	}
-	m.Reconcile()
-
-	if m.Running(id) {
-		t.Error("expected the watcher to stop when its server is deleted")
-	}
-	if got := sink.clearedIDs(); len(got) != 1 || got[0] != id {
-		t.Errorf("expected sessions cleared for %d, got %v", id, got)
+// Disabling or deleting a server stops its watcher and releases its
+// sessions, so it cannot keep downloaders throttled.
+func TestReconcileStopsRemovedServer(t *testing.T) {
+	for name, remove := range map[string]func(*db.DB, int64) error{
+		"disabled": func(d *db.DB, id int64) error {
+			ms, err := d.GetMediaServer(id)
+			if err != nil {
+				return err
+			}
+			ms.Enabled = false
+			return d.UpdateMediaServer(ms)
+		},
+		"deleted": func(d *db.DB, id int64) error { return d.DeleteMediaServer(id) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, database, sink, key := newTestManager(t)
+			id := addServer(t, database, key, "Plex", "http://plex-b.invalid:32400", true)
+			m.Reconcile()
+			if err := remove(database, id); err != nil {
+				t.Fatal(err)
+			}
+			m.Reconcile()
+			if m.Running(id) {
+				t.Error("the watcher is still running")
+			}
+			if got := sink.clearedIDs(); len(got) != 1 || got[0] != id {
+				t.Errorf("sessions cleared for %v, want %d", got, id)
+			}
+		})
 	}
 }
 
-// A URL change must replace the running watcher — it captured the old
-// URL at construction and can't be updated in place.
+// A watcher captures its URL at construction, so a change replaces it.
 func TestReconcileRestartsOnURLChange(t *testing.T) {
 	m, database, sink, key := newTestManager(t)
 	id := addServer(t, database, key, "Plex", "http://plex-d.invalid:32400", true)
@@ -178,8 +163,7 @@ func TestReconcileRestartsOnURLChange(t *testing.T) {
 	}
 }
 
-// Reconciling with nothing changed must leave the existing connection
-// alone rather than redialling.
+// Nothing changed means no redial.
 func TestReconcileIsIdempotent(t *testing.T) {
 	m, database, sink, key := newTestManager(t)
 	id := addServer(t, database, key, "Plex", "http://plex-e.invalid:32400", true)
@@ -219,8 +203,6 @@ func TestSupportedTypes(t *testing.T) {
 	}
 }
 
-// keysOf reduces a snapshot to its keys, which is all these tests
-// assert on.
 func keysOf(sessions []clients.Session) []string {
 	out := make([]string, 0, len(sessions))
 	for _, session := range sessions {
@@ -246,8 +228,7 @@ func (h *heard) count() int {
 	return h.n
 }
 
-// A watcher starting or stopping changes what the Dashboard says about
-// its server, so it is announced without waiting for a session event.
+// A watcher starting is announced without waiting for a session event.
 func TestHealthChangesAreAnnounced(t *testing.T) {
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -257,7 +238,7 @@ func TestHealthChangesAreAnnounced(t *testing.T) {
 	key := make([]byte, 32)
 	m := NewManager(database, key, &fakeSink{})
 	h := &heard{}
-	m.SetNotifier(h)
+	m.SetNotifier(h) // before Start, which is when the health watch begins
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	m.Start(ctx)

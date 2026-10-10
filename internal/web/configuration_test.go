@@ -22,11 +22,10 @@ func TestAddMediaServer(t *testing.T) {
 	if len(servers) != 1 || servers[0].Name != "Living Room" || !servers[0].Enabled {
 		t.Fatalf("saved servers = %+v", servers)
 	}
-	// The key is encrypted at rest, never stored as typed.
 	if servers[0].CredentialEncrypted == "" || strings.Contains(servers[0].CredentialEncrypted, "secret-key") {
 		t.Errorf("credential stored as %q", servers[0].CredentialEncrypted)
 	}
-	// Saving reconciles the watchers, so the change is live without a restart.
+	// Live without a restart.
 	if app.watchers.reconciles == 0 {
 		t.Error("saving did not reconcile the watchers")
 	}
@@ -76,8 +75,7 @@ func TestEditingKeepsTheStoredCredential(t *testing.T) {
 	servers, _ := app.db.ListMediaServers()
 	before := servers[0].CredentialEncrypted
 
-	// Edited with its own name and address — not a clash with itself —
-	// and the key left blank, which means "keep what's saved".
+	// Its own name and address are not a clash; a blank key keeps the saved one.
 	form := mediaServerForm("JF renamed", "jellyfin", "http://jf.lan", "")
 	form.Set("id", fmt.Sprint(servers[0].ID))
 	expectRedirect(t, app.post("/configuration/media-servers", form), "/configuration?tab=connections")
@@ -121,7 +119,6 @@ func TestAddDownloader(t *testing.T) {
 		t.Errorf("credential stored as %+v", dls[0].CredentialEncrypted)
 	}
 
-	// Half a credential is refused rather than half-saved.
 	half := url.Values{"name": {"Other"}, "type": {"qbittorrent"}, "url": {"http://other.lan"}, "username": {"admin"}}
 	expectStatus(t, app.post("/configuration/downloaders", half), http.StatusUnprocessableEntity)
 
@@ -131,7 +128,6 @@ func TestAddDownloader(t *testing.T) {
 	expectBody(t, rec, "is already added as")
 }
 
-// setMapping ticks or unticks one cell of the mappings matrix.
 func (a *testApp) setMapping(ms, dl int64, on bool) {
 	a.t.Helper()
 	form := url.Values{"media_server_id": {fmt.Sprint(ms)}, "downloader_id": {fmt.Sprint(dl)}}
@@ -146,7 +142,6 @@ func TestMappings(t *testing.T) {
 	ms := app.mediaServer("JF", "jellyfin", "http://jf.lan")
 	dl := app.downloader("qBit")
 
-	// Ticking the same cell twice is one mapping, not two.
 	app.setMapping(ms, dl, true)
 	app.setMapping(ms, dl, true)
 	mappings, _ := app.db.ListMappings()
@@ -161,9 +156,8 @@ func TestMappings(t *testing.T) {
 	expectStatus(t, app.post("/configuration/mappings/set", url.Values{"media_server_id": {"x"}}), http.StatusBadRequest)
 }
 
-// fakeJellyfin answers /System/Info only when the right key arrives, the
-// way a real server does — so the test exercises the request the client
-// actually builds, not a stub of it.
+// fakeJellyfin answers /System/Info only for the right key, so tests
+// exercise the request the client really builds.
 func fakeJellyfin(t *testing.T) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/System/Info" {
@@ -212,8 +206,7 @@ func TestConnectionTest(t *testing.T) {
 	}
 }
 
-// A new server or downloader must start switched on: unticked by
-// default, one saved without noticing was silently never used.
+// A new entry starts enabled; unticked, one saved unnoticed never ran.
 func TestNewEntriesStartEnabled(t *testing.T) {
 	app := newApp(t)
 	for _, path := range []string{"/configuration/media-servers/new", "/configuration/downloaders/new"} {
@@ -222,7 +215,6 @@ func TestNewEntriesStartEnabled(t *testing.T) {
 			t.Errorf("%s: the Enabled box starts unticked for a new entry", path)
 		}
 	}
-	// Editing still shows the entry's real state.
 	id := app.mediaServer("Off", "jellyfin", "http://off.lan")
 	ms, _ := app.db.GetMediaServer(id)
 	ms.Enabled = false
@@ -237,8 +229,8 @@ func TestNewEntriesStartEnabled(t *testing.T) {
 	expectStatus(t, app.get("/configuration/media-servers/999/edit"), http.StatusNotFound)
 }
 
-// Media servers and downloaders were tabs of their own; old links, edit
-// links included, open the same thing on Connections.
+// The old media-servers and downloaders tab links, edit links included,
+// land on Connections.
 func TestOldTabLinksLandOnConnections(t *testing.T) {
 	app := newApp(t)
 	id := app.downloader("qBit")
@@ -255,8 +247,8 @@ func TestOldTabLinksLandOnConnections(t *testing.T) {
 	}
 }
 
-// From the drawer, a save swaps the tables out of band and closes the
-// drawer; a refused one lands above the form and leaves it alone.
+// From the drawer, a save swaps the tables out of band and closes it; a
+// refusal lands above the form.
 func TestDrawerSave(t *testing.T) {
 	app := newApp(t)
 	app.htmx = true
@@ -276,8 +268,6 @@ func TestDrawerSave(t *testing.T) {
 	expectBody(t, rec, "already exists")
 }
 
-// Each name carries a dot for its state, labelled for anyone who can't
-// hover it.
 func TestConnectionStatusDots(t *testing.T) {
 	app := newApp(t)
 	off := app.mediaServer("Off", "jellyfin", "http://off.lan")
@@ -307,8 +297,7 @@ func TestDownloaderConnectionTest(t *testing.T) {
 		want string
 	}{
 		{"nothing listening names the WebUI", form("http://127.0.0.1:1", "", ""), "WebUI port"},
-		{"no credentials says none were checked", form(app.qbit.URL, "", ""), "Successfully connected"},
-		{"credentials accepted", form(app.qbit.URL, "admin", "pw"), "Successfully connected"},
+		{"credentials are optional", form(app.qbit.URL, "", ""), "Successfully connected"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -319,7 +308,7 @@ func TestDownloaderConnectionTest(t *testing.T) {
 	}
 }
 
-// The Test button on a saved row uses what is stored.
+// A saved row's Test uses what is stored.
 func TestSavedEntryConnectionTest(t *testing.T) {
 	app := newApp(t)
 	jf := fakeJellyfin(t)

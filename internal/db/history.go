@@ -11,17 +11,15 @@ type Span struct {
 	Start, End time.Time
 }
 
-// StartRun records that the process has started, closing whatever the
-// previous run left open: a throttle period or session that was in
-// progress when it stopped ends at that run's last heartbeat, the last
-// moment it is known to have been alive. It returns the new run's id.
+// StartRun records a process start, closing any throttle period or
+// session the previous run left open at its last heartbeat. It returns
+// the new run's id.
 func (d *DB) StartRun(now time.Time) (int64, error) {
 	var lastSeen sql.NullString
 	if err := d.conn.QueryRow(`SELECT MAX(last_seen_at) FROM runs`).Scan(&lastSeen); err != nil {
 		return 0, fmt.Errorf("reading the last run: %w", err)
 	}
-	// With no earlier run there is nothing to clamp to, so anything open
-	// ends where it began rather than being credited with the downtime.
+	// With no earlier run, anything open ends where it began.
 	if _, err := d.conn.Exec(
 		`UPDATE throttle_periods SET ended_at = max(started_at, COALESCE(?, started_at)) WHERE ended_at IS NULL`,
 		lastSeen,

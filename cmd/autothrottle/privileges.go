@@ -13,19 +13,10 @@ import (
 // usually who owns the directory being mounted.
 const defaultID = 1000
 
-// dropPrivileges runs before anything else does. Started as root, it
-// hands the data directory to PUID:PGID and then becomes that user for
-// the rest of the process's life — the same contract as the linuxserver
-// images people already know, done here because this image has no
-// shell to do it in an entrypoint script.
-//
-// Root is held only for the ownership fix. Nothing has opened the
-// database or a socket yet, and after this returns the process cannot
-// get root back.
-//
-// Started as anyone else — a compose file with `user:`, or a
-// rootless runtime — it changes nothing: whoever it already is, is who
-// it stays.
+// dropPrivileges runs before anything else. Started as root, it hands the
+// data directory to PUID:PGID and becomes that user for good — the
+// linuxserver contract, done here because the image has no shell for an
+// entrypoint script. Started as anyone else, it changes nothing.
 func dropPrivileges(dataDir string) error {
 	if os.Geteuid() != 0 {
 		return nil
@@ -75,9 +66,8 @@ func idFromEnv(name string) (int, error) {
 	return id, nil
 }
 
-// chownTree gives everything under dir to uid:gid, touching only what is
-// owned by someone else — so a restart with nothing to fix costs one
-// stat per file rather than a write.
+// chownTree gives everything under dir to uid:gid, writing only what is
+// owned by someone else.
 func chownTree(dir string, uid, gid int) error {
 	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -97,11 +87,9 @@ func chownTree(dir string, uid, gid int) error {
 	})
 }
 
-// restrictDataDir keeps the data directory to its owner. The database
-// holds the account's password hash and every connection's encrypted
-// credential, and the key that decrypts them sits beside it; none of it
-// is anyone else's business on a shared host. The umask covers what
-// SQLite creates later (its -wal and -shm files appear on demand).
+// restrictDataDir keeps the data directory to its owner: it holds the
+// password hash, the encrypted credentials and the key beside them. The
+// umask covers the -wal and -shm files SQLite creates later.
 func restrictDataDir(dataDir string) error {
 	syscall.Umask(0o077)
 	if err := os.Chmod(dataDir, 0o700); err != nil {

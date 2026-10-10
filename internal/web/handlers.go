@@ -9,12 +9,9 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
 
-// pageData is passed to every template. Not every field applies to
-// every page (e.g. Error only applies to login) — templates just don't
-// render fields they don't use.
+// pageData is passed to every template; each uses the fields it needs.
 type pageData struct {
-	// Asset turns a static path into its content-hashed URL, so a new
-	// build is never served stale CSS from a browser cache.
+	// Asset turns a static path into its content-hashed URL.
 	Asset         func(string) string
 	Title         string
 	Active        string
@@ -22,12 +19,9 @@ type pageData struct {
 	CSRFToken     string
 	Error         string
 	Version       string
-	// Next is where signing in returns to, when it is not the Dashboard.
-	Next string
-	// Paused puts the "Throttling disabled" banner across every page;
-	// PausedSince is when, as "2:06 PM" in the server's time zone.
-	Paused      bool
-	PausedSince string
+	Next          string // where signing in returns to, if not the Dashboard
+	Paused        bool   // shows the "Throttling disabled" banner
+	PausedSince   string // e.g. "2:06 PM", server time
 }
 
 // loginNext is the return address a login page carries: a safe one
@@ -39,8 +33,7 @@ func loginNext(raw string) string {
 	return ""
 }
 
-// loginFailed re-renders the login page carrying the reason, so a
-// rejected attempt looks like the app rather than like a server error.
+// loginFailed re-renders the login page with the reason.
 func (s *Server) loginFailed(w http.ResponseWriter, r *http.Request, status int, message string) {
 	w.WriteHeader(status)
 	data := pageData{Title: "Log in", Version: version.Label(), Error: message, Asset: s.assets.URL, Next: loginNext(r.FormValue("next"))}
@@ -69,9 +62,8 @@ type notFoundData struct {
 	LoginURL string
 }
 
-// notFound answers an address no page lives at. It is open to anyone,
-// so a signed-out visitor following a dead link still gets the app's
-// own page, with a way to sign in that comes back here.
+// notFound answers an address no page lives at, signed in or not; its Log
+// in button comes back here.
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	data := notFoundData{

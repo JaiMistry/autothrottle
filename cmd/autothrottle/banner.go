@@ -20,10 +20,7 @@ const bannerArt = `
 /_/  |_\__,_/\__/\____/_/ /_/ /_/_/   \____/\__/\__/_/\___/
 `
 
-// startupInfo is what the banner reports beyond the build itself: where
-// this instance keeps its data, how it is reachable, and what it found
-// configured. Enough to tell a healthy start from a confused one
-// without opening the UI.
+// startupInfo is what the banner reports beyond the build itself.
 type startupInfo struct {
 	DatabasePath string
 	Address      string
@@ -34,12 +31,8 @@ type startupInfo struct {
 	Mappings     int
 }
 
-// printBanner writes the block that opens the container log.
-//
-// Structured slog lines are right for events, and wrong for this: on
-// startup you want the version, the build and what was found, laid out
-// to be read at a glance rather than parsed. Everything after this line
-// is structured as usual.
+// printBanner writes the human-readable block that opens the container
+// log; everything after it is structured.
 func printBanner(out io.Writer, build version.Build, info startupInfo) {
 	var b strings.Builder
 	b.WriteString(bannerArt)
@@ -69,24 +62,14 @@ func printBanner(out io.Writer, build version.Build, info startupInfo) {
 		b.WriteString("  First run: open the web UI to create your account.\n\n")
 	}
 
-	// Written one line at a time on purpose. A single multi-line write
-	// becomes one Docker log entry with newlines inside it, and a viewer
-	// that prefixes each entry then indents everything after the first
-	// line — which is what made the art look shifted. One line per entry
-	// renders the same everywhere.
-	//
-	// A failed write to stdout is not something a banner can do anything
-	// about, and everything above it wrote to a strings.Builder, which
-	// cannot fail.
+	// One write per line: a multi-line write is one Docker log entry, and
+	// viewers that prefix entries shift every line after the first.
 	for _, line := range strings.Split(strings.TrimRight(b.String(), "\n"), "\n") {
 		_, _ = io.WriteString(out, line+"\n")
 	}
 }
 
-// buildDate renders in the configured zone rather than UTC. TZ is set
-// on the image (America/Los_Angeles unless overridden) and the zone
-// database is compiled into the binary, so every other timestamp the
-// app shows is local — this one has no business being the exception.
+// buildDate renders in the configured zone, like every other timestamp.
 func buildDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -107,9 +90,7 @@ func authDesc(info startupInfo) string {
 	}
 }
 
-// configuredDesc reads "3 media servers · 2 downloaders · 5 mappings",
-// or says plainly that there is nothing to act on yet, which is the one
-// case where a fresh install looks broken but is not.
+// configuredDesc reads "3 media servers · 2 downloaders · 5 mappings".
 func configuredDesc(info startupInfo) string {
 	if info.MediaServers == 0 && info.Downloaders == 0 {
 		return "nothing yet (add a media server and a downloader to begin)"

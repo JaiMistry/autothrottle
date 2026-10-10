@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// SessionRecord is one playback session as it appeared to the app:
-// when it started counting toward throttling and when it stopped.
+// SessionRecord is one playback session's history row.
 type SessionRecord struct {
 	ID            int64
 	MediaServerID int64
@@ -15,8 +14,7 @@ type SessionRecord struct {
 	StartedAt     string
 	// EndedAt is invalid while the session is still playing.
 	EndedAt sql.NullString
-	// Title and Device are best-effort display detail — what was
-	// playing and where. A server may report neither.
+	// Title and Device are best-effort display detail.
 	Title  string
 	Device string
 }
@@ -24,14 +22,8 @@ type SessionRecord struct {
 // Ended reports whether the session has finished.
 func (s SessionRecord) Ended() bool { return s.EndedAt.Valid && s.EndedAt.String != "" }
 
-// OpenSession records the start of a session, unless one is already
-// open for this server and key.
-//
-// The idempotence matters: the scheduler learns a session is playing
-// from two independent inputs — the live event stream and the periodic
-// snapshot reconciliation — and they routinely report the same session.
-// Without this guard every reconciliation poll would open a duplicate
-// row for anything still playing.
+// OpenSession records a session's start, unless one is already open:
+// the event stream and the snapshot poll both report the same session.
 func (d *DB) OpenSession(mediaServerID int64, sessionKey, title, device string) error {
 	var existing int64
 	err := d.conn.QueryRow(
@@ -40,10 +32,7 @@ func (d *DB) OpenSession(mediaServerID int64, sessionKey, title, device string) 
 		mediaServerID, sessionKey,
 	).Scan(&existing)
 	if err == nil {
-		// Already open. The live event stream carries no title or
-		// device, so the reconciliation snapshot is the first thing
-		// that knows them — fill them in rather than leaving the row
-		// permanently blank.
+		// Already open. Fill in the title and device the event stream lacked.
 		if title != "" || device != "" {
 			_, err = d.conn.Exec(
 				`UPDATE session_history SET title = COALESCE(NULLIF(?, ''), title),
@@ -69,9 +58,7 @@ func (d *DB) OpenSession(mediaServerID int64, sessionKey, title, device string) 
 	return nil
 }
 
-// CloseSession ends the open session for this server and key, if there
-// is one. Closing something already closed is not an error — the same
-// duplicate-input reasoning as OpenSession applies in reverse.
+// CloseSession ends the open session for this server and key, if any.
 func (d *DB) CloseSession(mediaServerID int64, sessionKey string) error {
 	_, err := d.conn.Exec(
 		`UPDATE session_history
@@ -85,10 +72,8 @@ func (d *DB) CloseSession(mediaServerID int64, sessionKey string) error {
 	return nil
 }
 
-// CloseSessionsForServer ends every open session for one media server.
-// Used when a server is disabled, deleted, or its watcher stops: those
-// sessions are no longer observable, so leaving them open would have
-// them read as playing forever.
+// CloseSessionsForServer ends a server's open sessions, for when its
+// watcher stops and they can no longer be seen to end.
 func (d *DB) CloseSessionsForServer(mediaServerID int64) error {
 	_, err := d.conn.Exec(
 		`UPDATE session_history
@@ -129,9 +114,7 @@ func (d *DB) OpenSessions(mediaServerID int64) ([]SessionRecord, error) {
 }
 
 // PruneSessionHistory deletes sessions that ended before the cutoff.
-// Open sessions are never pruned regardless of age: one that has been
-// running for longer than the retention window is still playing, and
-// deleting it would strand it as permanently open.
+// Open ones are kept whatever their age: they are still playing.
 func (d *DB) PruneSessionHistory(before time.Time) (int64, error) {
 	result, err := d.conn.Exec(
 		`DELETE FROM session_history WHERE ended_at IS NOT NULL AND ended_at < ?`,

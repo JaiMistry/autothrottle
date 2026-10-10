@@ -9,19 +9,12 @@ import (
 	"time"
 )
 
-// Emby and Jellyfin speak nearly the same protocol — Jellyfin forked
-// from Emby 3.5.2 and kept the Sessions API and the notification
-// WebSocket largely intact — so they share one implementation
-// parameterised by the handful of things that actually differ.
+// Jellyfin forked Emby and kept its Sessions API and socket, so both
+// share one implementation, parameterised by what differs.
 type embyFlavor struct {
-	name string
-	// webSocketPath differs: Emby kept its original /embywebsocket,
-	// Jellyfin renamed it to /socket.
+	name          string
 	webSocketPath string
-	// setAuth applies the flavour's accepted credential header. Both
-	// take an API key created in the server's admin UI, not a
-	// username/password.
-	setAuth func(*http.Request, string)
+	setAuth       func(*http.Request, string)
 }
 
 var flavorEmby = embyFlavor{
@@ -36,45 +29,32 @@ var flavorJellyfin = embyFlavor{
 	name:          "Jellyfin",
 	webSocketPath: "/socket",
 	setAuth: func(r *http.Request, apiKey string) {
-		// Jellyfin's documented form. It still accepts the legacy
-		// X-Emby-Token header, but that compatibility shim is exactly
-		// the kind of thing a major version drops, so use the form
-		// Jellyfin's own clients send.
+		// Jellyfin's documented form; X-Emby-Token is a legacy shim.
 		r.Header.Set("Authorization", fmt.Sprintf(
 			`MediaBrowser Client="AutoThrottle", Device="AutoThrottle", DeviceId=%q, Version="1.0.0", Token=%q`,
 			embyDeviceID, apiKey))
 	},
 }
 
-// embyDeviceID identifies this app to the server. Emby requires a
-// device ID on the WebSocket handshake; Jellyfin tolerates its absence
-// but shows the connection more usefully with it. Fixed rather than
-// random so reconnects reuse the same server-side session entry
-// instead of littering the server's device list with one per restart.
+// embyDeviceID is required by Emby's socket handshake. Fixed, so
+// reconnects reuse one entry in the server's device list.
 const embyDeviceID = "autothrottle"
 
-// embyNowPlaying is what a session has loaded. Absent (null) unless
-// something is actually playing, which is what distinguishes an idle
-// connected client from a watching one.
+// embyNowPlaying is what a session has loaded.
 type embyNowPlaying struct {
 	Name         string `json:"Name"`
 	SeriesName   string `json:"SeriesName"`
 	SeasonNumber *int   `json:"ParentIndexNumber"`
 	Episode      *int   `json:"IndexNumber"`
-	// Ticks are 100-nanosecond units, which is what .NET's TimeSpan
-	// serialises to — not milliseconds like Plex's.
-	RunTimeTicks int64 `json:"RunTimeTicks"`
+	RunTimeTicks int64  `json:"RunTimeTicks"` // .NET ticks, not ms
 }
 
 // embySession is the subset of /Sessions this app reads.
 type embySession struct {
 	ID string `json:"Id"`
-	// RemoteEndPoint is the client's address, as "IP" or "IP:port".
-	// This is what locality is derived from — see embySessionIsLocal.
+	// RemoteEndPoint is "IP" or "IP:port"; see embySessionIsLocal.
 	RemoteEndPoint string `json:"RemoteEndPoint"`
-	// NowPlayingItem is absent (null) unless the session has media
-	// loaded, which is what distinguishes an idle connected client
-	// from one actually playing something.
+	// NowPlayingItem is null for an idle client.
 	NowPlayingItem *embyNowPlaying `json:"NowPlayingItem"`
 	DeviceName     string          `json:"DeviceName"`
 	PlayState      struct {
@@ -86,8 +66,6 @@ type embySession struct {
 // embyTick is the duration of one .NET tick.
 const embyTick = 100 * time.Nanosecond
 
-// position and duration report where playback has reached, or zero when
-// the server did not say.
 func (s embySession) position() time.Duration {
 	return time.Duration(s.PlayState.PositionTicks) * embyTick
 }
@@ -99,9 +77,7 @@ func (s embySession) duration() time.Duration {
 	return time.Duration(s.NowPlayingItem.RunTimeTicks) * embyTick
 }
 
-// label renders what is playing, matching the form Plex uses so a
-// mixed setup reads consistently: a series with its numbering, or the
-// item's own name for anything else.
+// label renders what is playing in the same form as Plex's.
 func (s embySession) label() string {
 	if s.NowPlayingItem == nil {
 		return ""
@@ -123,14 +99,10 @@ func embyStateCounts(s embySession) bool {
 	return s.NowPlayingItem != nil
 }
 
-// embySessionIsLocal reports whether a session's client is on the
-// local network, for the local-playback exemption.
-//
-// Unlike Plex, these servers report only the client's address, so
-// locality is inferred from it being loopback, private or link-local —
-// which judges a VPN client local though its stream crosses the WAN.
-// An unparseable address is judged non-local: throttling when unsure
-// costs some speed, never throttling is a bug with no symptom.
+// embySessionIsLocal infers locality from the client's address being
+// loopback, private or link-local, so a VPN client counts as local. An
+// unparseable address is non-local: throttling when unsure only costs
+// some speed.
 func embySessionIsLocal(remoteEndPoint string) bool {
 	host := strings.TrimSpace(remoteEndPoint)
 	if host == "" {
@@ -139,8 +111,7 @@ func embySessionIsLocal(remoteEndPoint string) bool {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	// A bare IPv6 address may still arrive bracketed when there was no
-	// port for SplitHostPort to find.
+	// A bracketed IPv6 address with no port.
 	host = strings.Trim(host, "[]")
 
 	ip := net.ParseIP(host)
@@ -162,13 +133,8 @@ func TestJellyfin(ctx context.Context, baseURL, apiKey string) error {
 	return testEmbyFlavor(ctx, flavorJellyfin, baseURL, apiKey)
 }
 
-// testEmbyFlavor hits /System/Info, which requires authentication.
-//
-// Deliberately not /System/Info/Public, which is unauthenticated and
-// would 200 for any key — the same false-positive trap TestPlex
-// documents for /identity. Unlike Plex, these servers do enforce the
-// key on LAN requests, so this is a genuine credential check rather
-// than a reachability check wearing one's clothes.
+// testEmbyFlavor hits /System/Info, which needs the key — not the
+// unauthenticated /System/Info/Public, which would pass any key.
 func testEmbyFlavor(ctx context.Context, f embyFlavor, baseURL, apiKey string) error {
 	baseURL = strings.TrimRight(baseURL, "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/System/Info", nil)
@@ -197,10 +163,8 @@ func testEmbyFlavor(ctx context.Context, f embyFlavor, baseURL, apiKey string) e
 	}
 }
 
-// fetchEmbySessions reads /Sessions, the REST equivalent of what the
-// WebSocket pushes, for the reconciliation poll.
+// fetchEmbySessions reads /Sessions for the reconciliation poll.
 func fetchEmbySessions(ctx context.Context, f embyFlavor, baseURL, apiKey string) ([]embySession, error) {
-	// Unlike Plex's MediaContainer wrapper, these return a bare array.
 	var sessions []embySession
 	err := getJSON(ctx, baseURL+"/Sessions", func(r *http.Request) {
 		f.setAuth(r, apiKey)

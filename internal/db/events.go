@@ -18,16 +18,13 @@ type EventFilter struct {
 	Limit, Offset int
 }
 
-// TimeFormat is the textual timestamp format every table in this
-// schema stores. Times are UTC and lexicographically sortable, so
-// range comparisons work as plain string comparisons.
+// TimeFormat is how every table stores times: UTC, and sortable as text.
 const TimeFormat = "2006-01-02T15:04:05.000Z"
 
 // FormatTime renders t in the schema's storage format.
 func FormatTime(t time.Time) string { return t.UTC().Format(TimeFormat) }
 
-// where builds the shared WHERE clause and its arguments, so the list
-// and count queries can never drift apart in what they match.
+// where builds the WHERE clause shared by the list and count queries.
 func (f EventFilter) where() (string, []any) {
 	var clauses []string
 	var args []any
@@ -57,8 +54,7 @@ func (f EventFilter) where() (string, []any) {
 		args = append(args, FormatTime(f.Until))
 	}
 	if f.Search != "" {
-		// LIKE is case-insensitive for ASCII in SQLite by default,
-		// which is what a message search here needs.
+		// SQLite's LIKE is case-insensitive for ASCII.
 		clauses = append(clauses, `message LIKE ? ESCAPE '\'`)
 		args = append(args, "%"+escapeLike(f.Search)+"%")
 	}
@@ -105,8 +101,7 @@ func (d *DB) ListEventsFiltered(f EventFilter) ([]Event, error) {
 	return out, rows.Err()
 }
 
-// CountEvents returns how many events match, ignoring limit and offset
-// — the total a paginated view needs to show.
+// CountEvents returns how many events match, ignoring limit and offset.
 func (d *DB) CountEvents(f EventFilter) (int, error) {
 	where, args := f.where()
 	var n int
@@ -114,16 +109,12 @@ func (d *DB) CountEvents(f EventFilter) (int, error) {
 	return n, err
 }
 
-// ListEvents returns the most recent events, newest first, capped at
-// limit. Shorthand for the common unfiltered case.
+// ListEvents returns the most recent events, newest first.
 func (d *DB) ListEvents(limit int) ([]Event, error) {
 	return d.ListEventsFiltered(EventFilter{Limit: limit})
 }
 
-// PruneEvents deletes events older than before, returning how many
-// rows went. Retention is enforced here rather than by a row cap: "the
-// last 90 days" stays meaningful whether the app logged ten events or
-// ten thousand.
+// PruneEvents deletes events older than before, returning how many.
 func (d *DB) PruneEvents(before time.Time) (int64, error) {
 	res, err := d.conn.Exec(`DELETE FROM events WHERE occurred_at < ?`, FormatTime(before))
 	if err != nil {
@@ -132,11 +123,8 @@ func (d *DB) PruneEvents(before time.Time) (int64, error) {
 	return res.RowsAffected()
 }
 
-// CountEventsByLevel returns how many events match a filter at each
-// level, for the Logs page's level tabs — where the count is the
-// information, not decoration. The filter's own Levels field is
-// ignored: the point is to report every level under the same search
-// and time constraints.
+// CountEventsByLevel counts matching events per level, for the Logs
+// page's tabs. The filter's own Levels field is ignored.
 func (d *DB) CountEventsByLevel(f EventFilter) (map[string]int, error) {
 	f.Levels = nil
 	f.Limit, f.Offset = 0, 0
@@ -160,10 +148,7 @@ func (d *DB) CountEventsByLevel(f EventFilter) (map[string]int, error) {
 	return out, rows.Err()
 }
 
-// DeleteAllEvents removes every recorded event and reports how many
-// went. Used by the Logs page's Clear, which is a real delete rather
-// than a filter: the point of it is to empty the page so what happens
-// next can be watched on its own.
+// DeleteAllEvents removes every event, for the Logs page's Clear.
 func (d *DB) DeleteAllEvents() (int64, error) {
 	res, err := d.conn.Exec(`DELETE FROM events`)
 	if err != nil {

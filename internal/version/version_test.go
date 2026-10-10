@@ -12,10 +12,9 @@ func TestLabel(t *testing.T) {
 		{"v1.0.0", "v1.0.0"},
 		{"dev", "dev"},
 		{"", "dev"},
-		// An untagged local build is stamped with what git describe
-		// managed; it must not be printed as a release.
+		// Untagged builds are git describe output, not releases — even a
+		// sha that starts with a digit.
 		{"f3d60f3-dirty", "f3d60f3-dirty"},
-		// A sha that happens to start with a digit is still a sha.
 		{"5812252-dirty", "5812252-dirty"},
 		{"5812252", "5812252"},
 		{"v1.0.0-3-gabc1234", "v1.0.0-3-gabc1234"},

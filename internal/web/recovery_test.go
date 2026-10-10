@@ -7,19 +7,16 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
-// A qBittorrent that is down until told otherwise, as one restarting
-// for an update is.
+// restartingQbit is down until up is set, like one restarting for an update.
 func restartingQbit(t *testing.T) (*httptest.Server, *atomic.Bool) {
 	up := &atomic.Bool{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !up.Load() {
-			// Closing without a reply is as close to "connection
-			// refused" as a test server gets.
+			// The nearest a test server gets to "connection refused".
 			hj, _ := w.(http.Hijacker)
 			conn, _, _ := hj.Hijack()
 			_ = conn.Close()
@@ -34,19 +31,8 @@ func restartingQbit(t *testing.T) (*httptest.Server, *atomic.Bool) {
 	return srv, up
 }
 
-func waitUntil(t *testing.T, what string, ok func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !ok() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// A downloader left Unreachable by a failed apply comes back the moment
-// a connection test shows it is reachable, from the row or the form.
+// A passing connection test, from the row or the form, re-applies a
+// downloader left Unreachable by a failed apply.
 func TestConnectionTestRecoversAFailingDownloader(t *testing.T) {
 	for _, via := range []string{"row", "form"} {
 		t.Run(via, func(t *testing.T) {
@@ -57,7 +43,7 @@ func TestConnectionTestRecoversAFailingDownloader(t *testing.T) {
 				t.Fatal(err)
 			}
 			app.sched.ResolveAsync()
-			waitUntil(t, "the apply to fail", func() bool { return app.sched.State(id).Failure != "" })
+			waitFor(t, "the apply to fail", func() bool { return app.sched.State(id).Failure != "" })
 			expectBody(t, app.get("/configuration/connections/status"), `aria-label="Unreachable. Unable to connect"`)
 
 			up.Store(true)
@@ -70,7 +56,7 @@ func TestConnectionTestRecoversAFailingDownloader(t *testing.T) {
 				})
 			}
 			expectBody(t, rec, `data-state="connected"`)
-			waitUntil(t, "the rates to go back on", func() bool { st := app.sched.State(id); return st.Known && st.Failure == "" })
+			waitFor(t, "the rates to go back on", func() bool { st := app.sched.State(id); return st.Known && st.Failure == "" })
 			body := app.get("/configuration/connections/status").Body.String()
 			if !strings.Contains(body, fmt.Sprintf(`id="st-dl-%d"`, id)) || !strings.Contains(body, `aria-label="Default rates. Nothing mapped is playing"`) {
 				t.Errorf("status after recovery: %s", body)
@@ -79,7 +65,6 @@ func TestConnectionTestRecoversAFailingDownloader(t *testing.T) {
 	}
 }
 
-// The Connections page follows the live stream for its dots.
 func TestConnectionsDotsAreLive(t *testing.T) {
 	app := newApp(t)
 	ms := app.mediaServer("JF", "jellyfin", "http://jf.lan")

@@ -209,9 +209,8 @@ func (d *DB) DeleteMapping(id int64) error {
 
 // --- events ---
 
-// InsertEvent records one history event. An empty OccurredAt means
-// "now", which is every real caller; setting it explicitly exists for
-// tests that need an event dated into the past.
+// InsertEvent records an event. An empty OccurredAt means now; tests
+// set it to date one in the past.
 func (d *DB) InsertEvent(e Event) error {
 	err := d.insertEvent(e)
 	if err == nil {
@@ -235,18 +234,11 @@ func (d *DB) insertEvent(e Event) error {
 	return err
 }
 
-// EnableMappingsForMediaServer points a newly added server at every
-// downloader that already exists, and vice versa for a new downloader.
+// EnableMappingsForMediaServer maps a new server to every downloader,
+// switched on: a missing mapping means "do not throttle", which would
+// leave a new pair silently doing nothing. Existing rows are untouched.
 //
-// An absent mapping means "do not throttle", so without this a fresh
-// pair starts switched off and the app quietly does nothing until
-// someone finds the matrix and turns it on. Throttling is the point, so
-// a new pair defaults to on. Rows that already exist are left alone —
-// this only fills in the pairs nobody has expressed an opinion about.
-//
-// The `WHERE true` is load-bearing: without it SQLite cannot tell
-// whether ON CONFLICT belongs to the SELECT or the INSERT, and refuses
-// to parse the statement at all.
+// `WHERE true` lets SQLite tell the ON CONFLICT is the INSERT's.
 func (d *DB) EnableMappingsForMediaServer(mediaServerID int64) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)
@@ -275,9 +267,8 @@ func (d *DB) EnableMappingsForDownloader(downloaderID int64) error {
 	return nil
 }
 
-// SetMappingForPair turns the mapping between one media server and one
-// downloader on or off, creating it if it has never existed. The matrix
-// addresses cells by pair because an unticked cell has no row yet.
+// SetMappingForPair turns a server/downloader mapping on or off,
+// creating it if needed: an unticked matrix cell has no row yet.
 func (d *DB) SetMappingForPair(mediaServerID, downloaderID int64, enabled bool) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO mappings (media_server_id, downloader_id, enabled)

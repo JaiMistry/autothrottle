@@ -1,6 +1,5 @@
-// Package retention runs the periodic housekeeping that keeps the
-// database from growing without bound: events, session and throttle
-// history past their retention window, and expired login sessions.
+// Package retention prunes events, history and expired login sessions
+// past their retention window.
 package retention
 
 import (
@@ -20,13 +19,8 @@ func New(database *db.DB) *Runner {
 	return &Runner{db: database}
 }
 
-// Run performs one pass immediately, then repeats on the configured
-// maintenance interval until ctx is cancelled.
-//
-// The pass at startup matters for a container that isn't running
-// continuously: a host that's up for twenty minutes a day would
-// otherwise never reach a scheduled tick, and retention would silently
-// never happen.
+// Run performs a pass at once, then every maintenance interval until
+// ctx ends. The first pass matters for a host that is rarely up long.
 func (r *Runner) Run(ctx context.Context) {
 	r.RunOnce()
 	for {

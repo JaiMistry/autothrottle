@@ -16,16 +16,12 @@ import (
 type setupData struct {
 	pageData
 	Username string
-	// Token is the form's half of the setup CSRF check; its cookie
-	// carries the other.
-	Token string
+	Token    string // the form's half of the setup CSRF check
 }
 
-// setupCookie pairs the setup form with the browser that loaded it.
-// There is no session yet to hang a CSRF token on, so the token is a
-// cookie and a matching form field: another site can make a browser
-// post the form, but it cannot read or set this cookie, and with
-// SameSite=Strict the browser will not even send it along.
+// setupCookie carries the setup CSRF token, as there is no session yet:
+// another site can make a browser post the form, but cannot read or set
+// this cookie, and SameSite=Strict keeps it from being sent at all.
 const setupCookie = "autothrottle_setup"
 
 func (s *Server) renderSetup(w http.ResponseWriter, r *http.Request, status int, data setupData) {
@@ -51,9 +47,8 @@ func (s *Server) renderSetup(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, "setup", data)
 }
 
-// setupPage exists only while there is no way to log in. After that the
-// address is gone — a 404 like any other — so it can never be used to
-// replace an account that is already there.
+// setupPage exists only while there is no way to log in; after that it is
+// a 404, so it can never replace an existing account.
 func (s *Server) setupPage(w http.ResponseWriter, r *http.Request) {
 	if !s.auth.NeedsSetup() {
 		s.notFound(w, r)
@@ -76,8 +71,7 @@ func (s *Server) completeSetup(w http.ResponseWriter, r *http.Request) {
 		s.renderSetup(w, r, http.StatusForbidden, retry)
 		return
 	}
-	// Shares the login limiter, so the one page open to anyone cannot
-	// be hammered either.
+	// Shares the login limiter: this page is open to anyone.
 	if !s.limiter.Allow() {
 		retry.Error = "Too many attempts. Wait a moment and try again."
 		s.renderSetup(w, r, http.StatusTooManyRequests, retry)

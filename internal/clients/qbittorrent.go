@@ -11,13 +11,9 @@ import (
 	"strings"
 )
 
-// TestQBittorrent checks that baseURL is a reachable qBittorrent WebUI.
-// If username/password are set, it exercises the real login endpoint
-// (the WebUI API returns HTTP 200 with body "Fails." on bad
-// credentials, not a 401/403 — checking the body is required, status
-// code alone isn't enough). With no credentials (qBittorrent configured
-// to bypass auth for whitelisted/local clients), it falls back to the
-// one endpoint qBittorrent's API documents as unauthenticated.
+// TestQBittorrent checks that baseURL is a reachable qBittorrent WebUI,
+// logging in when credentials are set. Without them (auth bypassed for
+// local clients) it uses the one endpoint that needs no login.
 func TestQBittorrent(ctx context.Context, baseURL, username, password string) error {
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -42,14 +38,9 @@ func TestQBittorrent(ctx context.Context, baseURL, username, password string) er
 	return err
 }
 
-// SetQBittorrentLimits authenticates (when credentials are set) and
-// sets qBittorrent's global download/upload speed limits. Deliberately
-// global limits, not per-torrent: the point is to free up the WAN link
-// while something is streaming, not to prioritise between torrents,
-// and a client-wide limit is the only setting that reliably does that
-// no matter what is queued. Limits are KB/s per the app's schema
-// convention; qBittorrent's API takes bytes/sec. 0 means unlimited on
-// both sides.
+// SetQBittorrentLimits sets qBittorrent's global speed limits: global,
+// not per-torrent, since the point is to free the link whatever is
+// queued. Takes KB/s; the API wants bytes/s. 0 means unlimited.
 func SetQBittorrentLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -67,9 +58,8 @@ func SetQBittorrentLimits(ctx context.Context, baseURL, username, password strin
 	return nil
 }
 
-// qbittorrentClient returns an HTTP client ready to call the WebUI API:
-// authenticated when credentials are set, plain otherwise (qBittorrent
-// can be configured to bypass auth for whitelisted local clients).
+// qbittorrentClient returns a client for the WebUI API, logged in when
+// credentials are set.
 func qbittorrentClient(ctx context.Context, baseURL, username, password string) (*http.Client, error) {
 	if username == "" && password == "" {
 		return &http.Client{Timeout: RequestTimeout}, nil
@@ -77,8 +67,7 @@ func qbittorrentClient(ctx context.Context, baseURL, username, password string) 
 	return qbittorrentLogin(ctx, baseURL, username, password)
 }
 
-// qbittorrentLogin authenticates and returns an *http.Client carrying
-// the resulting session cookie (via cookiejar) for subsequent calls.
+// qbittorrentLogin returns a client carrying the session cookie.
 func qbittorrentLogin(ctx context.Context, baseURL, username, password string) (*http.Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -100,12 +89,8 @@ func qbittorrentLogin(ctx context.Context, baseURL, username, password string) (
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// qBittorrent has answered this two different ways. Through 4.x a
-	// success is 200 with the body "Ok." and a rejection is 200 with
-	// "Fails."; 5.x replies 204 with no body at all and still sets the
-	// session cookie. Accepting only the older shape meant AutoThrottle
-	// could not log in to any qBittorrent 5 install — found against
-	// 5.2.3.
+	// 4.x answers 200 "Ok." or 200 "Fails."; 5.x answers 204 with no body,
+	// still setting the cookie. Both shapes must be accepted.
 	switch {
 	case resp.StatusCode == http.StatusNoContent:
 		return client, nil

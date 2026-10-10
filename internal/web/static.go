@@ -9,14 +9,9 @@ import (
 	"strings"
 )
 
-// staticAssets serves the embedded CSS, JS, fonts and images with
-// cache headers Go's plain FileServer cannot provide here.
-//
-// Embedded files have no modification time, so FileServer can answer
-// no conditional request and every click re-downloads every asset.
-// Each file gets an ETag from its content hash instead, and a request
-// carrying the matching ?v= is answered as immutable: a new build
-// changes the hash, and with it the URL.
+// staticAssets serves the embedded assets with cache headers. Embedded
+// files have no modification time, so each gets an ETag from its content
+// hash instead, and a request carrying the matching ?v= is immutable.
 type staticAssets struct {
 	handler http.Handler
 	hashes  map[string]string
@@ -27,8 +22,6 @@ func newStaticAssets(files fs.FS) *staticAssets {
 		handler: http.FileServer(http.FS(files)),
 		hashes:  make(map[string]string),
 	}
-	// Hashing at startup rather than per request: the set is small,
-	// fixed at build time, and this keeps the hot path free of I/O.
 	_ = fs.WalkDir(files, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
@@ -55,13 +48,9 @@ func hashFile(files fs.FS, path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil))[:12], nil
 }
 
-// URL returns the path a template should reference, carrying the
-// content hash so a new build busts the cache without anyone having to
-// remember to.
-//
-// Templates name assets by their public path ("/static/css/..."),
-// while the map is keyed by their path inside the embedded sub-tree,
-// which is what the handler sees once the prefix has been stripped.
+// URL returns the path a template should reference, carrying the content
+// hash so a new build busts the cache. The map is keyed by path inside the
+// embedded tree, without the "/static" prefix.
 func (s *staticAssets) URL(path string) string {
 	if sum, ok := s.hashes[strings.TrimPrefix(path, "/static")]; ok {
 		return path + "?v=" + sum
@@ -75,12 +64,9 @@ func (s *staticAssets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if known {
 		w.Header().Set("ETag", `"`+sum+`"`)
 		if r.URL.Query().Get("v") == sum {
-			// The URL names this exact content, so it can never go
-			// stale — a year is the conventional ceiling.
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
-			// Referenced without a version (a bookmark, a hand-typed
-			// path): let it be cached but revalidated.
+			// Unversioned (a bookmark, a typed path): revalidate.
 			w.Header().Set("Cache-Control", "public, no-cache")
 		}
 		if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, sum) {

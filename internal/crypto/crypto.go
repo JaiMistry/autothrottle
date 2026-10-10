@@ -1,10 +1,5 @@
-// Package crypto encrypts credentials for connected services (media
-// server tokens, downloader passwords) at rest.
-//
-// Never store these plaintext. They grant control of the services they
-// belong to, and this app's database is a single file on a home server
-// — copied into backups, moved between hosts, and handled far more
-// casually than anything that looks like a credential store.
+// Package crypto encrypts media server tokens and downloader passwords
+// at rest: the database is a file that gets copied around casually.
 package crypto
 
 import (
@@ -20,14 +15,9 @@ import (
 
 const keySize = 32 // AES-256
 
-// LoadOrGenerateKey loads the key stored at keyPath, or generates one
-// and saves it there (mode 0600) on first run.
-//
-// Deliberately not configurable. The key lives beside the database, so
-// it protects stored credentials from a copy of the database file taken
-// without it — a backup job that only grabs *.db files, a database
-// attached to a bug report — and it does that without anyone having to
-// know it exists.
+// LoadOrGenerateKey loads the key at keyPath, or generates one there
+// (mode 0600). Kept beside the database, it protects credentials in any
+// copy of the database taken without it.
 func LoadOrGenerateKey(keyPath string) ([]byte, error) {
 	if existing, err := os.ReadFile(keyPath); err == nil {
 		key, err := base64.StdEncoding.DecodeString(string(existing))
@@ -53,8 +43,7 @@ func LoadOrGenerateKey(keyPath string) ([]byte, error) {
 	return key, nil
 }
 
-// newGCM builds the AEAD both directions use, so the cipher choice is
-// made in exactly one place.
+// newGCM is the one place the cipher is chosen.
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {

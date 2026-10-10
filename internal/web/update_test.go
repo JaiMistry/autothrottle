@@ -22,7 +22,8 @@ func TestCompareVersions(t *testing.T) {
 		{"1.1.0-rc1", "1.1.0-rc2", -1},
 		// Unparseable segments compare equal rather than guessing.
 		{"nightly", "1.0.0", 0},
-		// The release-candidate scheme this project tags with.
+		// The release-candidate scheme this project tags with: an rc is
+		// told about its release, never "upgraded" to an older rc.
 		{"1.0.0-rc.1", "1.0.0-rc.2", -1},
 		{"1.0.0-rc.2", "1.0.0-rc.1", 1},
 		{"1.0.0-rc.1", "1.0.0-rc.1", 0},
@@ -33,34 +34,6 @@ func TestCompareVersions(t *testing.T) {
 	for _, c := range cases {
 		if got := compareVersions(c.a, c.b); got != c.want {
 			t.Errorf("compareVersions(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
-		}
-	}
-}
-
-// The behaviour the update card exists to get right: a build that is
-// current, or ahead of the newest release, must never advertise an
-// update.
-func TestUpdateStateForRunningVersion(t *testing.T) {
-	cases := []struct {
-		running, latest, want string
-	}{
-		{"1.0.0", "1.0.0", "current"},
-		{"1.0.1", "1.0.0", "current"}, // ahead of the release: nothing to fetch
-		{"1.0.0", "1.0.1", "available"},
-		{"1.0.9", "1.0.10", "available"},
-		// An rc must be told about the release it leads to, and must not
-		// be told to "upgrade" to an older candidate.
-		{"1.0.0-rc.1", "1.0.0", "available"},
-		{"1.0.0-rc.2", "1.0.0-rc.1", "current"},
-		{"1.0.0", "1.0.0-rc.3", "current"},
-	}
-	for _, c := range cases {
-		got := "available"
-		if compareVersions(c.running, c.latest) >= 0 {
-			got = "current"
-		}
-		if got != c.want {
-			t.Errorf("running %s vs latest %s = %s, want %s", c.running, c.latest, got, c.want)
 		}
 	}
 }

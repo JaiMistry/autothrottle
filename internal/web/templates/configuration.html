@@ -19,15 +19,13 @@
 
 {{if eq $tab "connections"}}
 {{template "connections" .}}
-{{/* Follows the live stream so a dot changes the moment its state
-     does: a downloader failing, or coming back. */}}
+{{/* Follows the live stream, so a dot changes with its state. */}}
 <div id="conn-live" hidden hx-get="/configuration/connections/status" hx-trigger="live, every 5s [atLivePoll(this)]"
      hx-swap="none" hx-disinherit="*" data-live="dashboard"></div>
-{{/* One hover card for every status dot. Fixed and outside the tables,
-     so their horizontal scroll can't clip it on the first or last row. */}}
+{{/* One hover card for every dot, outside the tables so their scroll
+     can't clip it. */}}
 <span class="at-st-tip" role="tooltip" aria-hidden="true"><span class="at-st-tip-label"></span><span class="at-st-tip-detail"></span></span>
-{{/* The drawer stays mounted, so it has something to slide from, and
-     keeps its content while it slides out. */}}
+{{/* Always mounted, so it can slide, and keeps its content sliding out. */}}
 <div class="at-sheet-scrim{{if .Sheet}} open{{end}}" data-sheet-close></div>
 <aside class="at-sheet{{if .Sheet}} open{{end}}" id="sheet" aria-label="Connection details"{{if not .Sheet}} inert{{end}}>
   <div id="sheet-body" class="at-sheet-body">{{if .Sheet}}{{template "sheetbody" .}}{{end}}</div>
@@ -47,8 +45,7 @@
   <section class="at-card">
     <header class="at-card-head"><h2 class="at-card-title">About</h2></header>
     {{template "readonly" dict "Label" "Build" "Value" .About.Commit "Note" .About.BuiltNote}}
-    {{/* Ticks forward in the page from the boot timestamp; the value
-         rendered here is only the first frame. */}}
+    {{/* app.js ticks this forward from the boot timestamp. */}}
     {{template "readonly" dict "Label" "Uptime" "Value" .Uptime "Note" .About.BootNote "Tick" .About.BootUnix}}
     {{template "readonly" dict "Label" "Runtime" "Value" .About.Runtime "Note" "Currently running processes"}}
     {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set via environment variables at deploy time"}}
@@ -56,22 +53,17 @@
   </section>
 </div>
 {{end}}
-{{/* The pending box is cloned client-side the moment a test starts, so
-     the spinner is the same markup the server would send rather than a
-     second copy of it written in JavaScript. */}}
+{{/* Cloned client-side the moment a test starts, so the spinner is the
+     server's own markup. */}}
 <template id="at-tpl-testing">
   {{template "testresult" dict "State" "testing" "Tone" "neutral" "Icon" "connecting" "Label" "Testing…"}}
 </template>
-{{/* Same idea for the update check: the request is what takes the time,
-     so the checking state has to be shown before it is sent. */}}
 <template id="at-tpl-checking">
   {{template "updatecheck" dict "State" "checking" "Label" "Checking…" "NotePre" "Reading the latest release tag from GitHub."}}
 </template>
 {{end}}
 
-{{/* The matrix is its own template so toggling one cell can re-render
-     just the matrix. Returning 204 instead left the button looking dead:
-     the mapping did change, but nothing on the page said so. */}}
+{{/* Its own template so a toggle re-renders just the matrix. */}}
 {{define "mappingmatrix"}}{{$csrf := .CSRFToken}}
 <section class="at-card" id="mapping-matrix">
   <header class="at-card-head"><h2 class="at-card-title">Mappings</h2></header>
@@ -123,9 +115,7 @@
   </span>
 </div>{{end}}
 
-{{/* Checks are manual: nothing phones home on its own. Four states,
-     and the resting one names the running build rather than admitting
-     to not knowing something it was never asked to find out. */}}
+{{/* Checks are manual: nothing phones home on its own. */}}
 {{define "updatecheck"}}<div class="at-update" data-state="{{.State}}">
   <span class="at-update-main">
     <span class="at-update-icon{{if eq .State "checking"}} at-spin{{end}}">{{template "updateicon" .State}}</span>
@@ -142,8 +132,6 @@
   </span>
 </div>{{end}}
 
-{{/* Shared by the sign-in failure and the update-check failure — one
-     glyph for "this did not work", wherever it happens. */}}
 {{define "cautionicon"}}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.8 3.6 19.2h16.8z"/><path d="M12 9.8v4.1"/><path d="M12 16.9v.1"/></svg>{{end}}
 
 {{define "updateicon"}}
@@ -154,8 +142,7 @@
 {{- else}}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3v5.5"/><circle cx="12" cy="12" r="3.4"/><path d="M12 15.5v5.5"/></svg>
 {{- end}}{{end}}
 
-{{/* One rate field: arrow, bare number, and the suffix that flips to
-     "unlimited" at 0 — all inside one bordered box.
+{{/* One rate field; its suffix reads "unlimited" at 0.
      Args: Name, Label, Value, Dir ("down"|"up") */}}
 {{define "ratefield"}}<div class="at-ratefield">
   <span class="at-ratefield-label">{{.Label}}</span>
@@ -167,15 +154,13 @@
   </div>
 </div>{{end}}
 
-{{/* The download/upload pair, with its legend.
-     Args: Legend, Tone, DownName, UpName, Down, Up, Note */}}
+{{/* Args: Legend, Tone, DownName, UpName, Down, Up, Note */}}
 {{define "ratepair"}}<fieldset class="at-ratepair">
   {{if .Legend}}<legend class="at-ratepair-legend{{if ne .Tone "warn"}} at-ratepair-legend--default{{end}}">{{.Legend}}
     {{- if .Hint}}<span class="at-hint">
       <button type="button" class="at-hint-dot" aria-label="{{.HintLabel}}" aria-describedby="{{.HintID}}">?</button>
-      {{/* Two elements on purpose: the outer one spans the gap between
-           dot and bubble with padding, so the pointer can travel up to
-           the link without crossing dead space and closing it. */}}
+      {{/* Two elements: the outer one's padding bridges dot and bubble, so
+           the pointer can reach the link without it closing. */}}
       <span class="at-hint-anchor">
         <span class="at-hint-bubble" id="{{.HintID}}" role="tooltip">{{.Hint}} <a class="at-hint-link" href="/configuration?tab=mappings">mapped</a> {{.HintTail}}</span>
       </span>
@@ -188,9 +173,7 @@
   {{if .Note}}<span class="at-ratepair-note">{{.Note}}</span>{{end}}
 </fieldset>{{end}}
 
-{{/* The Plex sign-in panel. One button that opens Plex's own window on
-     the first click, then a live state beside it — the panel swaps in
-     place so nothing under the form moves while it runs. */}}
+{{/* The Plex sign-in panel, swapped in place as the flow runs. */}}
 {{define "plexsignin"}}<div class="at-plexsignin" data-state="{{.State}}"{{if .AuthURL}} data-authurl="{{.AuthURL}}"{{end}}>
   <div class="at-plexsignin-row">
     <button type="button" class="at-btn at-btn--primary" data-plexstart
@@ -226,8 +209,7 @@
   <input type="hidden" name="plex_token" value="{{.Token}}">
   {{- end}}
   {{- if eq .State "waiting"}}
-  {{/* Poll until Plex attaches a token. Two seconds is what the flow
-       can bear without hammering plex.tv. */}}
+  {{/* Poll until Plex attaches a token, gently enough for plex.tv. */}}
   <div hx-get="/configuration/plex-signin/poll" hx-trigger="load delay:2s" hx-target="#plex-signin" hx-swap="innerHTML"></div>
   {{- end}}
 </div>{{end}}
@@ -247,8 +229,7 @@
   </div>
 </dialog>{{end}}
 
-{{/* Both tables, as one block: a save swaps it whole, out of band, while
-     the drawer slides shut. */}}
+{{/* One block, so a save can swap it out of band as the drawer shuts. */}}
 {{define "connections"}}{{$csrf := .CSRFToken}}
 <div id="connections" class="at-connections"{{if .OOB}} hx-swap-oob="true"{{end}}>
   <section class="at-card">
@@ -276,9 +257,7 @@
               </span>
             </td>
           </tr>
-          {{/* The result lands under the row it belongs to. Nothing is
-               rendered until a test runs, so an untested list carries no
-               reserved gaps. */}}
+          {{/* A test result lands under its row; nothing is rendered until then. */}}
           <tr><td colspan="6" class="at-testcell"><div id="ms-test-{{.ID}}"></div></td></tr>
         {{else}}
           <tr><td colspan="6" class="at-table-empty" style="border-bottom:0">No media servers yet.</td></tr>
@@ -326,19 +305,16 @@
   </section>
 </div>{{end}}
 
-{{/* The dot carries its state in its label; the hover card only shows
-     the same two lines to a pointer. Args: Tone, Label, Detail */}}
+{{/* The label carries the state; the hover card only repeats it.
+     Args: Tone, Label, Detail */}}
 {{define "statusdot"}}<span class="at-st" id="{{.ID}}" tabindex="0" data-tone="{{.Dot.Tone}}" data-label="{{.Dot.Label}}" data-detail="{{.Dot.Detail}}" aria-label="{{.Dot.Label}}. {{.Dot.Detail}}"><span class="at-st-dot" aria-hidden="true"></span></span>{{end}}
 
-{{/* The live parts of the Connections tables — each dot and session
-     count by id — for the page to merge in place as state changes. */}}
+{{/* Each dot and session count by id, for app.js to merge in place. */}}
 {{define "connectionstatus"}}
 {{- range .MediaServers}}{{template "statusdot" (dict "ID" (printf "st-ms-%d" .ID) "Dot" .Dot)}}<span id="sess-ms-{{.ID}}">{{.Sessions}}</span>{{end}}
 {{- range .Downloaders}}{{template "statusdot" (dict "ID" (printf "st-dl-%d" .ID) "Dot" .Dot)}}{{end}}
 {{- end}}
 
-{{/* What the drawer holds: its bar, a slot for a failed save, and the
-     add or edit form. */}}
 {{define "sheetbody"}}{{$csrf := .CSRFToken}}
 <div class="at-sheet-bar">
   {{if and (eq .Sheet "server") .EditMediaServerID}}<button type="button" class="at-btn at-btn--critical" onclick="document.getElementById('del-ms-{{.EditMediaServerID}}').showModal()">Delete</button>{{end}}
@@ -374,10 +350,8 @@
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
         <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
-      {{/* Plex takes either a pasted token or its own sign-in; Emby and
-           Jellyfin only take an API key. Each input has its own name and
-           the server picks by type, so a hidden blank field can never
-           win over the value the user actually supplied. */}}
+      {{/* Each credential has its own input name and the server picks by type,
+           so a hidden blank field can't win over the one filled in. */}}
       <div data-credgroup="plex" class="at-stack">
         <div class="at-tabs at-tabs--sm" role="tablist">
           <button type="button" class="at-tab" role="tab" aria-selected="true" data-credtab="token">X-Plex-Token</button>

@@ -15,7 +15,6 @@ import (
 )
 
 // fakeLimiter records what would have been sent to a download client.
-// Every test here runs against this — never a real qBittorrent.
 type fakeLimiter struct {
 	mu    sync.Mutex
 	calls []call
@@ -74,9 +73,7 @@ func addServerAndDownloader(t *testing.T, database *db.DB) (int64, int64) {
 	return msID, dlID
 }
 
-// A mapping created after the fact must take effect on the next
-// resolve, without waiting for a playback event — the whole point of
-// resolving from the database on every pass.
+// A mapping added mid-playback takes effect on the next resolve.
 func TestMappingAddedWhileSessionActiveThrottles(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -101,8 +98,7 @@ func TestMappingAddedWhileSessionActiveThrottles(t *testing.T) {
 	}
 }
 
-// Editing a rate while a downloader is already throttled has to push
-// the new numbers — the state didn't change, but what's applied did.
+// A rate edit while throttled is pushed, though the state did not change.
 func TestRateEditWhileThrottledIsPushed(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -150,8 +146,7 @@ func TestUnchangedResolveIsNotReapplied(t *testing.T) {
 	}
 }
 
-// A disabled media server must not throttle anything, even if session
-// state for it survives somewhere.
+// A disabled server throttles nothing, even if its sessions survive.
 func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -184,33 +179,6 @@ func TestDisabledMediaServerDoesNotThrottle(t *testing.T) {
 	}
 }
 
-// Clearing a stopped watcher's sessions must release the throttle.
-func TestClearSessionsReleasesThrottle(t *testing.T) {
-	s, database, limiter := newTestScheduler(t)
-	msID, dlID := addServerAndDownloader(t, database)
-	if _, err := database.CreateMapping(msID, dlID); err != nil {
-		t.Fatalf("creating mapping: %v", err)
-	}
-
-	s.HandleSessionEvent(msID, clients.Session{Key: "session-1"}, true)
-	s.resolve(context.Background())
-	if st := s.State(dlID); !st.Known || !st.Throttled {
-		t.Fatal("expected downloader to be throttled while a session is active")
-	}
-
-	s.mu.Lock()
-	delete(s.active, msID)
-	s.mu.Unlock()
-	s.resolve(context.Background())
-
-	if s.State(dlID).Throttled {
-		t.Error("expected throttle to release once sessions are cleared")
-	}
-	if got := limiter.snapshot(); len(got) != 2 || got[1].download != 0 {
-		t.Errorf("expected default rates restored, got %+v", got)
-	}
-}
-
 // The manual pause override outranks active sessions.
 func TestPauseOverridesActiveSession(t *testing.T) {
 	s, database, limiter := newTestScheduler(t)
@@ -236,8 +204,7 @@ func TestPauseOverridesActiveSession(t *testing.T) {
 	}
 }
 
-// Playback is persisted as it happens, so the Dashboard can name a
-// session the event stream announced before a snapshot described it.
+// Playback is persisted as it happens.
 func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
@@ -253,7 +220,6 @@ func TestSessionEventsAreRecordedToHistory(t *testing.T) {
 	}
 }
 
-// openKeys lists a media server's sessions still open in history.
 func openKeys(t *testing.T, database *db.DB, msID int64) []string {
 	t.Helper()
 	sessions, err := database.OpenSessions(msID)
@@ -268,8 +234,7 @@ func openKeys(t *testing.T, database *db.DB, msID int64) []string {
 	return keys
 }
 
-// Reconciliation snapshots are authoritative, so a session the event
-// stream missed must still land in history.
+// A session only a snapshot saw still lands in history.
 func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, _ := addServerAndDownloader(t, database)
@@ -278,28 +243,34 @@ func TestReplaceSessionsRecordsHistory(t *testing.T) {
 	if got := openKeys(t, database, msID); !slices.Equal(got, []string{"a", "b"}) {
 		t.Fatalf("open sessions = %v, want both from the snapshot", got)
 	}
-	// "a" ended, "b" continues.
 	s.ReplaceSessions(msID, sessionsFrom("b"))
 	if got := openKeys(t, database, msID); !slices.Equal(got, []string{"b"}) {
 		t.Fatalf("open sessions = %v, want only b", got)
 	}
 }
 
-// A stopped watcher can never observe its sessions ending, so they must
-// not be left open forever.
-func TestClearSessionsClosesHistory(t *testing.T) {
+// A stopped watcher never sees its sessions end, so they are closed for it.
+// A server whose watcher stops must not keep its downloaders throttled.
+func TestClearSessionsReleasesAndClosesHistory(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
-	msID, _ := addServerAndDownloader(t, database)
+	msID, dlID := addServerAndDownloader(t, database)
+	if _, err := database.CreateMapping(msID, dlID); err != nil {
+		t.Fatal(err)
+	}
 
 	s.HandleSessionEvent(msID, clients.Session{Key: "42"}, true)
+	s.resolve(context.Background())
+	if !s.State(dlID).Throttled {
+		t.Fatal("not throttled while a session is active")
+	}
 	s.ClearSessions(msID)
+	eventually(t, "the release", func() bool { st := s.State(dlID); return st.Known && !st.Throttled })
 	if got := openKeys(t, database, msID); len(got) != 0 {
 		t.Fatalf("open sessions = %v, want none", got)
 	}
 }
 
-// The log attributes a throttle to the server that caused it by id, not
-// by parsing the name back out of the message.
+// The log attributes a throttle to its server by id, not by name.
 func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -325,8 +296,6 @@ func TestThrottleEventNamesTheCausingServer(t *testing.T) {
 	}
 }
 
-// sessionsFrom builds the snapshot shape from bare keys, for the many
-// tests that only care about which sessions exist.
 func sessionsFrom(keys ...string) []clients.Session {
 	out := make([]clients.Session, 0, len(keys))
 	for _, key := range keys {
@@ -335,9 +304,8 @@ func sessionsFrom(keys ...string) []clients.Session {
 	return out
 }
 
-// A throttle period spans the whole time any downloader is throttled:
-// it opens when the first one is, survives which ones change, and
-// closes on pause as well as when playback stops.
+// A period spans the whole time anything is throttled, and pausing
+// closes it.
 func TestThrottlePeriodFollowsThrottling(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
 	msID, dlID := addServerAndDownloader(t, database)
@@ -364,7 +332,6 @@ func TestThrottlePeriodFollowsThrottling(t *testing.T) {
 		t.Fatalf("playback did not open a period: since %v, periods %+v", since, periods())
 	}
 
-	// A second session changes nothing about the period.
 	s.HandleSessionEvent(msID, clients.Session{Key: "b"}, true)
 	s.resolve(ctx)
 	if again, _ := s.ThrottlingSince(); !again.Equal(since) || len(periods()) != 1 {

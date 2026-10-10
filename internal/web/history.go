@@ -12,9 +12,8 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
-// historyDays is how many days the heatmap holds. Both ranges render
-// all of them: the 7-day view hides the rest, so switching range is an
-// animation in the page rather than a round trip.
+// historyDays is how many days the heatmap holds. Both ranges render all
+// of them and 7d hides the rest, so switching range needs no round trip.
 const historyDays = 30
 
 // historyView is the Dashboard's Throttle History card: minutes
@@ -46,14 +45,14 @@ type historyCell struct {
 	Hot    bool // throttled at least a minute: the only cells with a tooltip
 	Step   int  // 0–4, the fill
 	Side   string
-	Value  string   // "2hr 35m throttled", the whole of each period through this hour
-	Spans  []string // "8:12 PM – 10:47 PM"
+	Value  string   // "2hr 35m throttled": each stretch through this hour, whole
+	Spans  []string // "8:12 – 10:47 PM"
 	When   string   // "Fri 2 Oct"
 	Label  string   // the cell's aria-label
 }
 
-// throttleSteps are the heatmap's five fills, by minutes throttled in
-// the hour. The legend draws the same five.
+// throttleSteps are the heatmap's five fills, by minutes throttled in the
+// hour; the legend draws the same five.
 var throttleSteps = []int{0, 15, 30, 45, 60}
 
 func stepOf(minutes int) int {
@@ -65,10 +64,9 @@ func stepOf(minutes int) int {
 	return len(throttleSteps) - 1
 }
 
-// buildHistory lays out throttle periods and process runs as the
-// heatmap. A zero End on a period means it is still going; runs are
-// the spans AutoThrottle was up, and an hour with less than a minute of
-// them reads as not running rather than as nothing throttled.
+// buildHistory lays out throttle periods and process runs as the heatmap.
+// A zero End is still going. An hour with under a minute of runs reads as
+// AutoThrottle being off, not as nothing throttled.
 func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) historyView {
 	now = now.In(time.Local)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
@@ -108,9 +106,8 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				continue
 			}
 
-			// The fill is this hour's exact share. The tooltip names each
-			// stretch through it whole, so two hours of playback reads as
-			// two hours on every cell it covers rather than as a run of 60s.
+			// The fill is this hour's exact share; the tooltip names each
+			// stretch through it whole, so two hours read as two hours.
 			var throttled, whole time.Duration
 			for _, p := range periods {
 				end := p.End
@@ -173,8 +170,7 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 	return v
 }
 
-// overlapAll is how much of [a, b) the spans cover. A zero End runs to
-// now.
+// overlapAll is how much of [a, b) the spans cover; a zero End runs to now.
 func overlapAll(spans []db.Span, a, b, now time.Time) time.Duration {
 	var d time.Duration
 	for _, s := range spans {
@@ -206,9 +202,7 @@ func later(a, b time.Time) time.Time {
 }
 
 // stretchGap is how far apart two throttle periods can be and still read
-// as one stretch. Playback that stops and starts again within a few
-// minutes — an episode ending and the next beginning, a client
-// reconnecting — is one evening of throttling, not a list of fragments.
+// as one stretch, like an episode ending and the next beginning.
 const stretchGap = 5 * time.Minute
 
 // maxTipSpans caps the ranges one tooltip lists.
@@ -242,9 +236,8 @@ func stretches(periods []db.Span, now time.Time) []stretch {
 	return out
 }
 
-// clockRange is "9:18 – 10:00 PM", "11:40 PM – 12:20 AM" across
-// midday or midnight, "9:18 PM" for one that began and ended within the
-// minute, and "9:18 PM – now" for one still going.
+// clockRange is "9:18 – 10:00 PM", "11:40 PM – 12:20 AM" across noon or
+// midnight, "9:18 PM" within one minute, and "9:18 PM – now" if ongoing.
 func clockRange(from, to time.Time, ongoing bool) string {
 	from, to = from.In(time.Local), to.In(time.Local)
 	switch {
@@ -284,8 +277,8 @@ func (s *Server) loadHistory(rangeDays int) (historyView, error) {
 	if err != nil {
 		return historyView{}, err
 	}
-	// This process is still running; its last heartbeat can be a minute
-	// old, and the hour in progress must not read as partly down.
+	// This run's last heartbeat can be a minute old; the hour in progress
+	// must not read as partly down.
 	if n := len(runs); n > 0 && now.Sub(runs[n-1].End) < 2*settings.HeartbeatInterval {
 		runs[n-1].End = now
 	}
@@ -300,8 +293,7 @@ func historyRange(r *http.Request) int {
 	return 7
 }
 
-// historyCard serves the Throttle History card on its own, for its
-// periodic refresh.
+// historyCard serves the Throttle History card on its own, for refreshes.
 func (s *Server) historyCard(w http.ResponseWriter, r *http.Request) {
 	v, err := s.loadHistory(historyRange(r))
 	if err != nil {

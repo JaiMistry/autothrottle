@@ -27,8 +27,7 @@ func TestNotifyReachesEverySubscriber(t *testing.T) {
 	}
 }
 
-// A burst while the stream is busy is one wake-up naming every topic,
-// not one per change.
+// A burst is one wake-up naming every topic, not one per change.
 func TestBurstsCollapse(t *testing.T) {
 	h := NewHub()
 	s := h.Subscribe()

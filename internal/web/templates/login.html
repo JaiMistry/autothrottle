@@ -1,20 +1,16 @@
 {{define "content"}}
-{{/* The account is created once, on the setup screen, or comes from
-     the environment. There is no signup or password reset here, so this
-     page must not imply either exists. */}}
+{{/* There is no sign-up or password reset, so nothing here implies one. */}}
 <div class="at-login-inner">
   <div class="at-login-brand">
     <img src="/static/img/logo-mark.svg" width="72" height="72" alt="">
     <span class="at-login-name">AutoThrottle</span>
   </div>
   <section class="at-card" style="padding:20px 22px;width:100%">
-    {{/* Card renders its children inside a body slot; mirroring that
-         keeps the box model identical to the design's. */}}
+    {{/* Mirrors the design's Card body slot, keeping the box model identical. */}}
     <div>
     <form method="post" action="/login" class="at-stack">
       {{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
-      {{/* Deliberately generic: naming which half was wrong would leak
-           which accounts exist. */}}
+      {{/* Generic: naming the wrong half would reveal which accounts exist. */}}
       {{if .Error}}{{template "alert" dict "Tone" "error" "Title" .Error}}{{end}}
       <label class="at-field">
         <span class="at-field-label">Username</span>

@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// qBittorrent answers a successful login differently across versions:
-// 4.x returns 200 with "Ok.", 5.x returns 204 with no body. Rejecting
-// the 204 meant no qBittorrent 5 install could be used at all.
+// 4.x answers a good login with 200 "Ok.", 5.x with 204 and no body.
 func TestQbittorrentLoginAcceptsBothSuccessShapes(t *testing.T) {
 	cases := []struct {
 		name    string

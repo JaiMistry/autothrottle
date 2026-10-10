@@ -1,10 +1,7 @@
-{{/* Shared partials mirroring the design system's components one-to-one.
-     Each takes a dict so call sites read as named arguments. */}}
+{{/* Shared partials mirroring the design system's components; each takes
+     a dict so call sites read as named arguments. */}}
 
-{{/* StatusFlag — a state readout, not a badge: no plate, no fill. The
-     icon carries the colour and the motion. Movement always means the
-     state is live, so faults hold perfectly still and let colour carry
-     the alarm.
+{{/* StatusFlag: a state readout, not a badge. Only live states move.
      Args: Tone (good|warn|critical|accent|neutral), Icon, Label, Size. */}}
 {{define "statusflag"}}<span class="at-flag{{if eq (or .Size "md") "sm"}} at-flag--sm{{end}}" data-tone="{{.Tone}}">
   <span class="at-flag-icon">{{template "flagicon" dict "Icon" .Icon "Size" (or .Size "md")}}</span>
@@ -13,10 +10,7 @@
 
 {{define "flagicon"}}{{$s := 16}}{{if eq .Size "sm"}}{{$s = 14}}{{end}}
 {{- if eq .Icon "throttled" -}}
-  {{/* A bright segment runs the length of a monitor trace, clears the
-       end, then repeats. The numbers are exact: pathLength 100 with a
-       "26 115" dash and a 141→0 offset over 1.45s linear. Eyeballing
-       these gives a different-feeling instrument. */}}
+  {{/* Exact values from the design: eyeballed ones feel different. */}}
   <svg width="{{$s}}" height="{{$s}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M2.6 12h3.9l2.9-8.6 3.9 17.2 2.9-8.6h3.9" pathLength="100" opacity="0.55"/>
     <path d="M2.6 12h3.9l2.9-8.6 3.9 17.2 2.9-8.6h3.9" pathLength="100" stroke-dasharray="26 115" class="at-pulse-trace"/>
@@ -69,17 +63,13 @@
 {{define "emptystate"}}<div class="at-empty{{if .Tone}} at-empty--{{.Tone}}{{end}}">
   <h3 class="at-empty-title">{{.Title}}</h3>
   {{if .Body}}<p class="at-empty-body">{{.Body}}</p>{{end}}
-  {{/* Same reason as the pagedlog's link: an empty state is rendered
-       inside containers that target themselves, and a boosted link
-       would inherit that and navigate into the container. */}}
+  {{/* Targets body: it sits inside self-targeting containers, whose target
+       a boosted link would otherwise inherit. */}}
   {{if .ActionLabel}}<div class="at-empty-action"><a href="{{.ActionHref}}" class="at-btn at-btn--primary"
      hx-target="body" hx-swap="innerHTML">{{.ActionLabel}}</a></div>{{end}}
 </div>{{end}}
 
-{{/* RateFigure. Chunky arrows on the same 24px grid as the status
-     glyphs but at a heavier weight — a rate figure is data, so its
-     marker has to hold up next to digits.
-     Args: Down, Up (KB/s), Size ("caption" | "ui") */}}
+{{/* RateFigure. Args: Down, Up (KB/s), Size ("caption" | "ui") */}}
 {{define "ratefigure"}}{{$sz := 13}}{{if eq (or .Size "caption") "ui"}}{{$sz = 14}}{{end}}
 {{- if and (eq .Down 0) (eq .Up 0) -}}
 <span class="at-rate at-rate--unlimited{{if eq (or .Size "caption") "ui"}} at-rate--ui{{end}}">Unlimited</span>
@@ -99,8 +89,7 @@
 </svg>{{end}}
 
 {{/* ServerRow. Args: Name, Type, State, Sessions, Detail */}}
-{{/* The healthy state, as a green dot before the name: a flag saying
-     all is well was the loudest thing on a quiet row. Arg: the label. */}}
+{{/* The healthy state: a green dot before the name. Arg: the label. */}}
 {{define "rowdot"}}<span class="at-rowdot" role="img" aria-label="{{.}}" title="{{.}}"></span>{{end}}
 
 {{define "serverrow"}}<div class="at-serverrow" data-state="{{.State}}">
@@ -121,9 +110,7 @@
   </div>
 </div>{{end}}
 
-{{/* One playing session. Position is carried by a hairline bar with the
-     timecode trailing it — progress is a quantity, and a bar states it
-     without competing with the title for attention. */}}
+{{/* One playing session, its position a hairline bar. */}}
 {{define "sessionline"}}<span class="at-session">
   <span class="at-session-head">
     {{if .Title}}<span class="at-session-title">{{.Title}}</span>{{end}}
@@ -137,17 +124,12 @@
   </span>{{end}}
 </span>{{end}}
 
-{{/* DownloaderRow. Throttling is per-downloader; there is no global
-     "on". The state flag never stands alone — the reason line always
-     says which media server caused it, or why the state is not known.
+{{/* DownloaderRow. The reason line always says what caused the state.
      Args: Name, Type, State, Cause, Down, Up */}}
 {{define "downloaderrow"}}<div class="at-dlrow-wrap" data-state="{{.State}}">
   <div class="at-dlrow">
     <div class="at-dlrow-head">
-      {{/* At default rates the flag is just a green dot before the name;
-           the reason line says why. normal and paused read the same:
-           throttling off means the configured default rate is in force,
-           the same rate as any other unthrottled moment. */}}
+      {{/* Paused reads as default rates: that is the rate in force. */}}
       {{if or (eq .State "normal") (eq .State "paused")}}{{template "rowdot" "Default rates"}}{{end}}
       <span class="at-rowname{{if eq .State "disabled"}} at-rowname--muted{{end}}">{{.Name}}</span>
       {{if eq .State "throttled"}}{{template "statusflag" dict "Tone" "warn" "Icon" "throttled" "Label" "Throttled"}}
@@ -163,18 +145,15 @@
   </div>
 </div>{{end}}
 
-{{/* LogRow. The message is the backend's own string, shown verbatim —
-     the cause is already in it, and the attribution beside it is the
-     structured version. Args: Time, Level, Message, Downloader, Server */}}
+{{/* LogRow. The message is the backend's own, verbatim.
+     Args: Time, Level, Message, Downloader, Server */}}
 {{define "logrow"}}<div class="at-logrow" data-level="{{.Level}}">
   <span class="at-logrow-time">{{.Time}}</span>
   <span class="at-logrow-level">{{template "badge" dict "Tone" (levelTone .Level) "Label" .Level}}</span>
   <span class="at-logrow-msg">{{.Message}}{{if or .Downloader .Server}}<span class="at-logrow-cause">{{with .Server}}<span class="at-logrow-tag">{{.}}</span>{{end}}{{if and .Downloader .Server}}<span class="at-logrow-arrow" aria-label="throttles">→</span>{{end}}{{with .Downloader}}<span class="at-logrow-tag">{{.}}</span>{{end}}</span>{{end}}</span>
 </div>{{end}}
 
-{{/* PagedLog. A fixed page size so the card never grows downward:
-     choose how many rows, step through with arrows. Clear deletes the
-     events. */}}
+{{/* PagedLog: a fixed page size, so the card never grows downward. */}}
 {{define "pagedlog"}}<section class="at-card" id="{{.TargetID}}">
   <header class="at-card-head">
     <h2 class="at-card-title">{{.Title}}</h2>
@@ -190,8 +169,6 @@
   </header>
   <div style="display:grid">
     {{if not .Events}}
-      {{/* Same treatment the Logs page gives an empty log, so clearing
-           one does not land on a different-looking page. */}}
       {{template "emptystate" dict "Title" "No events yet"}}
     {{else}}
       {{range .Events}}{{template "logrow" .}}{{end}}
@@ -215,9 +192,8 @@
   </div>
 </section>{{end}}
 
-{{/* The swap target for a connection test. One bounded box, and it
-     holds still until dismissed by hand — a result that vanished on its
-     own would take the error text with it. */}}
+{{/* A connection test's result. It stays until dismissed, so an error
+     can't vanish on its own. */}}
 {{define "testresult"}}<div class="at-testresult" data-state="{{.State}}"{{if .Fields}} data-field="{{range $i, $f := .Fields}}{{if $i}} {{end}}{{$f}}{{end}}"{{end}} role="status">
   <div class="at-testresult-head">
     {{template "statusflag" dict "Tone" .Tone "Icon" .Icon "Label" .Label "Size" "sm"}}
@@ -229,11 +205,8 @@
   {{if .Hint}}<span class="at-testresult-hint">{{.Hint}}</span>{{end}}
 </div>{{end}}
 
-{{/* CredentialField. Never echoes a stored secret — not even a hidden
-     field. Empty means "keep what is saved", and the note that says so
-     lives under the control rather than in the label, so the label
-     stays one line and keeps aligning with a plain field beside it.
-     Args: Label, Name, HasCredential, Placeholder */}}
+{{/* CredentialField. Never echoes a stored secret, not even hidden; blank
+     means keep what is saved. Args: Label, Name, HasCredential, Placeholder */}}
 {{define "credentialfield"}}<div style="display:grid;align-content:start;gap:var(--space-4)">
   <label class="at-field">
     <span class="at-field-label">{{.Label}}{{if .Help}}<a class="at-helplink" href="{{.Help}}" target="_blank" rel="noreferrer" title="{{.HelpLabel}}" aria-label="{{.HelpLabel}}">?</a>{{end}}</span>
@@ -243,12 +216,10 @@
   </label>
 </div>{{end}}
 
-{{/* Across the top of every page while throttling is disabled, with the
-     way back on it. Always present, empty when not paused, so the live
-     stream can bring it in or take it away on any page. */}}
-{{/* hx-disinherit: the Resume form inside is boosted, and inheriting
-     this block's target and swap would load the whole next page into
-     the banner, sidebar and all. */}}
+{{/* Across every page while throttling is disabled. Always present, empty
+     when not, so the live stream can bring it in on any page. */}}
+{{/* hx-disinherit: the boosted Resume form would otherwise inherit this
+     block's target and load the next page into the banner. */}}
 {{define "pausedbanner"}}<div id="paused-banner" hx-get="/paused-banner" hx-trigger="live, every 5s [atLivePoll(this)]"
      hx-swap="outerHTML" hx-target="this" hx-disinherit="*" data-live="dashboard">
   {{- if .Paused}}

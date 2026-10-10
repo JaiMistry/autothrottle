@@ -6,10 +6,9 @@
 #   MEDIA=emby test/e2e/run.sh          one media server only
 #   AT_IMAGE=my-image test/e2e/run.sh   test an image you already built
 #   KEEP=1 test/e2e/run.sh              leave the last stack running afterwards
-#   E2E_BROWSER=host test/e2e/run.sh    drive the Chrome and Node on this machine
-#                                       (with puppeteer-core installed here, and
-#                                       PUPPETEER_EXECUTABLE_PATH) instead of
-#                                       pulling the Puppeteer image
+#   E2E_BROWSER=host test/e2e/run.sh    use this machine's Node, puppeteer-core and
+#                                       Chrome (PUPPETEER_EXECUTABLE_PATH), not the
+#                                       Puppeteer image
 #
 # Plex runs against a real plex.tv test account. Its token and client
 # identifier come from PLEX_E2E_TOKEN and PLEX_E2E_CLIENT_ID, or from a
@@ -24,8 +23,7 @@ fi
 default="jellyfin emby"
 [ -n "${PLEX_E2E_TOKEN:-}" ] && default="$default plex"
 
-# The browser image is the biggest pull and is not needed until the
-# stack is up, so it downloads while the stack is built and provisioned.
+# The biggest pull, not needed until the stack is up: fetch it meanwhile.
 PUPPETEER=ghcr.io/puppeteer/puppeteer:25.12.0
 pull=""
 if [ "${E2E_BROWSER:-}" != host ] && ! docker image inspect "$PUPPETEER" >/dev/null 2>&1; then
@@ -57,9 +55,8 @@ for media in ${MEDIA:-$default}; do
       echo; echo "--- AutoThrottle log ($media) ---"
       docker logs e2e-autothrottle 2>&1 | tail -40
     }
-  # The run's Plex server comes off the account even when it failed —
-  # unless the stack is being kept, when the next run's cleanup finds it
-  # by name instead.
+  # Plex comes off the account even on failure; a kept stack's server is
+  # found by name by the next run's cleanup.
   if [ "$media" = plex ] && [ "${KEEP:-}" != 1 ]; then
     MEDIA=plex python3 provision.py cleanup || true
   fi

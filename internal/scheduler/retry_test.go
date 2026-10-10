@@ -11,8 +11,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/clients"
 )
 
-// downLimiter is a download client that refuses until it is brought up,
-// like one restarting for an update.
+// downLimiter refuses until brought up, like a client restarting.
 type downLimiter struct {
 	mu    sync.Mutex
 	up    bool
@@ -47,8 +46,7 @@ func fastRetries(t *testing.T) {
 	t.Cleanup(func() { retryFirst, retryMax, retryCheck = first, max, check })
 }
 
-// A client that was down when its rates were applied gets them once it
-// is back, without anything else having to happen first.
+// A client down when its rates were applied gets them once it is back.
 func TestFailedApplyIsRetriedUntilItLands(t *testing.T) {
 	fastRetries(t)
 	s, database, _ := newTestScheduler(t)
@@ -80,14 +78,12 @@ func TestFailedApplyIsRetriedUntilItLands(t *testing.T) {
 
 	client.bringUp()
 	eventually(t, "the retry to land", func() bool { st := s.State(dlID); return st.Known && st.Failure == "" })
-	// Back from a failure, the log names what was applied rather than
-	// calling it an update.
+	// Back from a failure, the log names what was applied, not "updated".
 	events, _ = database.ListEvents(1)
 	if !strings.HasPrefix(events[0].Message, "restored default rate for qbit") {
 		t.Errorf("recovery logged as %q", events[0].Message)
 	}
 
-	// Healthy, it stops trying.
 	n := client.attempts()
 	time.Sleep(100 * time.Millisecond)
 	if client.attempts() != n {

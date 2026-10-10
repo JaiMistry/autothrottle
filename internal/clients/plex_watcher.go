@@ -14,15 +14,12 @@ import (
 	"github.com/coder/websocket"
 )
 
-// detailTimeout bounds the one REST call made when a session starts,
-// purely to learn what is playing. Short on purpose: if it does not
-// answer quickly the reconciliation poll will supply the same detail
-// anyway, and nothing about throttling is waiting on it.
+// detailTimeout bounds the lookup of what a new session is playing.
+// Short: the reconciliation poll supplies the same detail anyway.
 const detailTimeout = 5 * time.Second
 
-// PlexWatcher implements SessionWatcher against a Plex server's
-// session-notification endpoint (free, undocumented-but-stable, no
-// Plex Pass required), emitting SessionEvents on state changes.
+// PlexWatcher implements SessionWatcher against Plex's notification
+// socket (undocumented but stable; no Plex Pass needed).
 type PlexWatcher struct {
 	BaseURL           string
 	Token             string
@@ -34,10 +31,8 @@ type PlexWatcher struct {
 
 	mu         sync.Mutex
 	localCache map[string]bool // sessionKey -> is-local, cached while active
-	// lastPos records the position most recently reported for a session,
-	// which is also how the watcher knows it has already announced that
-	// session at all. Cleared when the session ends, so the next
-	// notification for that key announces it afresh.
+	// lastPos is each announced session's last position; a session not
+	// in it has not been announced yet.
 	lastPos map[string]time.Duration
 }
 
@@ -54,18 +49,13 @@ func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher 
 	return w
 }
 
-// SetPauseStore makes this watcher's abandoned-pause clocks durable,
-// so a restart does not resurrect a stream that was already retired.
-// Call before Run; nil leaves the clocks in memory only.
+// SetPauseStore makes the abandoned-pause clocks survive a restart.
+// Call before Run; nil keeps them in memory.
 func (w *PlexWatcher) SetPauseStore(store PauseStore) { w.paused.store = store }
 
 func (w *PlexWatcher) Events() <-chan SessionEvent { return w.events }
 
-// Run connects and reconnects with backoff until ctx is cancelled. This
-// isn't for detecting playback — it exists purely to notice a
-// silently-dropped connection and re-establish it — the one real
-// failure mode an event-driven design has, since a dead socket looks
-// exactly like a quiet one.
+// Run connects, and reconnects with backoff, until ctx is cancelled.
 func (w *PlexWatcher) Run(ctx context.Context) {
 	runWithBackoff(ctx, "plex", w.BaseURL, &w.conn, w.connectAndListen)
 }
@@ -95,10 +85,7 @@ type plexNotificationEnvelope struct {
 		PlaySessionStateNotification []struct {
 			SessionKey string `json:"sessionKey"`
 			State      string `json:"state"`
-			// ViewOffset is how far into the item the player is, in
-			// milliseconds. Plex sends it on every playing notification,
-			// which is what lets the timecode move between snapshots.
-			ViewOffset int64 `json:"viewOffset"`
+			ViewOffset int64  `json:"viewOffset"` // ms
 		} `json:"PlaySessionStateNotification"`
 	} `json:"NotificationContainer"`
 }
@@ -106,7 +93,7 @@ type plexNotificationEnvelope struct {
 func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 	var env plexNotificationEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
-		return // not JSON we care about (Plex sends several notification types on this socket)
+		return // Plex sends several message types on this socket
 	}
 	if env.NotificationContainer.Type != "playing" {
 		return
@@ -125,9 +112,8 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
-		// A pause keeps counting, but not forever — see pausedTracker.
-		// The real position is needed: the tracker reads a change in it
-		// as "still moving".
+		// A pause counts, but not forever (pausedTracker), which reads a
+		// moving position as still playing.
 		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Duration(n.ViewOffset)*time.Millisecond, time.Now()) {
 			w.mu.Lock()
 			delete(w.lastPos, n.SessionKey)
@@ -142,10 +128,8 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 				var err error
 				local, err = w.isSessionLocal(ctx, n.SessionKey)
 				if err != nil {
-					// Fail open toward throttling still working: if we
-					// can't determine locality, don't risk silently
-					// never throttling because a lookup failed — treat
-					// as non-local so it counts.
+					// Unknown counts as non-local: a failed lookup must
+					// not silently stop throttling.
 					slog.Warn("checking session locality", "session", n.SessionKey, "error", err)
 					local = false
 				}
@@ -154,21 +138,13 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 				w.mu.Unlock()
 			}
 			if local {
-				continue // exempted — never enters the active set at all
+				continue // exempt
 			}
 		}
 
-		// The notification carries no title or device — the snapshot
-		// supplies those — but it does carry the position, and that is
-		// the part that has to keep up.
-		//
-		// Only the first notification for a session is a full event:
-		// those re-resolve throttle state for every downloader, which is
-		// an API call per client and must not fire on every tick of a
-		// timecode. Movement afterwards goes out as detail, which
-		// updates what the Dashboard draws without touching throttling.
-		// A stop clears lastPos, so a session that ends and restarts
-		// announces itself properly again.
+		// Only a session's first notification is a full event, which
+		// re-resolves throttling; later ones carry position only, as
+		// detail, so a moving timecode costs no downloader API calls.
 		update := Session{
 			Key:        n.SessionKey,
 			Position:   time.Duration(n.ViewOffset) * time.Millisecond,
@@ -186,22 +162,14 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		}
 		emit(ctx, w.events, update, true)
 
-		// The notification says something started, but not what it is —
-		// identity lives only on the REST endpoint. Fetch it now instead
-		// of leaving the Dashboard reading "1 session counting towards
-		// throttling" with nothing beside it until the next
-		// reconciliation poll, which can be a full minute away.
+		// The notification has no title or device; fetch them now rather
+		// than wait up to a minute for the reconciliation poll.
 		go w.fillDetail(ctx, n.SessionKey)
 	}
 }
 
-// fillDetail looks up what one session actually is and reports it as a
-// detail update. Runs on its own goroutine: it makes a network call,
-// and the socket read loop that triggered it must not wait for that.
-//
-// Failure is not worth surfacing — the reconciliation poll fills the
-// same detail in shortly afterwards, so the cost of a miss is the
-// blank row this exists to avoid, not a wrong one.
+// fillDetail reports what one session is playing, as a detail update.
+// A failure is ignored: the reconciliation poll fills it in shortly.
 func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
 	ctx, cancel := context.WithTimeout(ctx, detailTimeout)
 	defer cancel()
@@ -236,10 +204,8 @@ func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
 	return v, ok
 }
 
-// Snapshot lists the sessions Plex currently reports as playing, with
-// local-playback exemption applied — the same filtering the event
-// stream does, so the two are directly comparable. Used by the watcher
-// manager to correct drift after a dropped connection.
+// Snapshot lists the sessions Plex reports as playing, filtered as the
+// event stream is.
 func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	sessions, err := w.fetchSessions(ctx)
 	if err != nil {
@@ -260,9 +226,8 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 		if w.SkipLocalPlayback && s.Player.Local {
 			continue
 		}
-		// The snapshot is also where an abandoned pause is noticed:
-		// the event stream sends one "paused" notification and then
-		// nothing, so this poll is the only thing that re-evaluates it.
+		// Only this poll notices an abandoned pause: the stream sends one
+		// "paused" notification and then nothing.
 		if !w.paused.counts(s.SessionKey, s.Player.State == "paused", time.Duration(s.ViewOffset)*time.Millisecond, now) {
 			continue
 		}
@@ -277,10 +242,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	}
 	w.paused.retain(present)
 
-	// The snapshot is the freshest full view of what exists, so it's
-	// also the right moment to drop locality entries for sessions that
-	// have since ended — otherwise a long-lived watcher accumulates
-	// them for every session it has ever seen.
+	// Drop entries for sessions that have ended, so they don't pile up.
 	w.mu.Lock()
 	for key := range w.lastPos {
 		if !present[key] {
@@ -305,16 +267,14 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 // plexSession is the subset of /status/sessions this app reads.
 type plexSession struct {
 	SessionKey string `json:"sessionKey"`
-	// Title is the episode or film; GrandparentTitle is the show and
-	// Index/ParentIndex the numbering, which together make the
-	// "Andor S1E4" form the UI wants.
+	// Title is the episode or film; the show and its numbering make
+	// "Andor S1E4".
 	Title            string `json:"title"`
 	GrandparentTitle string `json:"grandparentTitle"`
 	Index            int    `json:"index"`
 	ParentIndex      int    `json:"parentIndex"`
 	Type             string `json:"type"`
-	// Both in milliseconds. Plex reports them on every session in
-	// /status/sessions, so the progress bar needs no extra request.
+	// Both in milliseconds.
 	ViewOffset int64 `json:"viewOffset"`
 	Duration   int64 `json:"duration"`
 	Player     struct {
@@ -337,8 +297,8 @@ func (s plexSession) label() string {
 	return s.Title
 }
 
-// device prefers the player's own name ("Living Room TV") over the
-// hardware type ("Chromecast"), since that is what the owner named it.
+// device prefers the player's name ("Living Room TV") to its hardware
+// type ("Chromecast").
 func (s plexSession) device() string {
 	if s.Player.Title != "" {
 		return s.Player.Title
@@ -346,17 +306,15 @@ func (s plexSession) device() string {
 	return s.Player.Device
 }
 
-// plexStateCounts is the one definition of which playback states mean
-// a session exists, shared by the socket and reconciliation paths.
-// Paused counts; how long for is pausedTracker's job.
+// plexStateCounts says which states mean a session exists, for both the
+// socket and snapshot paths. Paused counts; for how long is
+// pausedTracker's job.
 func plexStateCounts(state string) bool {
 	return state == "playing" || state == "buffering" || state == "paused"
 }
 
-// fetchSessions reads /status/sessions. The WebSocket "playing"
-// notification carries no client-address or player-state detail, so
-// this REST call backs both local-playback exemption and snapshot
-// reconciliation.
+// fetchSessions reads /status/sessions, which has what notifications
+// lack: locality and player detail.
 func (w *PlexWatcher) fetchSessions(ctx context.Context) ([]plexSession, error) {
 	var out struct {
 		MediaContainer struct {

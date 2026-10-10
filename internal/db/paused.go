@@ -4,9 +4,7 @@ import (
 	"time"
 )
 
-// PausedSession is how long one session has been sitting paused, and
-// where it was paused. See the paused_sessions table for why this is
-// not simply held in memory.
+// PausedSession is when a session was paused, and where.
 type PausedSession struct {
 	Since    time.Time
 	Position time.Duration
@@ -32,8 +30,7 @@ func (d *DB) LoadPausedSessions(mediaServerID int64) (map[string]PausedSession, 
 		}
 		at, err := time.Parse(TimeFormat, since)
 		if err != nil {
-			// A row we cannot read is worse than no row: it would age a
-			// session from the zero time and retire it instantly.
+			// An unreadable row would age from the zero time and retire at once.
 			continue
 		}
 		out[key] = PausedSession{Since: at, Position: time.Duration(positionMS) * time.Millisecond}
@@ -52,8 +49,7 @@ func (d *DB) SavePausedSession(mediaServerID int64, sessionKey string, state Pau
 	return err
 }
 
-// DeletePausedSession forgets one session's pause, because it resumed
-// or ended.
+// DeletePausedSession forgets one session's pause.
 func (d *DB) DeletePausedSession(mediaServerID int64, sessionKey string) error {
 	_, err := d.conn.Exec(
 		`DELETE FROM paused_sessions WHERE media_server_id = ? AND session_key = ?`,

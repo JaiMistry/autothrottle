@@ -13,16 +13,14 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/live"
 )
 
-// stream is an open /events connection, read line by line.
 type stream struct {
 	t     *testing.T
 	resp  *http.Response
 	lines chan string
 }
 
-// openStream connects the way a browser does, with the session cookie,
-// over a real server whose write timeout is short — the stream has to
-// outlive it.
+// openStream connects with the session cookie, over a real server whose
+// write timeout is short: the stream has to outlive it.
 func (a *testApp) openStream() *stream {
 	a.t.Helper()
 	srv := httptest.NewUnstartedServer(a.handler)
@@ -90,7 +88,6 @@ func TestEventStream(t *testing.T) {
 	st.expect("data: dashboard")
 }
 
-// Real changes reach the stream through the parts that make them.
 func TestEventStreamCarriesRealChanges(t *testing.T) {
 	app := newApp(t)
 	st := app.openStream()
@@ -99,7 +96,6 @@ func TestEventStreamCarriesRealChanges(t *testing.T) {
 	expectStatus(t, app.post("/pause-toggle", nil), http.StatusSeeOther)
 	st.expect("data: dashboard")
 
-	// Turning throttling off writes an event, so the log changes too.
 	if err := app.db.InsertEvent(db.Event{Level: "info", Message: "hello"}); err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +115,7 @@ func TestEventStreamNeedsSignIn(t *testing.T) {
 	}
 }
 
-// Shutdown closes the hub; open streams must end rather than hold the
-// server up for its whole timeout.
+// Open streams must not hold shutdown up for its whole timeout.
 func TestEventStreamEndsOnShutdown(t *testing.T) {
 	app := newApp(t)
 	st := app.openStream()
@@ -139,7 +134,6 @@ func TestEventStreamEndsOnShutdown(t *testing.T) {
 	}
 }
 
-// A tab that goes away is noticed, and its subscription dropped.
 func TestEventStreamClosedByClient(t *testing.T) {
 	app := newApp(t)
 	st := app.openStream()
@@ -157,7 +151,6 @@ func TestEventStreamClosedByClient(t *testing.T) {
 	}
 }
 
-// The pages that update live say which changes they follow.
 func TestLiveBlocksAreMarked(t *testing.T) {
 	app := newApp(t)
 	app.mediaServer("JF", "jellyfin", "http://jf.lan")

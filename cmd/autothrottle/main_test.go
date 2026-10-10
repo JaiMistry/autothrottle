@@ -27,8 +27,7 @@ func TestIDFromEnv(t *testing.T) {
 	}
 }
 
-// Not running as root — as in this test — the privilege drop must
-// leave everything exactly as it was.
+// Without root the privilege drop changes nothing.
 func TestDropPrivilegesIsANoOpWithoutRoot(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root; this covers the non-root path")

@@ -24,8 +24,7 @@ func Encrypt(key []byte, username, password string) (string, error) {
 }
 
 // Decrypt opens a stored credential. An empty one is not an error: a
-// download client can run without authentication, and callers then
-// pass empty strings through to it.
+// client may run without authentication.
 func Decrypt(key []byte, encrypted string) (username, password string, err error) {
 	if encrypted == "" {
 		return "", "", nil

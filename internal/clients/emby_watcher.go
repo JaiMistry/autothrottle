@@ -16,21 +16,10 @@ import (
 )
 
 // EmbyWatcher implements SessionWatcher against Emby's and Jellyfin's
-// notification WebSocket.
-//
-// The protocol differs from Plex's in three ways that shape this file:
-//
-//  1. It is not event-driven. Plex pushes a notification when a
-//     session changes state; these servers push nothing until asked,
-//     and what they then push is the *entire session list* on a timer
-//     (the SessionsStart subscription below). So state changes are
-//     derived here, by diffing each pushed list against the previous
-//     one, rather than being reported by the server.
-//  2. It requires a keepalive. The server sends ForceKeepAlive naming
-//     an interval and closes the connection if the client goes quiet
-//     for longer — see startKeepAlive.
-//  3. There is no locality flag, so the local-playback exemption is
-//     computed from the client's address. See embySessionIsLocal.
+// notification WebSocket. Unlike Plex's, it pushes the whole session
+// list on a timer once subscribed, so state changes are found by diffing
+// lists; it closes a client that misses its keepalive; and it has no
+// locality flag (see embySessionIsLocal).
 type EmbyWatcher struct {
 	BaseURL           string
 	APIKey            string
@@ -42,11 +31,9 @@ type EmbyWatcher struct {
 	paused *pausedTracker
 
 	mu sync.Mutex
-	// active is the last set this watcher reported as playing. It is
-	// the baseline every pushed list is diffed against, and it
-	// deliberately survives a reconnect: sessions that ended while the
-	// connection was down are then reported as stopped by the first
-	// list that arrives after it comes back.
+	// active is the baseline each pushed list is diffed against. It
+	// survives a reconnect, so sessions that ended meanwhile are reported
+	// stopped by the first list after.
 	active map[string]Session
 }
 
@@ -75,9 +62,8 @@ func newEmbyWatcher(f embyFlavor, baseURL, apiKey string, skipLocalPlayback bool
 	return w
 }
 
-// SetPauseStore makes this watcher's abandoned-pause clocks durable,
-// so a restart does not resurrect a stream that was already retired.
-// Call before Run; nil leaves the clocks in memory only.
+// SetPauseStore makes the abandoned-pause clocks survive a restart.
+// Call before Run; nil keeps them in memory.
 func (w *EmbyWatcher) SetPauseStore(store PauseStore) { w.paused.store = store }
 
 func (w *EmbyWatcher) Events() <-chan SessionEvent { return w.events }
@@ -86,12 +72,9 @@ func (w *EmbyWatcher) Run(ctx context.Context) {
 	runWithBackoff(ctx, strings.ToLower(w.flavor.name), w.BaseURL, &w.conn, w.connectAndListen)
 }
 
-// embySessionPushInterval is the cadence requested from the server for
-// pushed session lists, in milliseconds. Matches what these projects'
-// own web clients ask for. It bounds how long after pressing play a
-// throttle takes effect, so it is short; the payload is a small JSON
-// array on a LAN, and the server is sending it to its own web UI
-// anyway.
+// embySessionPushInterval is the session-list cadence requested, in
+// ms, as these servers' own web clients ask. It bounds how long a
+// throttle takes after pressing play.
 const embySessionPushInterval = 1500
 
 // embyMessage is the envelope both directions of this protocol use.
@@ -100,20 +83,15 @@ type embyMessage struct {
 	Data        json.RawMessage `json:"Data,omitempty"`
 }
 
-// embyConn wraps one live connection with the state that belongs to
-// that connection rather than to the watcher.
+// embyConn is the state of one live connection.
 type embyConn struct {
 	c *websocket.Conn
-	// mu serialises writes. coder/websocket permits only one writer at
-	// a time, and the keepalive goroutine writes concurrently with the
-	// subscribe call on the read path.
+	// mu serialises writes: coder/websocket allows one writer, and the
+	// keepalive writes concurrently with the subscribe.
 	mu sync.Mutex
-	// keepAliveOnce guards against the server repeating ForceKeepAlive
-	// on an already-live connection and spawning a second ticker.
+	// keepAliveOnce stops a repeated ForceKeepAlive starting a second ticker.
 	keepAliveOnce sync.Once
-	// sawSessions records whether the subscription ever delivered
-	// anything. See warnIfSubscriptionSilent.
-	sawSessions atomic.Bool
+	sawSessions   atomic.Bool
 }
 
 func (e *embyConn) send(ctx context.Context, messageType string, data json.RawMessage) error {
@@ -127,9 +105,7 @@ func (e *embyConn) send(ctx context.Context, messageType string, data json.RawMe
 }
 
 func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
-	// Bound the keepalive goroutine to this connection rather than to
-	// the caller's context, so a dropped connection stops it instead
-	// of leaving one running per reconnect for the process's life.
+	// Scoped to this connection, so a drop stops its keepalive.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -142,9 +118,7 @@ func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
 
 	conn := &embyConn{c: c}
 
-	// Nothing arrives until this is sent: the server pushes session
-	// lists only to clients that asked. "0,N" means start immediately,
-	// repeat every N ms.
+	// Nothing arrives until asked. "0,N": start now, repeat every N ms.
 	subscribe := json.RawMessage(strconv.Quote(fmt.Sprintf("0,%d", embySessionPushInterval)))
 	if err := conn.send(ctx, "SessionsStart", subscribe); err != nil {
 		return fmt.Errorf("subscribing to sessions: %w", err)
@@ -188,16 +162,13 @@ func (w *EmbyWatcher) handleMessage(ctx context.Context, conn *embyConn, data []
 	}
 }
 
-// embySubscriptionGrace is how long a connection may stay silent after
-// subscribing before that silence is treated as a symptom. Generously
-// longer than the push interval, so a slow or idle server is never
-// mistaken for a broken subscription.
+// embySubscriptionGrace is how long a subscription may stay silent
+// before it is reported, well past the push interval.
 const embySubscriptionGrace = 30 * time.Second
 
-// warnIfSubscriptionSilent logs the one failure that looks like
-// success: a subscription the server accepts but never feeds (reported
-// for Jellyfin with some API keys). Throttling still works off the
-// reconciliation poll, only slower, so this makes that visible.
+// warnIfSubscriptionSilent logs a subscription the server accepts but
+// never feeds (seen with some Jellyfin API keys). Throttling then runs,
+// slower, off the reconciliation poll.
 func (w *EmbyWatcher) warnIfSubscriptionSilent(ctx context.Context, conn *embyConn) {
 	select {
 	case <-ctx.Done():
@@ -213,9 +184,8 @@ func (w *EmbyWatcher) warnIfSubscriptionSilent(ctx context.Context, conn *embyCo
 		"hint", "if this persists, the API key may not grant session access on the notification socket")
 }
 
-// startKeepAlive answers the server's ForceKeepAlive contract: stay
-// audible or be disconnected. Sends at half the stated timeout so a
-// single dropped message is not enough to trip it.
+// startKeepAlive answers ForceKeepAlive, at half the stated timeout so
+// one lost message does not trip it.
 func (w *EmbyWatcher) startKeepAlive(ctx context.Context, conn *embyConn, timeout time.Duration) {
 	interval := timeout / 2
 	if interval < time.Second {
@@ -230,17 +200,13 @@ func (w *EmbyWatcher) startKeepAlive(ctx context.Context, conn *embyConn, timeou
 			return
 		case <-ticker.C:
 			if err := conn.send(ctx, "KeepAlive", nil); err != nil {
-				// The read loop sees the same broken connection and
-				// owns reconnecting; this goroutine just stops.
-				return
+				return // the read loop owns reconnecting
 			}
 		}
 	}
 }
 
-// handleSessions turns one pushed session list into the state changes
-// since the previous list, which is what SessionWatcher's contract
-// promises its consumers.
+// handleSessions turns a pushed list into changes since the previous.
 func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession) {
 	next := w.activeSet(sessions)
 
@@ -253,9 +219,8 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 		if prev, had := previous[key]; !had {
 			emit(ctx, w.events, session, true)
 		} else if session.Position != prev.Position || session.Paused != prev.Paused {
-			// Moved, paused or resumed: pass it on so the Dashboard's
-			// timecode tracks it. Not the title — a snapshot and a push
-			// can disagree on it for the same session.
+			// Moved, paused or resumed. Not the title: a snapshot and a
+			// push can disagree on it.
 			emitDetail(ctx, w.events, session)
 		}
 	}
@@ -266,10 +231,8 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 	}
 }
 
-// activeSet applies both filters — playback state and the
-// local-playback exemption — to a raw session list. The single
-// definition used by the WebSocket path and the snapshot path, so the
-// two cannot disagree about what counts.
+// activeSet filters a raw list by playback state and the local
+// exemption, for both the socket and snapshot paths.
 func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 	active := make(map[string]Session, len(sessions))
 	present := make(map[string]bool, len(sessions))
@@ -295,20 +258,13 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 			Local:  embySessionIsLocal(s.RemoteEndPoint),
 		}
 	}
-	// Every push is a full session list, so this is always the complete
-	// picture of what still exists.
 	w.paused.retain(present)
 	return active
 }
 
-// Snapshot reads the session list over REST, applying the same
-// filtering the event stream does.
-//
-// It also resets the diff baseline. The pushed lists are themselves
-// full snapshots, so the two views converging is expected rather than
-// notable — but if the socket is down, the REST read is the only
-// current truth, and leaving a stale baseline behind would make the
-// first push after reconnect emit changes that already happened.
+// Snapshot reads the session list over REST, filtered as the stream is.
+// It also resets the diff baseline, so the first push after a reconnect
+// does not re-emit changes that already happened.
 func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	sessions, err := fetchEmbySessions(ctx, w.flavor, w.BaseURL, w.APIKey)
 	if err != nil {

@@ -1,5 +1,4 @@
-// Package db wraps the SQLite-backed data layer: media servers,
-// downloaders, the mappings between them, and the event history.
+// Package db is the SQLite data layer.
 package db
 
 import (
@@ -39,9 +38,7 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
-	// SQLite handles one writer at a time; a single connection avoids
-	// SQLITE_BUSY under concurrent goroutines rather than papering over
-	// it with busy-timeout retries.
+	// One connection: SQLite has one writer, and this avoids SQLITE_BUSY.
 	conn.SetMaxOpenConns(1)
 
 	if _, err := conn.Exec(schemaSQL); err != nil {
@@ -62,10 +59,8 @@ func (d *DB) Close() error {
 	return d.conn.Close()
 }
 
-// migrate applies the additive schema changes that CREATE TABLE IF NOT
-// EXISTS cannot: a column added to a table that already exists on a
-// running install. Each is idempotent — a duplicate-column error means
-// it is already applied, which is success rather than failure.
+// migrate adds columns CREATE TABLE IF NOT EXISTS cannot. Each is
+// idempotent: a duplicate-column error means already applied.
 func (d *DB) migrate() error {
 	for _, stmt := range []string{
 		`ALTER TABLE session_history ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
@@ -75,9 +70,7 @@ func (d *DB) migrate() error {
 			return fmt.Errorf("migrating: %w", err)
 		}
 	}
-	// Sessions were once stored as the token itself. Those rows can no
-	// longer match anything, and they are exactly what should not sit in
-	// the file, so they go; anyone signed in then signs in once more.
+	// Drop sessions stored as the raw token, from before hashing.
 	if _, err := d.conn.Exec(`DELETE FROM sessions WHERE length(token) <> 64`); err != nil {
 		return fmt.Errorf("migrating sessions: %w", err)
 	}

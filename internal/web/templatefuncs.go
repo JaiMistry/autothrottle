@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// templateFuncs are the helpers the templates need that html/template
-// doesn't ship. Deliberately few: anything with real logic belongs in a
-// handler where it can be tested, not in a template.
+// templateFuncs are the helpers html/template doesn't ship. Kept few: real
+// logic belongs in handlers, where it can be tested.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"dict":            dict,
@@ -21,8 +20,7 @@ func templateFuncs() template.FuncMap {
 	}
 }
 
-// dict builds a map inline so one template can be called with named
-// arguments instead of being split into a partial per call site.
+// dict builds a map inline, so a template can take named arguments.
 func dict(pairs ...any) (map[string]any, error) {
 	if len(pairs)%2 != 0 {
 		return nil, fmt.Errorf("dict needs an even number of arguments, got %d", len(pairs))
@@ -69,8 +67,7 @@ func levelTone(level string) string {
 	}
 }
 
-// filterEmptyNote says which filter came up empty, so the reader knows
-// whether to clear the text or change the level.
+// filterEmptyNote says which filter came up empty.
 func filterEmptyNote(level, search string) string {
 	kind := ""
 	if level != "" {

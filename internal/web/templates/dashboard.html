@@ -10,7 +10,6 @@
 </header>
 
 {{if .Empty}}
-  {{/* First run: the page's only job is to point at Configuration. */}}
   {{template "emptystate" dict
     "Tone" "accent"
     "Title" "Nothing configured yet"
@@ -25,13 +24,10 @@
 {{end}}
 {{end}}
 
-{{/* The live half of the Dashboard, polled so throttle state, sessions
-     and playback position keep up without a refresh. It is one complete
-     subtree on purpose: a fragment split mid-element re-parses a broken
-     tree on every swap. */}}
-{{/* hx-disinherit keeps links inside from inheriting the refresh's
-     target and swap: boosted, they would load the next page into this
-     block, shell and sidebar included. */}}
+{{/* The live half of the Dashboard. One complete subtree: a fragment split
+     mid-element re-parses a broken tree on every swap. */}}
+{{/* hx-disinherit: boosted links inside would otherwise load the next page
+     into this block. */}}
 {{define "dashlive"}}<div id="dash-live" style="display:grid;gap:var(--space-8)"
      hx-get="/dashboard/live" hx-trigger="live, every 5s [atLivePoll(this)]" data-live="dashboard"
      hx-swap="outerHTML" hx-target="this" hx-disinherit="*">
@@ -67,8 +63,6 @@
     </div>
   {{end}}
 
-  {{/* Both cards share the row height so their edges line up. Past two
-       rows a list scrolls inside its card rather than stretching the page. */}}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:var(--space-8);align-items:stretch">
     <section class="at-card" style="display:grid;grid-template-rows:auto 1fr">
       <header class="at-card-head">
@@ -109,9 +103,8 @@
 {{- end}}
 {{end}}
 
-{{/* Counts up from the start of the current throttle period, ticked by
-     app.js from data-throttled-since; the server renders the first
-     reading so nothing flashes before the script runs. */}}
+{{/* app.js ticks this from data-throttled-since; the first reading is
+     rendered here so nothing flashes. */}}
 {{define "throttletimer"}}<p class="at-timer">
   <span>Session running for:</span>
   <time class="at-timer-clock" datetime="{{.SinceISO}}" data-throttled-since="{{.SinceISO}}">
@@ -119,17 +112,14 @@
   </time>
 </p>{{end}}
 
-{{/* Throttle History: minutes throttled per hour, a row per day, newest
-     first. All 30 days are always rendered; the 7-day view hides the rest,
-     so app.js can switch range as an animation rather than a round trip.
-     Tooltips are pure CSS. */}}
+{{/* All 30 days are rendered and 7d hides the rest, so switching range is
+     an animation, not a round trip. Tooltips are pure CSS. */}}
 {{define "throttlehistory"}}<section class="at-card" id="throttle-history" data-range="{{.Range}}"
   data-total-7="{{.Total7}}" data-total-30="{{.Total30}}" data-empty-7="{{.Empty7}}" data-empty-30="{{.Empty30}}">
   <header class="at-card-head">
     <h2 class="at-card-title">Throttle History</h2>
     <span class="at-card-action">
-      {{/* Not boosted: app.js switches range in place, and the links are
-           only the fallback without script. */}}
+      {{/* Not boosted: app.js switches range; the links are the no-script fallback. */}}
       <div class="at-tabs at-tabs--sm" role="tablist" hx-boost="false">
         <a role="tab" class="at-tab" href="?range=7d" data-history-range="7d" aria-selected="{{eq .Range "7d"}}">7d</a>
         <a role="tab" class="at-tab" href="?range=30d" data-history-range="30d" aria-selected="{{eq .Range "30d"}}">30d</a>
@@ -164,23 +154,19 @@
   </div>
 </section>{{end}}
 
-{{/* The total, in fixed-width slots so app.js can count it without the
-     text after it moving. */}}
+{{/* Fixed-width slots, so counting doesn't move the text after them. */}}
 {{define "historytotal"}}<span class="at-hm-slot" style="min-width:{{.HDigits}}ch">{{.TotalH}}</span>hr <span class="at-hm-slot" style="min-width:{{.MDigits}}ch">{{.TotalM}}</span>m{{end}}
 
-{{/* The pill and the pause button live in the page header, outside the
-     refreshed block, so a refresh swaps them out of band. */}}
+{{/* Outside the refreshed block, so a refresh swaps them out of band. */}}
 {{define "dashpill"}}
 <span id="dash-pill"{{if .Fragment}} hx-swap-oob="true"{{end}} style="display:inline-flex;align-items:center;transform:translateY(1px)">
   {{template "statusflag" dict "Tone" .Overall.Tone "Icon" .Overall.Icon "Label" .Overall.Label}}
 </span>
 {{end}}
 
-{{/* Always rendered, hidden until setup is complete, so the swap that
-     keeps it current always has something to replace. */}}
+{{/* Always rendered, so the out-of-band swap has something to replace.
+     While disabled, Resume lives on the banner instead. */}}
 {{define "dashactions"}}
-{{/* Disable only: while disabled, Resume lives on the banner across
-     every page. */}}
 <div class="at-page-actions" id="dash-actions"{{if .Fragment}} hx-swap-oob="true"{{end}}{{if or (not .Ready) .Paused}} hidden{{end}}>
   {{if and .Ready (not .Paused)}}<form method="post" action="/pause-toggle">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">

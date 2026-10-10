@@ -6,11 +6,9 @@ import (
 	"strings"
 )
 
-// loginURL is where a request without a session is sent. A page asked
-// for directly carries its own address along, so signing in lands on it
-// rather than on the Dashboard. Background requests — HTMX refreshes,
-// the event stream, anything but a GET — just go to the login page:
-// they are not somewhere a person meant to arrive.
+// loginURL is where a request without a session goes. A page asked for
+// directly carries its address, to return to after signing in;
+// background requests and non-GETs just go to the login page.
 func loginURL(r *http.Request) string {
 	if r.Method != http.MethodGet || r.Header.Get("HX-Request") == "true" ||
 		r.URL.Path == "/" || r.URL.Path == "/events" {
@@ -19,9 +17,8 @@ func loginURL(r *http.Request) string {
 	return "/login?next=" + url.QueryEscape(r.URL.RequestURI())
 }
 
-// SafeNext returns raw when it is an address inside this app, and "/"
-// otherwise. Without this check a crafted login link could send someone
-// to another site straight after they signed in.
+// SafeNext returns raw if it is an address in this app, else "/", so a
+// crafted login link cannot redirect off-site.
 func SafeNext(raw string) string {
 	// "//host" and "/\host" are both read by browsers as another site.
 	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.HasPrefix(raw, "/\\") {
@@ -34,9 +31,8 @@ func SafeNext(raw string) string {
 	return raw
 }
 
-// Authenticated reports whether r is signed in, the same test
-// RequireAuth applies, for pages open to everyone that still show more
-// to someone signed in.
+// Authenticated applies RequireAuth's test, for pages open to everyone
+// that show more to someone signed in.
 func Authenticated(a *Authenticator, sessions *SessionManager, r *http.Request) bool {
 	if a.Disabled() {
 		return true

@@ -11,15 +11,11 @@ import (
 	"strings"
 )
 
-// passwordIterations follows OWASP's current guidance for
-// PBKDF2-HMAC-SHA256. It costs a few hundred milliseconds per login,
-// which a single-user app pays rarely and an attacker with a stolen
-// database pays for every guess.
+// passwordIterations follows OWASP's guidance for PBKDF2-HMAC-SHA256.
 const passwordIterations = 600_000
 
-// hashPassword returns "pbkdf2-sha256$<iterations>$<salt>$<hash>". The
-// iteration count travels with the hash, so raising it later does not
-// lock out an account hashed under the old value.
+// hashPassword returns "pbkdf2-sha256$<iterations>$<salt>$<hash>"; the
+// count travels with it, so raising it later locks nobody out.
 func hashPassword(password string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
@@ -33,9 +29,8 @@ func hashPassword(password string) (string, error) {
 	return fmt.Sprintf("pbkdf2-sha256$%d$%s$%s", passwordIterations, enc.EncodeToString(salt), enc.EncodeToString(key)), nil
 }
 
-// checkPassword reports whether password matches a stored hash. Any
-// hash it cannot read is a mismatch, never an error a caller might
-// mishandle as success.
+// checkPassword reports whether password matches a stored hash. An
+// unreadable hash is a mismatch.
 func checkPassword(stored, password string) bool {
 	parts := strings.Split(stored, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {

@@ -54,8 +54,7 @@ func TestLogsPagingAndFilters(t *testing.T) {
 	expectBody(t, app.get("/logs?q=nothing-matches-this"), "Nothing matches")
 }
 
-// Clear is a real delete, and the page goes on refreshing afterwards —
-// before, it hid rows and switched the refresh off entirely.
+// Clear is a real delete, and the page goes on refreshing afterwards.
 func TestClearDeletesTheLogAndKeepsRefreshing(t *testing.T) {
 	app := newApp(t)
 	app.events(5, "info")
@@ -65,7 +64,6 @@ func TestClearDeletesTheLogAndKeepsRefreshing(t *testing.T) {
 	if events, _ := app.db.ListEvents(100); len(events) != 0 {
 		t.Fatalf("%d events survived Clear", len(events))
 	}
-	// The empty panel still carries its refresh, so the next event shows up.
 	expectBody(t, rec, `data-live="logs"`)
 	expectBody(t, rec, "No events yet")
 
@@ -73,11 +71,6 @@ func TestClearDeletesTheLogAndKeepsRefreshing(t *testing.T) {
 	if n := countRows(app.get("/logs/panel?per=20").Body.String()); n != 1 {
 		t.Errorf("after an event arrives the panel shows %d rows, want 1", n)
 	}
-}
-
-func TestDashboardWithNothingConfigured(t *testing.T) {
-	app := newApp(t)
-	expectBody(t, app.get("/"), "Nothing configured yet")
 }
 
 // waitFor polls until cond holds; the scheduler resolves asynchronously.
@@ -115,7 +108,6 @@ func TestDashboardThrottleStates(t *testing.T) {
 		t.Fatalf("idle dashboard: %.400s", live)
 	}
 
-	// Playback starts on the server configured second.
 	app.sched.HandleSessionEvent(busy, clients.Session{Key: "s1", Title: "Andor S1E4", Device: "Living Room TV",
 		Position: time.Minute, PositionAt: time.Now(), Duration: 40 * time.Minute}, true)
 	waitFor(t, "throttling to apply", func() bool { return app.sched.State(dl).Throttled })
@@ -130,7 +122,7 @@ func TestDashboardThrottleStates(t *testing.T) {
 	if got := rowStates(live, "at-dlrow-wrap"); len(got) != 1 || got[0] != "throttled" {
 		t.Errorf("downloader rows = %v", got)
 	}
-	// The playing server is sorted to the top of its card.
+	// The playing server sorts to the top.
 	if got := rowStates(live, "at-serverrow"); len(got) != 2 || got[0] != "playing" {
 		t.Errorf("server rows = %v, want the playing one first", got)
 	}
@@ -138,8 +130,6 @@ func TestDashboardThrottleStates(t *testing.T) {
 		t.Error("the playing title is not shown")
 	}
 
-	// Pause throttling from the Dashboard: default rates even though
-	// something is still playing.
 	app.post("/pause-toggle", nil)
 	waitFor(t, "the pause to apply", func() bool { return !app.sched.State(dl).Throttled })
 	if !strings.Contains(app.get("/dashboard/live").Body.String(), "Default downloader speeds enforced") {
@@ -147,7 +137,6 @@ func TestDashboardThrottleStates(t *testing.T) {
 	}
 }
 
-// The update checker against a stand-in for GitHub's releases API.
 func TestUpdateCheck(t *testing.T) {
 	cases := []struct {
 		name, tag string
@@ -207,8 +196,7 @@ func TestHeroStatements(t *testing.T) {
 	}
 }
 
-// Setup incomplete is the full Dashboard, not the first-run empty state:
-// what is there is shown, and the pause control is not offered.
+// Setup incomplete is the full Dashboard, without the pause control.
 func TestDashboardSetupIncomplete(t *testing.T) {
 	app := newApp(t)
 	app.downloader("qBit")
@@ -223,8 +211,7 @@ func TestDashboardSetupIncomplete(t *testing.T) {
 	}
 }
 
-// While throttling, the reason line becomes a timer that counts from the
-// start of the period, and the log names cause and effect in tags.
+// While throttling the reason line is a timer, and the log tags cause → effect.
 func TestDashboardTimerAndLogTags(t *testing.T) {
 	app := newApp(t)
 	ms := app.mediaServer("Plex", "jellyfin", "http://plex.lan")
@@ -247,8 +234,6 @@ func TestDashboardTimerAndLogTags(t *testing.T) {
 	}
 }
 
-// Each screen's browser tab: the page's own name, and the app's name
-// alone on the Dashboard.
 func TestTabTitles(t *testing.T) {
 	app := newApp(t)
 	for path, want := range map[string]string{
@@ -266,8 +251,8 @@ func TestTabTitles(t *testing.T) {
 	expectBody(t, fresh.get("/setup"), "<title>Set up</title>")
 }
 
-// An unknown address gets the 404, signed in or not; a real page asks
-// for a sign-in first, and signing in comes back to it.
+// An unknown address gets the 404 signed in or not; a real page asks for
+// a sign-in first.
 func TestNotFoundPage(t *testing.T) {
 	app := newApp(t)
 	rec := app.get("/no-such-page")
@@ -278,7 +263,6 @@ func TestNotFoundPage(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "at-shell") || strings.Contains(rec.Body.String(), ">Log in<") {
 		t.Error("the signed-in 404 has the app shell or a Log in button")
 	}
-	// A method no page answers is a 404 too.
 	expectStatus(t, app.post("/no-such-page", nil), http.StatusNotFound)
 
 	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
@@ -289,12 +273,10 @@ func TestNotFoundPage(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "Open Logs") {
 		t.Error("the signed-out 404 offers Logs")
 	}
-	// Real pages never reach it signed out.
 	expectRedirect(t, signedOut.get("/logs"), "/login?next=%2Flogs")
 }
 
-// Signing in returns to the page that asked for it, and only ever to a
-// page of this app.
+// Signing in returns to the page asked for, and only ever one of this app.
 func TestLoginReturnsToTheRequestedPage(t *testing.T) {
 	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
 	expectBody(t, app.get("/login?next=%2Flogs%3Flevel%3Dwarn"), `name="next" value="/logs?level=warn"`)

@@ -20,23 +20,16 @@ type contextKey string
 
 const sessionTokenKey contextKey = "session_token"
 
-// SessionTokenFromContext returns the current request's session token,
-// as attached by RequireAuth. Empty when auth is disabled (no session
-// exists) or the middleware hasn't run.
+// SessionTokenFromContext returns the session token RequireAuth
+// attached, or "" when auth is disabled.
 func SessionTokenFromContext(ctx context.Context) string {
 	token, _ := ctx.Value(sessionTokenKey).(string)
 	return token
 }
 
-// secureRequest reports whether this request reached us over HTTPS,
-// directly or through a TLS-terminating reverse proxy that says so.
-//
-// The session cookie is marked Secure exactly when it is: over HTTPS
-// that keeps the browser from ever sending it in the clear, and over
-// plain http://host:7676 on a LAN a Secure cookie would simply never be
-// sent back, so nobody could log in. Deciding per request means neither
-// setup needs a setting. A client forging the forwarded header only
-// makes its own cookie stricter.
+// secureRequest reports whether the request came over HTTPS, directly or
+// via a proxy that says so. The cookie is Secure exactly then: a Secure
+// cookie over plain LAN http would never be sent back.
 func secureRequest(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
@@ -65,10 +58,9 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// RequireAuth redirects to /login unless auth is disabled or the
-// request carries a valid session cookie — or to /setup while there is
-// no account to log in to. On success, the session token is attached
-// to the request context for RequireCSRF to use.
+// RequireAuth sends a request without a valid session to /login, or to
+// /setup while there is no account, and attaches the session token for
+// RequireCSRF.
 func RequireAuth(a *Authenticator, sessions *SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,10 +83,8 @@ func RequireAuth(a *Authenticator, sessions *SessionManager) func(http.Handler) 
 	}
 }
 
-// RequireCSRF validates the CSRF token on state-changing requests
-// (anything other than GET/HEAD/OPTIONS). No-op when auth is disabled —
-// without a session there's no synchronizer token to check against,
-// and a disabled-auth deployment has already accepted that tradeoff.
+// RequireCSRF checks the CSRF token on anything but GET, HEAD and
+// OPTIONS. With auth disabled there is no session to check against.
 func RequireCSRF(a *Authenticator, csrf *CSRF) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -116,15 +106,12 @@ func RequireCSRF(a *Authenticator, csrf *CSRF) func(http.Handler) http.Handler {
 	}
 }
 
-// LoginFailure renders a rejected attempt. It is a callback so this
-// package keeps owning the credential logic without knowing anything
-// about templates, and a failed login can still come back as the real
-// login page rather than a plain-text error.
+// LoginFailure renders a rejected attempt as the real login page, while
+// this package keeps the credential logic.
 type LoginFailure func(w http.ResponseWriter, r *http.Request, status int, message string)
 
-// LoginHandler handles POST /login: rate-limited credential check,
-// session creation, then back to the page that asked for it, or the
-// Dashboard.
+// LoginHandler handles POST /login: rate-limited check, a new session,
+// then back to the page that asked, or the Dashboard.
 func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimiter, fail LoginFailure) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
@@ -138,8 +125,7 @@ func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimi
 			return
 		}
 		if !a.Verify(username, password) {
-			// Deliberately generic: saying which half was wrong would
-			// confirm whether a username exists.
+			// Generic: naming the wrong half would confirm a username.
 			fail(w, r, http.StatusUnauthorized, "Invalid username or password.")
 			return
 		}
@@ -151,9 +137,8 @@ func LoginHandler(a *Authenticator, sessions *SessionManager, limiter *LoginLimi
 	}
 }
 
-// StartSession signs the browser in, for a flow that has just proved
-// who someone is by other means — finishing setup, where asking for the
-// password a second time on the very next page would be pointless.
+// StartSession signs the browser in after setup, without asking for the
+// password again.
 func StartSession(w http.ResponseWriter, r *http.Request, sessions *SessionManager) error {
 	token, err := sessions.Create()
 	if err != nil {

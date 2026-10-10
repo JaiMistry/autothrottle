@@ -1,18 +1,8 @@
-// Package auth handles login: who may sign in, sessions, CSRF, and
-// login rate-limiting.
-//
-// There are four ways an instance can be set up, checked in this order:
-//
-//   - AUTH_DISABLED=true — no login at all, for an instance that sits
-//     behind its own authenticating proxy.
-//   - AUTH_USERNAME and AUTH_PASSWORD — credentials from the
-//     environment. They always win, which also makes them the recovery
-//     path for anyone locked out of a stored account.
-//   - A stored account, created once on the first-run setup screen.
-//   - Nothing yet — every page leads to setup, where whoever opens the
-//     app first creates the account. That is the same bargain Sonarr,
-//     Jellyfin and Home Assistant make: on a home network, the person
-//     who just deployed it is the one opening it.
+// Package auth handles login: who may sign in, sessions, CSRF and rate
+// limiting. Modes, in order of precedence: AUTH_DISABLED (behind an
+// authenticating proxy); AUTH_USERNAME/AUTH_PASSWORD, which always win
+// and so also recover a lost account; the stored account from first-run
+// setup; and nothing yet, when every page leads to setup.
 package auth
 
 import (
@@ -43,29 +33,24 @@ const (
 var (
 	ErrSetupDone     = errors.New("setup has already been completed")
 	ErrUsernameEmpty = errors.New("choose a username")
-	// There are no password rules: any non-empty password is accepted.
-	// It is the owner's own instance and the owner's own choice.
+	// No password rules: any non-empty password is accepted.
 	ErrPasswordEmpty = errors.New("choose a password")
 )
 
-// Authenticator decides who may log in. Unlike the environment, the
-// stored account can appear while the app is running — setup creates
-// it — so this is consulted per request rather than read once.
+// Authenticator decides who may log in, per request: setup can create
+// the account while the app runs.
 type Authenticator struct {
 	disabled bool
 	envUser  string
 	envPass  string // held in memory only, never persisted
 	store    AccountStore
 
-	// mu makes setup happen once: two submissions racing each other
-	// cannot both create the account.
+	// mu makes setup happen once.
 	mu sync.Mutex
 }
 
-// Load reads AUTH_DISABLED, AUTH_USERNAME and AUTH_PASSWORD. Setting
-// only one of the pair is refused rather than half-applied: it is
-// always a mistake, and silently falling through to the setup screen
-// would hide it.
+// Load reads AUTH_DISABLED, AUTH_USERNAME and AUTH_PASSWORD. Only one
+// of the pair set is an error, not a fall-through to setup.
 func Load(store AccountStore) (*Authenticator, error) {
 	a := &Authenticator{
 		disabled: os.Getenv("AUTH_DISABLED") == "true",
@@ -110,9 +95,7 @@ func (a *Authenticator) Username() string {
 	return ""
 }
 
-// Verify checks a login attempt against whichever credentials apply.
-// Both halves are always compared, in constant time, so the response
-// time reveals nothing about which half was wrong.
+// Verify checks a login attempt, comparing both halves in constant time.
 func (a *Authenticator) Verify(username, password string) bool {
 	switch a.Mode() {
 	case ModeEnvironment:

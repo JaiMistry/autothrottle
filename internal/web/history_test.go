@@ -28,8 +28,7 @@ func TestHistoryCells(t *testing.T) {
 		t.Fatalf("rows labelled %q / %q, corner %q", today.Label, yday.Label, v.Corner)
 	}
 
-	// The fill is the hour's 40 minutes; the tooltip names each period
-	// whole, so the one running on past the hour counts in full.
+	// The fill is the hour's 40 minutes; the tooltip counts each period whole.
 	c := yday.Cells[20]
 	if !c.Hot || c.Step != 3 || c.Value != "1hr 30m throttled" || c.Side != "r" {
 		t.Errorf("Thu 20:00 = %+v", c)
@@ -92,22 +91,16 @@ func TestTotalLabel(t *testing.T) {
 	}
 }
 
-// Throttling that stops and starts within a few minutes reads as one
-// stretch: the screenshot that prompted this listed five ranges for eight
-// minutes, two of them "8:42 PM – 8:42 PM".
+// Throttling that stops and starts within a few minutes reads as one stretch.
 func TestHistoryMergesFragments(t *testing.T) {
 	now := time.Date(2026, 10, 9, 23, 0, 0, 0, time.Local)
-	day := now
-	sec := func(h, m, s int) time.Time {
-		return time.Date(day.Year(), day.Month(), day.Day(), h, m, s, 0, time.Local)
-	}
+	sec := func(h, m, s int) time.Time { return time.Date(2026, 10, 9, h, m, s, 0, time.Local) }
 	periods := []db.Span{
 		{Start: sec(20, 42, 5), End: sec(20, 42, 40)},
 		{Start: sec(20, 42, 50), End: sec(20, 42, 58)},
 		{Start: sec(20, 43, 10), End: sec(20, 44, 0)},
 		{Start: sec(20, 44, 5), End: sec(20, 44, 30)},
 		{Start: sec(20, 44, 40), End: sec(20, 50, 20)},
-		// Well apart from the rest: its own stretch.
 		{Start: sec(20, 58, 0), End: sec(20, 58, 20)},
 	}
 	runs := []db.Span{{Start: now.Add(-24 * time.Hour), End: now}}

@@ -13,11 +13,8 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
 
-// updateView is the About tab's release status.
-//
-// The note is split around its one emphasised word rather than carrying
-// markup, so the version number can be bold without the view ever
-// holding HTML.
+// updateView is the About tab's release status. The note is split around
+// its one bold word, so the view never holds HTML.
 type updateView struct {
 	State      string // idle | checking | current | available | failed
 	Label      string
@@ -26,9 +23,8 @@ type updateView struct {
 	NotePost   string
 }
 
-// idleUpdate is what About shows before anyone asks. Checking is
-// deliberately manual: this app never contacts an update service on its
-// own, so the resting state names the running build and nothing else.
+// idleUpdate is what About shows before anyone asks: checks are manual
+// only, never automatic.
 func idleUpdate() updateView {
 	return updateView{
 		State:   "idle",
@@ -46,11 +42,8 @@ func installedLabel(v string) string {
 	return fmt.Sprintf("v%s installed", strings.TrimPrefix(v, "v"))
 }
 
-// failedCheck is a check that did not produce a version to compare
-// against. The card always says the same thing; the specific cause goes
-// to the log instead. That means a 404 — GitHub answered, it just has
-// no release — still reads as "could not reach GitHub", which is not
-// literally true but stops being reachable at all once v1 is tagged.
+// failedCheck is a check that produced no version to compare. The card
+// always says the same thing; the cause goes to the log.
 func failedCheck(why string) updateView {
 	slog.Info("update check did not complete", "reason", why)
 	return updateView{
@@ -65,8 +58,8 @@ func notComparable(note string) updateView {
 	return updateView{State: "idle", Label: installedLabel(version.Version), NotePre: note}
 }
 
-// minCheckDuration matches the connection test's floor in spirit: long
-// enough for the spinner to register as a thing that happened.
+// minCheckDuration keeps a fast reply from replacing the checking state
+// before it can be read.
 const minCheckDuration = 700 * time.Millisecond
 
 var releasesAPI = "https://api.github.com/repos/JaiMistry/autothrottle/releases/latest"
@@ -76,9 +69,6 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	// The checking state is rendered client-side the moment the button is
-	// pressed, so a reply that arrives in 40ms would replace it before it
-	// could be read. Only a fast answer waits; a slow one is not delayed.
 	started := time.Now()
 	view := checkLatestRelease(ctx, version.Number())
 	if elapsed := time.Since(started); elapsed < minCheckDuration {
@@ -87,10 +77,8 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "configuration", "updatecheck", view)
 }
 
-// checkLatestRelease compares a release number — not a raw stamp — with
-// the newest published tag. current is empty for any build that has no
-// release number, which includes both `go build` and a local image made
-// off an untagged commit.
+// checkLatestRelease compares a release number with the newest published
+// tag. current is empty for a build with no release number.
 func checkLatestRelease(ctx context.Context, current string) updateView {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesAPI, nil)
 	if err != nil {
@@ -105,8 +93,7 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
-		// Also what a private repository returns to an anonymous caller,
-		// so the wording covers both without asserting which it is.
+		// No release yet, or a private repository.
 		return failedCheck("github answered 404")
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -126,15 +113,9 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 	case latest == "":
 		return failedCheck("github reported no release tag")
 	case running == "" || running == "dev":
-		// A dev build has no version to compare against, and calling it
-		// out of date would be wrong as often as not.
 		return notComparable(fmt.Sprintf("This is a development build. v%s is the latest release.", latest))
 	case compareVersions(running, latest) >= 0:
-		// Equal, or ahead of the newest published release — a build made
-		// from an unreleased commit. Both mean there is nothing to fetch,
-		// so neither should be nagged about. Comparing rather than
-		// testing for equality is what keeps a locally-built v1.1.0 from
-		// being told to "upgrade" to the v1.0.0 on GitHub.
+		// Equal, or ahead (an unreleased build): nothing to fetch.
 		return updateView{
 			State: "current", Label: "Up to date",
 			NoteStrong: "v" + latest, NotePost: " is the latest release.",
@@ -147,17 +128,10 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 	}
 }
 
-// compareVersions orders two dot-separated release numbers, returning
-// -1, 0 or 1. It is deliberately small rather than a full semver
-// implementation: these are this project's own tags, which are numeric
-// and occasionally carry a pre-release suffix.
-//
-// Numeric segments compare as numbers, so 1.0.10 correctly sorts above
-// 1.0.9 where a string comparison would not. A pre-release suffix
-// ("1.1.0-rc1") sorts below the release it leads to, per semver. Two
-// versions that differ only in ways this cannot parse compare equal,
-// which errs toward staying quiet rather than announcing an update
-// that may not exist.
+// compareVersions orders two dot-separated release numbers, returning -1,
+// 0 or 1. Segments compare numerically (1.0.10 > 1.0.9), a pre-release
+// sorts below its release, and anything unparseable compares equal, so an
+// update is never announced that may not exist.
 func compareVersions(a, b string) int {
 	aNum, aPre := splitPreRelease(a)
 	bNum, bPre := splitPreRelease(b)

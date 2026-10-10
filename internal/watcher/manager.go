@@ -1,17 +1,7 @@
-// Package watcher owns the lifecycle of the per-media-server session
-// watchers. Watchers are the app's only live input: one long-lived
-// WebSocket connection per enabled media server, feeding session
-// start/stop events into the scheduler.
-//
-// The manager exists so configuration changes take effect immediately
-// rather than at next restart. It reconciles the set of running
-// watchers against what's currently in the database: starting watchers
-// for newly-added servers, stopping them for removed or disabled ones,
-// and restarting any whose connection details changed.
-//
-// It also runs the periodic session reconciliation poll that keeps the
-// scheduler's view of what's playing honest when the event stream
-// misses something — see reconcileSessions.
+// Package watcher runs one session watcher per enabled media server and
+// keeps that set in line with the database, so configuration changes
+// apply without a restart. It also polls each server's sessions to
+// correct anything the event stream missed.
 package watcher
 
 import (
@@ -30,29 +20,20 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
-// snapshotTimeout bounds one reconciliation poll. Generous relative to
-// a LAN round-trip, short relative to the poll interval, so a hung
-// server can never stack overlapping polls.
+// snapshotTimeout bounds one poll, well inside the poll interval, so a
+// hung server never stacks overlapping polls.
 const snapshotTimeout = 10 * time.Second
 
-// sink receives session events from watchers. The scheduler satisfies
-// this; the indirection keeps the manager testable without one.
+// sink receives session events; the scheduler satisfies it.
 type sink interface {
 	HandleSessionEvent(mediaServerID int64, session clients.Session, active bool)
 	ClearSessions(mediaServerID int64)
-	// ReplaceSessions overwrites a server's whole active set from a
-	// snapshot, correcting any drift the event stream accumulated.
 	ReplaceSessions(mediaServerID int64, sessions []clients.Session)
-	// UpdateSessionDetail refreshes what a still-running session looks
-	// like without touching the active set, so a position tick does not
-	// drag a downloader API call along with it.
 	UpdateSessionDetail(mediaServerID int64, session clients.Session)
 }
 
-// handle tracks one running watcher. fingerprint captures the config
-// the watcher was constructed from — watchers hold their URL, token,
-// and exemption flag by value, so a change to any of them means the
-// running watcher is stale and has to be replaced rather than updated.
+// handle tracks one running watcher. fingerprint is the config it was
+// built from; any change to it means replacing the watcher.
 type handle struct {
 	cancel      context.CancelFunc
 	fingerprint string
@@ -71,8 +52,8 @@ type Manager struct {
 	notify live.Notifier
 }
 
-// SetNotifier makes the manager announce connection changes to open
-// pages. Set once, before Start.
+// SetNotifier makes the manager announce connection changes. Set once,
+// before Start.
 func (m *Manager) SetNotifier(n live.Notifier) { m.notify = n }
 
 func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
@@ -84,9 +65,7 @@ func NewManager(database *db.DB, encryptionKey []byte, sched sink) *Manager {
 	}
 }
 
-// Start binds the manager to a root context and performs the first
-// reconcile. Every watcher started from here on is a child of ctx, so
-// cancelling it shuts all of them down.
+// Start does the first reconcile. Every watcher runs under ctx.
 func (m *Manager) Start(ctx context.Context) {
 	m.mu.Lock()
 	m.root = ctx
@@ -97,13 +76,11 @@ func (m *Manager) Start(ctx context.Context) {
 	}
 }
 
-// healthCheckInterval is how often watchHealth looks. It reads memory
-// only, so it can be frequent.
+// healthCheckInterval can be short: health reads memory only.
 const healthCheckInterval = 2 * time.Second
 
-// watchHealth announces when a watcher starts, stops, connects or
-// drops. Those states live inside each watcher's reconnect loop, so
-// they are compared from here rather than threaded out of every client.
+// watchHealth announces a watcher starting, stopping, connecting or
+// dropping. Polled here rather than threaded out of every client.
 func (m *Manager) watchHealth(ctx context.Context) {
 	last := m.health()
 	t := time.NewTicker(healthCheckInterval)
@@ -132,10 +109,8 @@ func (m *Manager) health() map[int64]bool {
 	return out
 }
 
-// Reconcile brings the running watcher set in line with the database.
-// Safe to call from an HTTP handler after any media-server change, and
-// safe to call repeatedly — servers whose config is unchanged keep
-// their existing connection rather than being torn down and redialled.
+// Reconcile brings the running watchers in line with the database. Safe
+// to call repeatedly: unchanged servers keep their connection.
 func (m *Manager) Reconcile() {
 	mediaServers, err := m.db.ListMediaServers()
 	if err != nil {
@@ -165,9 +140,7 @@ func (m *Manager) Reconcile() {
 		}
 		h.cancel()
 		delete(m.running, id)
-		// Sessions counted for this server came from the watcher we
-		// just stopped. Leaving them behind would keep a removed or
-		// disabled server throttling downloaders forever.
+		// Its sessions would otherwise keep downloaders throttled forever.
 		m.sched.ClearSessions(id)
 		slog.Info("watcher: stopped", "media_server_id", id)
 	}
@@ -238,22 +211,12 @@ func (m *Manager) forward(ctx context.Context, mediaServerID int64, events <-cha
 	}
 }
 
-// reconcileSessions periodically replaces a server's tracked session
-// set with a fresh snapshot from the server itself.
-//
-// The WebSocket feed is the primary input and stays authoritative for
-// latency: this exists only to correct drift. If the connection drops
-// while something is playing and the server never re-sends a "playing"
-// notification after reconnect, the event stream alone would leave
-// that session active forever and the downloader throttled forever.
-// Polling a full snapshot converges on truth regardless of which
-// individual notifications were missed.
+// reconcileSessions periodically replaces a server's tracked sessions
+// with a snapshot. The socket stays the fast path; this corrects drift,
+// such as a stop the socket missed while it was down.
 func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, name string, w clients.SessionWatcher) {
 	failures := 0
-	// The first pass runs immediately. Waiting a full interval for it
-	// left the app with no idea what was playing for the first minute
-	// after every start, which is when someone is most likely to be
-	// looking at it.
+	// The first pass runs at once, not after a full interval.
 	first := true
 	for {
 		if !first {
@@ -269,15 +232,11 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 			if ctx.Err() != nil {
 				return
 			}
-			// Only the first failure and then every tenth are logged:
-			// an unreachable server would otherwise emit one line per
-			// interval forever.
+			// The first failure and every tenth after, not every interval.
 			if failures == 0 || failures%10 == 0 {
 				slog.Warn("watcher: session reconciliation failed", "media_server", name, "consecutive_failures", failures+1, "error", err)
 			}
-			// Only the first one reaches the Logs page. A server that is
-			// down stays down, and one line per interval would bury
-			// everything else on the page.
+			// Only the first reaches the Logs page.
 			if failures == 0 {
 				m.note("warn", fmt.Sprintf("Lost contact with %s. Playback there will not be noticed until it answers again.", name), mediaServerID)
 			}
@@ -292,8 +251,7 @@ func (m *Manager) reconcileSessions(ctx context.Context, mediaServerID int64, na
 	}
 }
 
-// reconcileOnce takes one snapshot and hands it to the scheduler,
-// which decides whether anything actually changed.
+// reconcileOnce hands one snapshot to the scheduler.
 func (m *Manager) reconcileOnce(ctx context.Context, mediaServerID int64, w clients.SessionWatcher) error {
 	snapshotCtx, cancel := context.WithTimeout(ctx, snapshotTimeout)
 	defer cancel()
@@ -306,11 +264,8 @@ func (m *Manager) reconcileOnce(ctx context.Context, mediaServerID int64, w clie
 	return nil
 }
 
-// note records a line on the Logs page. Most warnings are for whoever
-// is reading stdout and stay in slog; this is for the ones a user has
-// to know about, because they change whether AutoThrottle can do its
-// job at all — a media server that stopped answering cannot report
-// playback, and nothing else on the page would say so.
+// note records a line on the Logs page, for the few warnings a user has
+// to see: a server that stopped answering cannot report playback.
 func (m *Manager) note(level, message string, mediaServerID int64) {
 	if err := m.db.InsertEvent(db.Event{
 		Level:         level,
@@ -321,10 +276,8 @@ func (m *Manager) note(level, message string, mediaServerID int64) {
 	}
 }
 
-// SnapshotAll takes one session snapshot from every running watcher
-// and waits for them all. Used once at startup so throttle state is
-// resolved against what is actually playing, rather than against an
-// empty set that a snapshot contradicts a moment later.
+// SnapshotAll takes a snapshot from every watcher and waits, so startup
+// resolves against what is actually playing.
 func (m *Manager) SnapshotAll(ctx context.Context) {
 	m.mu.Lock()
 	ids := make([]int64, 0, len(m.running))
@@ -348,8 +301,7 @@ func (m *Manager) SnapshotAll(ctx context.Context) {
 	wg.Wait()
 }
 
-// Running reports which media servers currently have a live watcher, so
-// the Dashboard can tell "configured" from "actually being watched".
+// Running reports whether a media server has a live watcher.
 func (m *Manager) Running(mediaServerID int64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -357,8 +309,8 @@ func (m *Manager) Running(mediaServerID int64) bool {
 	return ok
 }
 
-// Connection reports a media server's live feed health, for the
-// Dashboard's detail line. ok is false when nothing is watching it.
+// Connection reports a media server's feed health; ok is false when
+// nothing is watching it.
 func (m *Manager) Connection(mediaServerID int64) (clients.ConnectionState, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -369,19 +321,14 @@ func (m *Manager) Connection(mediaServerID int64) (clients.ConnectionState, bool
 	return h.watcher.Connection(), true
 }
 
-// fingerprint returns a value that changes whenever anything a running
-// watcher captured at construction changes, and the decrypted token.
-// Decryption failure yields "", which callers treat as "can't run this
-// one".
+// fingerprint is the config a watcher is built from, and the decrypted
+// token. An unreadable credential yields "": don't run this one.
 func (m *Manager) fingerprint(ms db.MediaServer) (fp, token string) {
 	token, err := crypto.Decrypt(m.encryptionKey, ms.CredentialEncrypted)
 	if err != nil {
 		slog.Error("watcher: decrypting token", "media_server", ms.Name, "error", err)
 		return "", ""
 	}
-	// Field separator can't appear in a bool and is unlikely in a URL;
-	// a collision would only ever cause a missed restart, not a wrong
-	// connection.
 	sep := "\x00"
 	local := "0"
 	if ms.SkipLocalPlayback {

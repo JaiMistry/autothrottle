@@ -18,13 +18,10 @@
 {{template "logpanel" .}}
 {{end}}
 
-{{/* Tabs and results swap together. Keeping the tabs outside the swap
-     left them showing the old selection, and an empty result had no
-     card to replace — which is why every filter but All looked dead. */}}
+{{/* Tabs and results swap together, so the tabs never show a stale
+     selection and an empty result still has something to replace. */}}
 {{define "logpanel"}}{{$q := .Search}}{{$per := .Log.PerPage}}
-{{/* The refresh lives here, not on the card: an emptied log renders an
-     empty state with no card at all, and a trigger inside it would stop
-     the page updating the moment it was cleared. */}}
+{{/* The refresh lives here, not on the card: a cleared log has no card. */}}
 <div id="log-panel"
   {{- if and .LivePanel (eq .Log.Page 1)}}
   hx-get="{{.LivePanel}}" hx-trigger="live, every 5s [atLivePoll(this)]" data-live="logs"
@@ -52,9 +49,8 @@
 </div>
 {{end}}
 
-{{/* The swapped response also carries the header count, which sits
-     outside the panel — an out-of-band swap keeps it in step without
-     rebuilding the search box and stealing the caret mid-type. */}}
+{{/* The header count rides along out of band, so the search box isn't
+     rebuilt and the caret isn't stolen mid-type. */}}
 {{define "logpanelfragment"}}{{template "logpanel" .}}
 <p class="at-page-sub" id="log-count" hx-swap-oob="true">{{.Matching}} of the last {{.Log.Total}} events.</p>{{end}}
 

@@ -8,10 +8,6 @@ import (
 )
 
 // aboutView is the read-only identity of the running process.
-//
-// Everything here is observed rather than configured: there is nothing
-// on this tab to edit, which is why it reads as four flat rows instead
-// of a form.
 type aboutView struct {
 	Commit    string
 	BuiltNote string
@@ -46,9 +42,8 @@ func (s *Server) aboutView() aboutView {
 	}
 }
 
-// uptimeSince is the server-rendered first frame of the uptime counter.
-// The page ticks it forward itself from the boot timestamp, so this only
-// has to be right at the moment it is sent.
+// uptimeSince is the first frame of the uptime counter; the page ticks it
+// forward from the boot timestamp.
 func uptimeSince(boot time.Time) string {
 	d := time.Since(boot)
 	if d < 0 {

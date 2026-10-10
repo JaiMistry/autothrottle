@@ -1,18 +1,10 @@
 package db
 
-import (
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
-// The Logs page refreshes when the log changes, so every write and the
-// clear have to say so.
+// The Logs page refreshes on this hook, so every write and the clear fire it.
 func TestEventsChangedHook(t *testing.T) {
-	d, err := Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = d.Close() }()
+	d := newTestDB(t)
 	if err := d.InsertEvent(Event{Level: "info", Message: "before any hook"}); err != nil {
 		t.Fatal(err)
 	}

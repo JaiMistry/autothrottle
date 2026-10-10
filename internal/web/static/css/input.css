@@ -16,10 +16,7 @@
   --font-sans: "Lexend", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  /* The type scale is exact pixel values lifted from the identity, not
-     a rounded ramp. Mapping these onto Tailwind's default text-sm /
-     text-base rounds every one of them, and the density is the design
-     — so they get their own utilities instead. */
+  /* Exact pixel sizes: Tailwind's default ramp would round every one. */
   --text-page-title: 32px;
   --text-display: 30px;
   --text-metric: 23px;

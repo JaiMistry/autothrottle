@@ -10,20 +10,12 @@ import (
 	"time"
 )
 
-// reconnectMaxBackoff caps the wait between connection attempts. Also
-// doubles as the "this connection was healthy" threshold: a connection
-// that lasted longer than this gets a fresh backoff rather than
-// inheriting the escalation from whatever went wrong before it.
+// reconnectMaxBackoff caps the wait between attempts. A connection that
+// lasted longer than this starts the next backoff afresh.
 const reconnectMaxBackoff = 30 * time.Second
 
-// runWithBackoff drives a watcher's connect loop until ctx is done.
-//
-// Shared by every SessionWatcher because the reconnect policy is a
-// property of the app's reliability posture, not of any one server's
-// protocol: the live connection is the only input that detects
-// playback promptly, so losing one silently is the failure mode that
-// matters most, and every implementation should recover from it
-// identically.
+// runWithBackoff drives a watcher's connect loop until ctx is done,
+// with one reconnect policy for every server.
 func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connectionTracker, connect func(context.Context) error) {
 	backoff := time.Second
 
@@ -32,9 +24,8 @@ func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connect
 			return
 		}
 		connectedAt := time.Now()
-		tracker.markConnected(connectedAt)
-		// Redacted here as well as where it is made: this is where every
-		// watcher's error is logged and kept for the Dashboard.
+		tracker.set(true)
+		// Redacted here too, where every watcher's error is logged.
 		err := Redact(connect(ctx))
 		if ctx.Err() != nil {
 			return
@@ -45,8 +36,7 @@ func runWithBackoff(ctx context.Context, label, baseURL string, tracker *connect
 		if time.Since(connectedAt) > reconnectMaxBackoff {
 			backoff = time.Second // connection was healthy for a while; don't punish it for one drop
 		}
-		dropped := time.Now()
-		tracker.markDisconnected(dropped, dropped.Add(backoff), err)
+		tracker.set(false)
 
 		select {
 		case <-ctx.Done():
@@ -73,13 +63,8 @@ func webSocketBase(baseURL string) string {
 	}
 }
 
-// emit offers a session event to a watcher's channel, abandoning it if
-// the watcher is shutting down. Identical for every protocol, so it
-// lives here rather than once per watcher.
-//
-// The abandon-on-cancel matters: the channel is buffered, and a
-// watcher whose consumer has already stopped would otherwise block
-// here forever once that buffer filled, leaking the goroutine.
+// emit offers a session event, abandoning it once the watcher is
+// shutting down, so a full buffer never blocks it forever.
 func emit(ctx context.Context, events chan<- SessionEvent, session Session, active bool) {
 	select {
 	case events <- SessionEvent{Session: session, Active: active}:
@@ -87,10 +72,8 @@ func emit(ctx context.Context, events chan<- SessionEvent, session Session, acti
 	}
 }
 
-// emitDetail reports that a session already known to be playing has
-// moved — a new position, or a title that arrived late. It never
-// changes whether the session exists, so it must not cause throttle
-// state to be re-resolved.
+// emitDetail reports a known session's new position or late title. It
+// never changes whether the session exists.
 func emitDetail(ctx context.Context, events chan<- SessionEvent, session Session) {
 	select {
 	case events <- SessionEvent{Session: session, Active: true, DetailOnly: true}:
@@ -98,14 +81,8 @@ func emitDetail(ctx context.Context, events chan<- SessionEvent, session Session
 	}
 }
 
-// getJSON performs an authenticated GET and decodes a JSON body into
-// out. Every media server client needs exactly this shape — build,
-// authenticate, send, check the status, decode, close — and writing it
-// per call site is how a response body eventually goes unclosed.
-//
-// setAuth applies whatever the server expects, because they disagree:
-// Plex takes a token header, Emby takes its own, Jellyfin takes an
-// Authorization header it built itself.
+// getJSON performs an authenticated GET and decodes the JSON body into
+// out. setAuth applies each server's own credential header.
 func getJSON(ctx context.Context, url string, setAuth func(*http.Request), out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// transmissionStub records what the client sent and replays a scripted
-// set of responses, so the session-id handshake can be driven exactly.
 type transmissionStub struct {
 	requests  []transmissionRequest
 	sessionID []string // session id header seen on each request
@@ -20,8 +18,8 @@ type transmissionStub struct {
 	paths     []string
 }
 
-// newTransmissionStub serves a daemon that demands the session-id
-// handshake once, then answers with the given arguments payload.
+// newTransmissionStub demands the session-id handshake once, then answers
+// with arguments.
 func newTransmissionStub(t *testing.T, arguments string) (*transmissionStub, *httptest.Server) {
 	t.Helper()
 	stub := &transmissionStub{}
@@ -50,8 +48,7 @@ func newTransmissionStub(t *testing.T, arguments string) (*transmissionStub, *ht
 	return stub, srv
 }
 
-// The first request is meant to fail. Everything depends on that 409
-// being read as step one of the handshake rather than as an error.
+// The first 409 is step one of the handshake, not an error.
 func TestTransmissionCompletesSessionHandshake(t *testing.T) {
 	stub, srv := newTransmissionStub(t, `{}`)
 
@@ -106,9 +103,7 @@ func TestTransmission409WithoutHeaderIsAnError(t *testing.T) {
 	}
 }
 
-// Transmission reports application-level failure in the body with a 200
-// status, so trusting the status code alone would read failure as
-// success.
+// Transmission reports failure in the body of a 200.
 func TestTransmissionTreatsNonSuccessResultAsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
 		_, _ = rw.Write([]byte(`{"result":"method name not recognized","arguments":{}}`))
@@ -190,8 +185,7 @@ func TestSetTransmissionLimitsEnablesAndDisables(t *testing.T) {
 		t.Errorf("limits were not enabled: %v", args)
 	}
 
-	// 0 means unlimited. Setting the value to zero and leaving the
-	// limit enabled would stop all traffic instead.
+	// 0 means unlimited: a zero limit left enabled would stop all traffic.
 	stub2, srv2 := newTransmissionStub(t, `{}`)
 	if err := SetTransmissionLimits(context.Background(), srv2.URL, "", "", 0, 0); err != nil {
 		t.Fatalf("SetTransmissionLimits(0,0): %v", err)

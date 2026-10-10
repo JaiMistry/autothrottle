@@ -2,10 +2,8 @@ package db
 
 import "testing"
 
-// A new server or downloader is meant to arrive already mapped to its
-// counterparts. This covers the statement itself as much as the
-// behaviour: the upsert form it uses does not parse without a WHERE
-// clause, and nothing else in the suite executes it.
+// New entries arrive mapped to their counterparts. Also the only test that
+// executes the upsert, which does not parse without its WHERE clause.
 func TestSeedingMappingsForNewEntries(t *testing.T) {
 	d := newTestDB(t)
 
@@ -45,8 +43,7 @@ func TestSeedingMappingsForNewEntries(t *testing.T) {
 	}
 }
 
-// Names sort as people read them: "qBittorrent" is not after every
-// capitalised name.
+// "qBittorrent" must not sort after every capitalised name.
 func TestListsSortCaseInsensitively(t *testing.T) {
 	d := newTestDB(t)
 	for _, name := range []string{"Transmission", "qBittorrent"} {
