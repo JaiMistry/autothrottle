@@ -72,7 +72,7 @@ type Build struct {
 func Current() Build {
 	b := Build{
 		Version: Version,
-		Commit:  Commit,
+		Commit:  shortCommit(Commit),
 		Go:      runtime.Version(),
 		OS:      runtime.GOOS,
 		Arch:    runtime.GOARCH,
@@ -95,8 +95,8 @@ func fromVCS(b *Build, settings []debug.BuildSetting) {
 	for _, s := range settings {
 		switch s.Key {
 		case "vcs.revision":
-			if b.Commit == "" && len(s.Value) >= 7 {
-				b.Commit = s.Value[:7]
+			if b.Commit == "" {
+				b.Commit = shortCommit(s.Value)
 			}
 		case "vcs.time":
 			if b.Built.IsZero() {
@@ -106,6 +106,15 @@ func fromVCS(b *Build, settings []debug.BuildSetting) {
 			}
 		}
 	}
+}
+
+// shortCommit is the seven-character form git shows. A release stamps
+// the full revision; anything shorter is kept as it is.
+func shortCommit(rev string) string {
+	if len(rev) > 7 {
+		return rev[:7]
+	}
+	return rev
 }
 
 // inDocker reports whether this runs in a container, from the marker

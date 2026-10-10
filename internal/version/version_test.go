@@ -85,3 +85,18 @@ func TestFromVCS(t *testing.T) {
 		t.Errorf("the stamp was overwritten: %+v", stamped)
 	}
 }
+
+// A release stamps the full revision; it is shown as git shows it.
+func TestCurrentShortensTheCommit(t *testing.T) {
+	original := Commit
+	defer func() { Commit = original }()
+
+	Commit = "fad935196f6b46ee9bb575b81d46d338cb72f112"
+	if got := Current().Commit; got != "fad9351" {
+		t.Errorf("Commit = %q, want fad9351", got)
+	}
+	Commit = "abc12"
+	if got := Current().Commit; got != "abc12" {
+		t.Errorf("a short stamp became %q", got)
+	}
+}
