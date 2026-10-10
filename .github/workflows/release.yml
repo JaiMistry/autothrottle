@@ -186,32 +186,11 @@ jobs:
               autothrottle-*.tar.gz
           fi
 
-  # Docker Hub shows the README too. Its links are made absolute, at the
-  # released tag, since relative ones only resolve on GitHub. Separate,
-  # so a problem here never holds a release back.
+  # Separate, so a problem there never holds a release back.
   docker-hub-description:
     needs: publish
     if: needs.publish.outputs.stable == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.publish.outputs.tag }}
-
-      - name: Absolute links
-        env:
-          TAG: ${{ needs.publish.outputs.tag }}
-        run: |
-          # jsDelivr, not raw.githubusercontent.com: it serves SVG as an
-          # image, where the latter serves it as text.
-          export FILES="https://cdn.jsdelivr.net/gh/JaiMistry/autothrottle@$TAG/"
-          export REPO="https://github.com/JaiMistry/autothrottle/blob/$TAG/"
-          perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' README.md > dockerhub.md
-
-      - uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: jaimistry/autothrottle
-          short-description: Intelligently throttles download clients while a media server has active playback.
-          readme-filepath: dockerhub.md
+    uses: ./.github/workflows/docker-hub-description.yml
+    with:
+      tag: ${{ needs.publish.outputs.tag }}
+    secrets: inherit

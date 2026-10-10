@@ -1,0 +1,52 @@
+name: Docker Hub description
+
+# Docker Hub's page: the README from a release, trimmed to the logo and
+# the setup sections, since Docker Hub's own header already names the
+# image. Called by each stable release, or run from the Actions tab to
+# resync the latest one.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: echo "tag=${TAG:-$(gh release view --json tagName --jq .tagName)}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      # Links are made absolute, at the release's tag, since relative ones
+      # only resolve on GitHub. jsDelivr, not raw.githubusercontent.com: it
+      # serves SVG as an image, where the latter serves it as text.
+      - name: Trim the README
+        env:
+          FILES: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.release.outputs.tag }}/
+          REPO: https://github.com/${{ github.repository }}/blob/${{ steps.release.outputs.tag }}/
+        run: |
+          awk 'NR == 1, /<\/p>/ { print; next } /^## .*Quick start/ { keep = 1; print "" } keep' README.md |
+            perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' > dockerhub.md
+          cat dockerhub.md
+
+      - uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: jaimistry/autothrottle
+          short-description: Intelligently throttles download clients while a media server has active playback.
+          readme-filepath: dockerhub.md
