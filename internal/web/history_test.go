@@ -34,13 +34,13 @@ func TestHistoryCells(t *testing.T) {
 	if !c.Hot || c.Step != 3 || c.Value != "1hr 30m throttled" || c.Side != "r" {
 		t.Errorf("Thu 20:00 = %+v", c)
 	}
-	if want := []string{"8:10 PM – 8:30 PM", "8:40 PM – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+	if want := []string{"8:10 – 8:30 PM", "8:40 – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
 		t.Errorf("spans = %q, want each period whole", c.Spans)
 	}
-	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "1hr 30m throttled · 8:10 PM") {
+	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "1hr 30m throttled · 8:10 – 8:30 PM") {
 		t.Errorf("when %q, label %q", c.When, c.Label)
 	}
-	if next := yday.Cells[21]; next.Step != 4 || next.Value != "1hr 10m throttled" || next.Spans[0] != "8:40 PM – 9:50 PM" {
+	if next := yday.Cells[21]; next.Step != 4 || next.Value != "1hr 10m throttled" || next.Spans[0] != "8:40 – 9:50 PM" {
 		t.Errorf("Thu 21:00 = %+v", next)
 	}
 
@@ -88,6 +88,62 @@ func TestTotalLabel(t *testing.T) {
 	for minutes, want := range map[int]string{1: "1 min", 59: "59 min", 60: "1hr 0m", 155: "2hr 35m"} {
 		if got := throttledLabel(minutes); got != want {
 			t.Errorf("throttledLabel(%d) = %q, want %q", minutes, got, want)
+		}
+	}
+}
+
+// Throttling that stops and starts within a few minutes reads as one
+// stretch: the screenshot that prompted this listed five ranges for eight
+// minutes, two of them "8:42 PM – 8:42 PM".
+func TestHistoryMergesFragments(t *testing.T) {
+	now := time.Date(2026, 10, 9, 23, 0, 0, 0, time.Local)
+	day := now
+	sec := func(h, m, s int) time.Time {
+		return time.Date(day.Year(), day.Month(), day.Day(), h, m, s, 0, time.Local)
+	}
+	periods := []db.Span{
+		{Start: sec(20, 42, 5), End: sec(20, 42, 40)},
+		{Start: sec(20, 42, 50), End: sec(20, 42, 58)},
+		{Start: sec(20, 43, 10), End: sec(20, 44, 0)},
+		{Start: sec(20, 44, 5), End: sec(20, 44, 30)},
+		{Start: sec(20, 44, 40), End: sec(20, 50, 20)},
+		// Well apart from the rest: its own stretch.
+		{Start: sec(20, 58, 0), End: sec(20, 58, 20)},
+	}
+	runs := []db.Span{{Start: now.Add(-24 * time.Hour), End: now}}
+	c := buildHistory(periods, runs, now, 7).Rows[0].Cells[20]
+	if want := []string{"8:42 – 8:50 PM", "8:58 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+		t.Errorf("spans = %q, want %q", c.Spans, want)
+	}
+	// The minutes are the time throttled, not the gaps between.
+	if c.Value != "8 min throttled" {
+		t.Errorf("value = %q", c.Value)
+	}
+
+	// However busy the hour, the list stays short.
+	var many []db.Span
+	for m := 0; m < 60; m += 10 {
+		many = append(many, db.Span{Start: sec(21, m, 0), End: sec(21, m+2, 0)})
+	}
+	if c := buildHistory(many, runs, now, 7).Rows[0].Cells[21]; len(c.Spans) != 4 || c.Spans[3] != "and 3 more" {
+		t.Errorf("a busy hour lists %q", c.Spans)
+	}
+}
+
+func TestClockRange(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 10, 9, h, m, 0, 0, time.Local) }
+	for _, c := range []struct {
+		from, to time.Time
+		ongoing  bool
+		want     string
+	}{
+		{at(20, 42), at(20, 50), false, "8:42 – 8:50 PM"},
+		{at(11, 40), at(12, 20), false, "11:40 AM – 12:20 PM"},
+		{at(20, 42), at(20, 42), false, "8:42 PM"},
+		{at(21, 5), at(21, 30), true, "9:05 PM – now"},
+	} {
+		if got := clockRange(c.from, c.to, c.ongoing); got != c.want {
+			t.Errorf("clockRange(%v, %v) = %q, want %q", c.from, c.to, got, c.want)
 		}
 	}
 }

@@ -74,6 +74,7 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	v := historyView{Range: fmt.Sprintf("%dd", rangeDays), Days: rangeDays, Empty7: true, Empty30: true}
 	var total7, total30 time.Duration
+	stretchList := stretches(periods, now)
 
 	for i := 0; i < historyDays; i++ {
 		day := today.AddDate(0, 0, -i)
@@ -107,24 +108,28 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				continue
 			}
 
-			// The fill is this hour's share; the tooltip names each period
-			// through it whole, so two hours of playback reads as two hours
-			// on every cell it covers rather than as a run of 60s.
+			// The fill is this hour's exact share. The tooltip names each
+			// stretch through it whole, so two hours of playback reads as
+			// two hours on every cell it covers rather than as a run of 60s.
 			var throttled, whole time.Duration
-			stillGoing := false
 			for _, p := range periods {
-				end, ongoing := p.End, p.End.IsZero()
-				if ongoing {
+				end := p.End
+				if end.IsZero() {
 					end = now
 				}
-				o := overlap(p.Start, end, a, b)
-				if o <= 0 {
+				throttled += max(0, overlap(p.Start, end, a, b))
+			}
+			stillGoing := false
+			for _, st := range stretchList {
+				if overlap(st.start, st.end, a, b) <= 0 {
 					continue
 				}
-				throttled += o
-				whole += end.Sub(p.Start)
-				stillGoing = stillGoing || ongoing
-				cell.Spans = append(cell.Spans, clockRange(p.Start, end, ongoing))
+				whole += st.throttled
+				stillGoing = stillGoing || st.ongoing
+				cell.Spans = append(cell.Spans, clockRange(st.start, st.end, st.ongoing))
+			}
+			if len(cell.Spans) > maxTipSpans {
+				cell.Spans = append(cell.Spans[:maxTipSpans], fmt.Sprintf("and %d more", len(cell.Spans)-maxTipSpans))
 			}
 			if i < 7 {
 				total7 += throttled
@@ -200,14 +205,58 @@ func later(a, b time.Time) time.Time {
 	return b
 }
 
-// clockRange is "9:18 PM – 10:00 PM", or "9:18 PM – now" for a period
-// still going.
-func clockRange(from, to time.Time, ongoing bool) string {
-	end := "now"
-	if !ongoing {
-		end = to.In(time.Local).Format("3:04 PM")
+// stretchGap is how far apart two throttle periods can be and still read
+// as one stretch. Playback that stops and starts again within a few
+// minutes — an episode ending and the next beginning, a client
+// reconnecting — is one evening of throttling, not a list of fragments.
+const stretchGap = 5 * time.Minute
+
+// maxTipSpans caps the ranges one tooltip lists.
+const maxTipSpans = 3
+
+// stretch is throttle periods close enough together to read as one.
+type stretch struct {
+	start, end time.Time
+	ongoing    bool
+	throttled  time.Duration // the periods' own time, not the gaps between
+}
+
+// stretches merges periods (oldest first, a zero End still going) that
+// are within stretchGap of each other.
+func stretches(periods []db.Span, now time.Time) []stretch {
+	var out []stretch
+	for _, p := range periods {
+		end, ongoing := p.End, p.End.IsZero()
+		if ongoing {
+			end = now
+		}
+		if n := len(out); n > 0 && !p.Start.After(out[n-1].end.Add(stretchGap)) {
+			last := &out[n-1]
+			last.end = later(last.end, end)
+			last.ongoing = last.ongoing || ongoing
+			last.throttled += end.Sub(p.Start)
+			continue
+		}
+		out = append(out, stretch{start: p.Start, end: end, ongoing: ongoing, throttled: end.Sub(p.Start)})
 	}
-	return from.In(time.Local).Format("3:04 PM") + " – " + end
+	return out
+}
+
+// clockRange is "9:18 – 10:00 PM", "11:40 PM – 12:20 AM" across
+// midday or midnight, "9:18 PM" for one that began and ended within the
+// minute, and "9:18 PM – now" for one still going.
+func clockRange(from, to time.Time, ongoing bool) string {
+	from, to = from.In(time.Local), to.In(time.Local)
+	switch {
+	case ongoing:
+		return from.Format("3:04 PM") + " – now"
+	case from.Format("3:04 PM") == to.Format("3:04 PM"):
+		return from.Format("3:04 PM")
+	case from.Format("PM") == to.Format("PM"):
+		return from.Format("3:04") + " – " + to.Format("3:04 PM")
+	default:
+		return from.Format("3:04 PM") + " – " + to.Format("3:04 PM")
+	}
 }
 
 // throttledLabel is "42 min" under an hour and "2hr 35m" from there.
