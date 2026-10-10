@@ -1,28 +1,32 @@
 <p align="center">
-  <img src="internal/web/static/img/logo-mark.svg" width="96" height="96" alt="AutoThrottle logo">
+  <img src="internal/web/static/img/logo-mark.svg" width="160" height="160" alt="AutoThrottle logo">
 </p>
 
 <h1 align="center">AutoThrottle</h1>
 
 <p align="center">
-  <strong>Throttles download clients while a media server has active playback.</strong>
+  <strong>Intelligently throttles download clients while a media server has active playback.</strong>
 </p>
 
 <p align="center">
-  <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/pulls/jaimistry/autothrottle" alt="Docker pulls"></a>
-  <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/image-size/jaimistry/autothrottle/latest" alt="Image size"></a>
-  <a href="https://github.com/JaiMistry/autothrottle/releases"><img src="https://img.shields.io/github/downloads/JaiMistry/autothrottle/total" alt="Downloads"></a>
+  <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/github/v/release/JaiMistry/autothrottle?label=version" alt="Latest version"></a>
+  <a href="https://github.com/JaiMistry/autothrottle/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/JaiMistry/autothrottle/ci.yml?branch=main&label=build" alt="Build status"></a>
   <a href="https://codecov.io/gh/JaiMistry/autothrottle"><img src="https://codecov.io/gh/JaiMistry/autothrottle/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/pulls/jaimistry/autothrottle" alt="Docker pulls"></a>
+  <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/image-size/jaimistry/autothrottle/latest?label=size" alt="Size"></a>
+  <a href="https://github.com/JaiMistry/autothrottle/releases"><img src="https://img.shields.io/github/downloads/JaiMistry/autothrottle/total" alt="Downloads"></a>
 </p>
 
----
+Streaming and downloading on the same connection means buffering.
+AutoThrottle watches your media server and slows your download clients the
+moment someone presses play, then puts them back to full speed when playback
+ends.
 
-Torrents and streaming fighting over the same connection means buffering.
-AutoThrottle watches **Plex**, **Emby** and **Jellyfin**, slows
-**qBittorrent** and **Transmission** the instant playback starts, and puts
-them back to full speed when it stops.
+It keeps the throttle on through a pause, lets go of a stream that has been
+abandoned for 30 minutes, can ignore playback on your own network, and steps
+aside with one click whenever you want full speed back.
 
-<!-- Screenshots — add once the Dashboard redesign is final:
+<!-- Screenshots: add once the Dashboard redesign is final.
 <p align="center">
   <img src="docs/screenshots/dashboard-dark.png" width="820" alt="Dashboard">
 </p>
@@ -30,16 +34,32 @@ them back to full speed when it stops.
 
 ## Features
 
-- **Real-time** — reacts within seconds, from each server's live feed.
-- **Many to many** — any media server can throttle any download client.
-- **Pause-aware** — pauses stay throttled; abandoned streams are released.
-- **Local playback exemption** — streams on your own network can be ignored.
-- **Restart-safe** — rates are re-applied on startup, so nothing stays stuck slow.
-- **Live dashboard** — what's throttled, why, and what's playing.
-- **Full log** — every throttle and restore, with its cause.
-- **Lightweight** — one Go binary, embedded database, ~20 MB of memory.
+- **Real-time:** reacts within seconds, from each server's live feed.
+- **Mappings:** control which applications are throttled.
+- **Pause-aware:** a paused stream stays throttled, and an abandoned one is released.
+- **Local playback exemption:** streams on your own network can be ignored.
+- **Restart-safe:** rates are re-applied on startup, so nothing stays stuck slow.
+- **Live dashboard:** what's throttled, why, and what's playing.
+- **Throttle history:** a heatmap of when your downloads were held back.
+- **Full log:** every throttle and restore, with its cause.
+- **Lightweight:** one small container with nothing else to run beside it.
+
+## Supported versions
+
+| | Media server | Version |
+|:-:|---|---|
+| <img src="https://cdn.simpleicons.org/plex" width="18" alt=""> | Plex Media Server | 1.43+ |
+| <img src="https://cdn.simpleicons.org/jellyfin" width="18" alt=""> | Jellyfin | 10.11+ |
+| <img src="https://cdn.simpleicons.org/emby" width="18" alt=""> | Emby | 4.9+ |
+
+| | Download client | Version |
+|:-:|---|---|
+| <img src="https://cdn.simpleicons.org/qbittorrent" width="18" alt=""> | qBittorrent | 5.2+ |
+| <img src="https://cdn.simpleicons.org/transmission" width="18" alt=""> | Transmission | 4.1+ |
 
 ## Quick start
+
+`docker compose`:
 
 ```yaml
 services:
@@ -51,13 +71,13 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles
     volumes:
-      - ./data:/data
+      - /data:/data
     ports:
       - "7676:7676"
     restart: unless-stopped
 ```
 
-Or with `docker run`:
+`docker run`:
 
 ```sh
 docker run -d \
@@ -65,67 +85,39 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/Los_Angeles \
-  -v "$(pwd)/data:/data" \
+  -v /data:/data \
   -p 7676:7676 \
   --restart unless-stopped \
   jaimistry/autothrottle:latest
 ```
+
+## Environment variables
+
+All are optional.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `TZ` | `America/Los_Angeles` | Time zone for timestamps. |
+| `PUID` / `PGID` | `1000` / `1000` | User and group that own the data folder. |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | | Sign-in from the environment instead of creating an account. Set both or neither. |
+| `AUTH_DISABLED` | `false` | Turns off sign-in. Only use this behind a proxy that handles it. |
 
 ## First-time setup
 
 Open `http://<your-server>:7676` and create your account. Everything else
 happens on the **Configuration** page:
 
-1. **Add a media server** — Plex, Emby or Jellyfin, with its URL and token or
-   API key. For Plex you can sign in with your Plex account instead of
-   pasting a token.
-2. **Add a download client** — qBittorrent or Transmission, with two pairs of
-   rates:
-   - **Default rates** — applied when nothing is playing.
-   - **Throttled rates** — applied while a mapped server is playing.
+1. **Add a media server** with its URL and token or API key. For Plex you can
+   sign in with your Plex account instead of pasting a token.
+2. **Add a download client** with two pairs of rates:
+   - **Default rates**, applied when nothing is playing.
+   - **Throttled rates**, applied while a mapped server is playing.
 
-   Rates are in KB/s; `0` means unlimited.
-3. **Map them.** Choose which media servers should throttle which download
-   clients.
-
-## Configuration
-
-AutoThrottle needs no environment variables at all. These are available if
-you want them:
-
-| Variable | Default | What it does |
-|---|---|---|
-| `TZ` | `America/Los_Angeles` | Time zone for every timestamp in the app and its log. Any [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), e.g. `Europe/London`. |
-| `PUID` / `PGID` | `1000` / `1000` | The user and group AutoThrottle runs as, and that will own its data folder. Use your own — run `id -u` and `id -g` on the host. Ownership of the folder is fixed automatically on start. |
-| `AUTH_USERNAME` | — | Sign in with these credentials instead of creating an account in the browser. Set both or neither. |
-| `AUTH_PASSWORD` | — | |
-| `AUTH_DISABLED` | `false` | Set to `true` to turn login off entirely — only if AutoThrottle sits behind a reverse proxy that does its own authentication. |
-
-## How throttling decides
-
-| Situation | Result |
-|---|---|
-| Something is playing on a mapped server | Throttled |
-| Playback is paused | Still throttled — the viewer is coming back |
-| Paused for more than 30 minutes | Released, until playback resumes |
-| A session stops advancing (crashed or abandoned player) | Released after 30 minutes |
-| Playback from the local network, with exemption on | Ignored |
-| Nothing mapped is playing | Default rates |
-| **Disable throttling** pressed on the Dashboard | Default rates everywhere until resumed |
-
-## Supported versions
-
-| Media server | Version |
-|---|---|
-| Plex Media Server | 1.43+ |
-| Jellyfin | 10.11+ |
-| Emby | 4.9+ |
-
-| Download client | Version |
-|---|---|
-| qBittorrent | 5.2+ |
-| Transmission | 4.1+ |
+   Rates are in KB/s, and `0` means unlimited.
+3. **Map them.** Choose which media servers throttle which download clients.
 
 ## License
 
 [GPL-3.0](LICENSE)
+
+<p align="center">Made with ❤️ by <a href="https://github.com/JaiMistry">JaiMistry</a></p>
