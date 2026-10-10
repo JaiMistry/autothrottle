@@ -35,6 +35,8 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 - **Live dashboard:** what's throttled, why, and what's playing.
 - **Throttle history:** a heatmap of when your downloads were held back.
 - **Full log:** every throttle and restore, with its cause.
+- **Clean web UI:** a focused dashboard, configuration and log, in light or dark.
+- **Secure:** credentials encrypted at rest, sign-in rate-limited, and secrets kept out of the logs.
 - **Lightweight:** one small container with nothing else to run beside it.
 
 ## 🧩 Supported versions
@@ -95,8 +97,10 @@ All are optional.
 | Variable | Default | What it does |
 |---|---|---|
 | `TZ` | `America/Los_Angeles` | Time zone for timestamps. |
-| `PUID` / `PGID` | `1000` / `1000` | User and group that own the data folder. |
-| `AUTH_USERNAME` / `AUTH_PASSWORD` | | Sign-in from the environment instead of creating an account. Set both or neither. |
+| `PUID` | `1000` | User that owns the data folder. |
+| `PGID` | `1000` | Group that owns the data folder. |
+| `AUTH_USERNAME` | | Sign-in username from the environment instead of creating an account. Set with `AUTH_PASSWORD`. |
+| `AUTH_PASSWORD` | | Sign-in password from the environment. Set with `AUTH_USERNAME`. |
 | `AUTH_DISABLED` | `false` | Turns off sign-in. Only use this behind a proxy that handles it. |
 
 ## 🛠️ First-time setup
@@ -116,7 +120,5 @@ happens on the **Configuration** page:
 ## License
 
 [GPL-3.0](LICENSE)
-
----
 
 <p align="center"><sub>Made with ❤️ by <a href="https://github.com/JaiMistry">JaiMistry</a></sub></p>
