@@ -40,6 +40,9 @@ func TestPausedBanner(t *testing.T) {
 	if !strings.Contains(dash, `data-tone="warn"`) || !strings.Contains(dash, "Throttling disabled") {
 		t.Error("the status pill does not read Throttling disabled in warn")
 	}
+	if !strings.Contains(dash, `<rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/>`) {
+		t.Error("the paused pill does not carry the filled-square glyph")
+	}
 
 	// Resuming from another page stays on it.
 	var req url.Values
