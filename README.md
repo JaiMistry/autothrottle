@@ -49,8 +49,8 @@ aside with one click whenever you want full speed back.
 | | Media server | Version |
 |:-:|---|---|
 | <img src=".github/assets/logos/plex.png" width="18" alt=""> | Plex Media Server | 1.43+ |
-| <img src="https://cdn.simpleicons.org/jellyfin" width="18" alt=""> | Jellyfin | 10.11+ |
-| <img src="https://cdn.simpleicons.org/emby" width="18" alt=""> | Emby | 4.9+ |
+| <img src=".github/assets/logos/jellyfin.png" width="18" alt=""> | Jellyfin | 10.11+ |
+| <img src=".github/assets/logos/emby.png" width="18" alt=""> | Emby | 4.9+ |
 
 | | Download client | Version |
 |:-:|---|---|
