@@ -1,0 +1,15 @@
+# Only what the image is built from goes into the build context. Anything
+# else would invalidate the build cache when it changes — editing a test
+# would recompile the binary — and would ship local state (a dev
+# database, the end-to-end stack's files) to the builder.
+.git
+.github
+test
+data
+handoff*
+docs
+scripts
+node_modules
+*.md
+docker-compose*.yml
+coverage.out
