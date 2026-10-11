@@ -253,11 +253,20 @@ def configure():
     items_path = (f"/Items?Recursive=true&IncludeItemTypes=Movie&userId={user_id}" if MEDIA == "jellyfin"
                   else f"/Users/{user_id}/Items?Recursive=true&IncludeItemTypes=Movie")
 
+    asked = [time.time()]
+
     def scanned():
         items = call(items_path, token=token)["Items"]
         if items:
             item.update(items[0])
-        return bool(items)
+            return True
+        # Now and then Jellyfin 12 adds the library without scanning it.
+        # Asking again is what a person would do.
+        if time.time() - asked[0] > 30:
+            asked[0] = time.time()
+            log("no scan yet; asking for one")
+            call("/Library/Refresh", method="POST", token=token)
+        return False
     wait_for("the library scan", scanned)
 
     # An app key from the dashboard, as a person would make it, not the
