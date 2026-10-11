@@ -18,6 +18,11 @@
       "groupName": "dependencies"
     },
     {
+      "description": "Go's point releases are its security fixes, so they are not held back",
+      "matchDepNames": ["go", "golang"],
+      "minimumReleaseAge": null
+    },
+    {
       "description": "The go directive is the oldest Go that builds this, not the toolchain in use",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["golang"],
