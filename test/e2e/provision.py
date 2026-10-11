@@ -104,14 +104,15 @@ def call(path, payload=None, method=None, token=None, base=SERVER["base"]):
 
 def wait_for(what, check, timeout=180):
     deadline = time.time() + timeout
+    last = None
     while time.time() < deadline:
         try:
             if check():
                 return
-        except (urllib.error.URLError, ConnectionError, OSError):
-            pass
+        except (urllib.error.URLError, ConnectionError, OSError) as e:
+            last = e
         time.sleep(2)
-    sys.exit(f"provision: timed out waiting for {what}")
+    sys.exit(f"provision: timed out waiting for {what}" + (f" (last error: {last})" if last else ""))
 
 
 # --- Plex ---------------------------------------------------------------------

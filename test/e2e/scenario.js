@@ -511,7 +511,14 @@ const transmission = {
       await openSheet('button[hx-get^="/configuration/media-servers/"][hx-get$="/edit"]');
       const box = await page.$('#ms-form [name=skip_local_playback]');
       if ((await box.evaluate((b) => b.checked)) !== on) await box.click();
-      const r = await testConnection('#ms-form');
+      // A server restarted moments ago can still answer 503 while it
+      // finishes starting, though it already reads as Idle.
+      let r = await testConnection('#ms-form');
+      for (let i = 0; i < 20 && r.state !== 'connected' && /\b503\b/.test(r.text); i++) {
+        await sleep(3000);
+        await page.$eval('#ms-form .at-testresult', (e) => e.removeAttribute('data-state'));
+        r = await testConnection('#ms-form');
+      }
       if (r.state !== 'connected') throw new Error('re-testing the server failed: ' + JSON.stringify(r));
       await submit('#ms-form');
     }

@@ -22,7 +22,7 @@ export COMPOSE_PROFILES=jellyfin,emby,plex
 # Jellyfin and Plex write their files as root, which a runner's own user
 # can't remove — so the state is cleared from inside a container.
 if [ -d .state ]; then
-  docker run --rm -v "$PWD/.state:/state" alpine:3 \
+  docker run --rm --memory=64m -v "$PWD/.state:/state" alpine:3 \
     sh -c 'rm -rf /state/autothrottle /state/jellyfin /state/emby /state/plex /state/qbittorrent /state/transmission /state/env.json /state/plex-machine-id'
 fi
 
@@ -38,4 +38,8 @@ if [ -n "${AT_IMAGE:-}" ]; then
 else
   "${compose[@]}" "${up[@]}" --build
 fi
-python3 provision.py configure
+python3 provision.py configure || {
+  echo; echo "--- ${MEDIA:-jellyfin} log ---"
+  docker logs "e2e-${MEDIA:-jellyfin}" 2>&1 | tail -80
+  exit 1
+}
