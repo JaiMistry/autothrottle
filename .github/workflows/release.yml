@@ -1,8 +1,18 @@
 name: Release
 
-# Run from the Actions tab: choose which part of the version to raise and
-# write the notes. A version tag pushed by hand (v1.2.0-rc.1, say) also
-# releases, with notes generated from the commits since the last.
+# Releases happen three ways:
+#   - from the Actions tab, raising whichever part of the version you choose;
+#   - on the first Tuesday of each month, as a patch release, if anything
+#     that ships has changed since the last release (tests, CI and docs on
+#     their own never make one). Tuesday follows Renovate's Monday, so a
+#     month of dependency updates goes out together;
+#   - by pushing a version tag by hand (v1.2.0-rc.1, say).
+# The notes are generated from the commits since the last release
+# (.github/scripts/release_notes.py), under a summary if one is given.
+#
+# A pull request that changes how releases are built gets a dry run:
+# everything up to publishing, so a broken release is caught before it
+# merges rather than on release day.
 on:
   workflow_dispatch:
     inputs:
@@ -12,26 +22,39 @@ on:
         options: [patch, minor, major]
         default: patch
       notes:
-        description: Release notes
+        description: Summary to put above the generated notes (optional)
         type: string
-        required: true
+        required: false
+  schedule:
+    - cron: "0 17 * * 2"
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".github/workflows/release.yml"
+      - ".github/scripts/release_notes.py"
 
 permissions:
   contents: write # to create the GitHub release and its tag
   packages: write
+  actions: write # to start the scan of what was released
 
+# Releases queue behind each other; a dry run only replaces an older one
+# for the same pull request.
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  publish:
+  plan:
     runs-on: ubuntu-latest
     outputs:
+      release: ${{ steps.version.outputs.release }}
       tag: ${{ steps.version.outputs.tag }}
+      prev: ${{ steps.version.outputs.prev }}
       stable: ${{ steps.version.outputs.stable }}
+      date: ${{ steps.version.outputs.date }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,20 +67,38 @@ jobs:
       - name: Version
         id: version
         env:
-          BUMP: ${{ inputs.bump }}
+          BUMP: ${{ inputs.bump || 'patch' }}
         run: |
+          stable_tags() { git tag -l 'v*' --sort=-v:refname | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; }; }
+          last=$(stable_tags | head -n1)
+          release=true
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              last=$(stable_tags | { grep -vx "$GITHUB_REF_NAME" || true; } | head -n1)
+              ;;
+            schedule)
+              if [ "$(date -u +%-d)" -gt 7 ]; then
+                echo "Scheduled releases are made in the first week of the month."
+                release=false
+              elif [ -z "$last" ] || ! python3 .github/scripts/release_notes.py shipped "$last"; then
+                echo "Nothing that ships has changed since ${last:-the start}; no release this month."
+                release=false
+              fi
+              ;;
+            workflow_dispatch)
+              if [ "$GITHUB_REF" != refs/heads/main ]; then
+                echo "::error::Releases are made from main."
+                exit 1
+              fi
+              if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$GITHUB_SHA" ]; then
+                echo "::error::Nothing new since $last."
+                exit 1
+              fi
+              ;;
+          esac
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             tag="$GITHUB_REF_NAME"
           else
-            if [ "$GITHUB_REF" != refs/heads/main ]; then
-              echo "::error::Releases are made from main."
-              exit 1
-            fi
-            last=$(git tag -l 'v*' --sort=-v:refname | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | head -n1)
-            if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$GITHUB_SHA" ]; then
-              echo "::error::Nothing new since $last."
-              exit 1
-            fi
             IFS=. read -r major minor patch <<< "${last#v}"
             case "$BUMP" in
               major) tag="v$((major + 1)).0.0" ;;
@@ -67,14 +108,31 @@ jobs:
           fi
           stable=true
           case "$tag" in *-*) stable=false ;; esac
-          echo "Releasing $tag"
+          [ "$release" = true ] && echo "Releasing $tag"
+          [ "$GITHUB_EVENT_NAME" = pull_request ] && echo "(a dry run: nothing is published)"
           # The date is the released commit's own, so rebuilding a release
           # stamps it the same.
           {
+            echo "release=$release"
             echo "tag=$tag"
+            echo "prev=$last"
             echo "stable=$stable"
             echo "date=$(git log -1 --format=%cI)"
           } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ github.event_name == 'pull_request' }}
+      # Pull requests from forks get no secrets, so their dry run skips
+      # signing in to the registries.
+      SIGN_IN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the history, for the notes
 
       - uses: docker/setup-buildx-action@v3
 
@@ -89,9 +147,9 @@ jobs:
           cache-from: type=gha,scope=release
           cache-to: type=gha,mode=max,scope=release
           build-args: |
-            VERSION=${{ steps.version.outputs.tag }}
+            VERSION=${{ needs.plan.outputs.tag }}
             COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.version.outputs.date }}
+            BUILD_DATE=${{ needs.plan.outputs.date }}
 
       # Started once before anything is published: it must come up, as a
       # fresh install, and serve the create-account screen.
@@ -109,6 +167,7 @@ jobs:
           exit 1
 
       - name: Log in to GHCR
+        if: env.SIGN_IN == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -116,6 +175,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
+        if: env.SIGN_IN == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -133,32 +193,46 @@ jobs:
           # mean the newest stable release, or every plain pull would get a
           # release candidate.
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.version.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.tag }}
-            type=semver,pattern={{major}},value=${{ steps.version.outputs.tag }}
-            type=raw,value=latest,enable=${{ steps.version.outputs.stable }}
+            type=semver,pattern={{version}},value=${{ needs.plan.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.plan.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.plan.outputs.tag }}
+            type=raw,value=latest,enable=${{ needs.plan.outputs.stable }}
 
+      # A dry run builds both architectures and stops short of pushing.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ env.DRY_RUN != 'true' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=release
           build-args: |
-            VERSION=${{ steps.version.outputs.tag }}
+            VERSION=${{ needs.plan.outputs.tag }}
             COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.version.outputs.date }}
+            BUILD_DATE=${{ needs.plan.outputs.date }}
+
+      # Shown on the run's summary page too, which is where a dry run's
+      # notes can be read.
+      - name: Release notes
+        env:
+          PREV: ${{ needs.plan.outputs.prev }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          SUMMARY: ${{ inputs.notes }}
+        run: |
+          python3 .github/scripts/release_notes.py notes "$PREV" "$TAG" "$SUMMARY" > notes.md
+          cat notes.md
+          { echo "## $TAG"; echo; cat notes.md; } >> "$GITHUB_STEP_SUMMARY"
 
       # The image as files on the release page too, one per architecture,
       # for anyone loading it without a registry. Pulled back from the
       # registry so they are exactly what was published. GitHub records
       # each file's SHA-256 on the release page.
       - name: Save the images
+        if: env.DRY_RUN != 'true'
         env:
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           version="${TAG#v}"
           for arch in amd64 arm64; do
@@ -170,27 +244,39 @@ jobs:
       # The release page the version badge and update check read from.
       # Creating it creates the tag, on the commit just built.
       - name: Create the GitHub release
+        if: env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          NOTES: ${{ inputs.notes }}
-          STABLE: ${{ steps.version.outputs.stable }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          STABLE: ${{ needs.plan.outputs.stable }}
         run: |
-          flags=""
-          [ "$STABLE" = true ] || flags="--prerelease"
-          if [ -n "$NOTES" ]; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes "$NOTES" $flags \
-              autothrottle-*.tar.gz
+          flags=()
+          [ "$STABLE" = true ] || flags+=(--prerelease)
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            flags+=(--verify-tag)
           else
-            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags \
-              autothrottle-*.tar.gz
+            flags+=(--target "$GITHUB_SHA")
           fi
+          gh release create "$TAG" "${flags[@]}" --title "$TAG" --notes-file notes.md autothrottle-*.tar.gz
 
   # Separate, so a problem there never holds a release back.
   docker-hub-description:
-    needs: publish
-    if: needs.publish.outputs.stable == 'true'
+    needs: [plan, publish]
+    if: needs.plan.outputs.stable == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/docker-hub-description.yml
     with:
-      tag: ${{ needs.publish.outputs.tag }}
+      tag: ${{ needs.plan.outputs.tag }}
     secrets: inherit
+
+  # The new release scanned straight away, rather than next Monday: it
+  # closes the vulnerabilities issue if this release was the fix.
+  scan:
+    needs: [plan, publish]
+    if: needs.plan.outputs.stable == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run scan.yml --ref main
