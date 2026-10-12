@@ -1,9 +1,13 @@
 name: Scan
 
 # The latest release, as published, checked weekly for vulnerabilities
-# disclosed since it shipped. One issue stays open while any are found,
-# and closes itself when a scan comes back clean: a finding is the cue for
-# a patch release, not something to release on every week just in case.
+# disclosed since it shipped, and again straight after each release. One
+# issue stays open while any are found, and closes itself when a scan
+# comes back clean.
+#
+# A finding is the cue for a patch release: when main has changed since
+# the release, and its CI passes, one is started at once instead of
+# waiting for the monthly one. Otherwise the issue waits for a fix.
 on:
   schedule:
     - cron: "23 14 * * 1"
@@ -12,11 +16,16 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: write # to start a patch release
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the history, to see what main has since the release
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
@@ -85,13 +94,34 @@ jobs:
           if [ "$GOVULNCHECK" = false ] && [ "$TRIVY" = success ]; then
             echo "$TAG is clean."
             if [ -n "$open" ]; then
-              gh issue close "$open" --comment "The weekly scan of $TAG is clean: $RUN_URL"
+              gh issue close "$open" --comment "The scan of $TAG is clean: $RUN_URL"
             fi
             exit 0
           fi
 
+          # Main already moved on: release it now, and the scan that follows
+          # every release says whether that was the fix.
+          releasing=""
+          if python3 .github/scripts/release_notes.py shipped "$TAG"; then
+            ci=$(gh run list --workflow ci.yml --branch main --event push --commit "$(git rev-parse HEAD)" \
+              --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+            if [ "$ci" = success ]; then
+              gh workflow run release.yml --ref main -f bump=patch \
+                -f notes="Released early: the weekly scan found known vulnerabilities in $TAG."
+              releasing=yes
+            else
+              echo "Main has changed since $TAG, but its CI hasn't passed (${ci:-not run}); not releasing."
+            fi
+          fi
+
           {
-            echo "The weekly scan of **$TAG** found known vulnerabilities. Where one affects AutoThrottle and has a fix, the fix ships as a patch release."
+            echo "The scan of **$TAG** found known vulnerabilities."
+            echo
+            if [ -n "$releasing" ]; then
+              echo "Main has changed since $TAG, so a patch release has been started with everything on it: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml. The new release is scanned as soon as it is out, and this issue closes itself if that scan is clean."
+            else
+              echo "Main has nothing new since $TAG to release. Once a fix is in (Renovate's, or one made by hand), the next scan releases it."
+            fi
             echo
             echo "**Run:** $RUN_URL"
             if [ "$GOVULNCHECK" = true ]; then
@@ -109,7 +139,7 @@ jobs:
               echo '```'
             fi
             echo
-            echo "This issue is updated by each weekly scan, and closes itself when one is clean."
+            echo "This issue is updated by each scan, and closes itself when one is clean."
           } > body.md
 
           if [ -n "$open" ]; then
