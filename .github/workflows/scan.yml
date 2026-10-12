@@ -5,9 +5,11 @@ name: Scan
 # issue stays open while any are found, and closes itself when a scan
 # comes back clean.
 #
-# A finding is the cue for a patch release: when main has changed since
-# the release, and its CI passes, one is started at once instead of
-# waiting for the monthly one. Otherwise the issue waits for a fix.
+# A finding is the cue for a patch release, started at once instead of
+# waiting for the monthly one, but only when main fixes it: main is built
+# and scanned the same way, and released if it clears at least one of the
+# release's findings and its CI passes. Otherwise the issue waits for a
+# fix.
 on:
   schedule:
     - cron: "23 14 * * 1"
@@ -74,6 +76,67 @@ jobs:
           exit-code: "1"
           output: trivy.txt
 
+      # Only when the release has findings: is there a fix on main to
+      # release? "unchanged" if nothing that ships has changed since the
+      # release, "untested" if main's CI hasn't passed, otherwise main is
+      # built and scanned below.
+      - name: Look at main
+        id: main
+        if: steps.govulncheck.outputs.found == 'true' || steps.trivy.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          state=unchanged
+          if python3 .github/scripts/release_notes.py shipped "$TAG"; then
+            ci=$(gh run list --workflow ci.yml --branch main --event push --commit "$(git rev-parse HEAD)" \
+              --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+            if [ "$ci" = success ]; then
+              state=changed
+            else
+              echo "Main has changed since $TAG, but its CI hasn't passed (${ci:-not run})."
+              state=untested
+            fi
+          fi
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.main.outputs.state == 'changed'
+
+      - name: Build main
+        if: steps.main.outputs.state == 'changed'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: autothrottle:main
+          cache-from: type=gha,scope=release
+
+      - name: govulncheck main
+        id: govulncheck-main
+        if: steps.main.outputs.state == 'changed'
+        run: |
+          id=$(docker create autothrottle:main)
+          docker cp "$id:/autothrottle" ./autothrottle-main
+          docker rm "$id" >/dev/null
+          status=0
+          govulncheck -mode=binary ./autothrottle-main > govulncheck-main.txt || status=$?
+          cat govulncheck-main.txt
+          case "$status" in 0|3) ;; *) exit "$status" ;; esac
+
+      - name: Trivy main
+        id: trivy-main
+        if: steps.main.outputs.state == 'changed'
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: autothrottle:main
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          output: trivy-main.txt
+
       - name: Open, update or close the issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,16 +144,20 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           GOVULNCHECK: ${{ steps.govulncheck.outputs.found }}
           TRIVY: ${{ steps.trivy.outcome }}
+          TRIVY_MAIN: ${{ steps.trivy-main.outcome }}
+          MAIN: ${{ steps.main.outputs.state }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="Vulnerabilities in the released image"
           open=$(gh issue list --state open --label security --json number,title \
             --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
 
-          if [ "$TRIVY" = failure ] && [ ! -s trivy.txt ]; then
-            echo "::error::Trivy failed without a report; see its step."
-            exit 1
-          fi
+          for report in trivy.txt:"$TRIVY" trivy-main.txt:"$TRIVY_MAIN"; do
+            if [ "${report#*:}" = failure ] && [ ! -s "${report%%:*}" ]; then
+              echo "::error::Trivy failed without a report (${report%%:*}); see its step."
+              exit 1
+            fi
+          done
           if [ "$GOVULNCHECK" = false ] && [ "$TRIVY" = success ]; then
             echo "$TAG is clean."
             if [ -n "$open" ]; then
@@ -99,29 +166,41 @@ jobs:
             exit 0
           fi
 
-          # Main already moved on: release it now, and the scan that follows
-          # every release says whether that was the fix.
-          releasing=""
-          if python3 .github/scripts/release_notes.py shipped "$TAG"; then
-            ci=$(gh run list --workflow ci.yml --branch main --event push --commit "$(git rev-parse HEAD)" \
-              --limit 1 --json conclusion --jq '.[0].conclusion // ""')
-            if [ "$ci" = success ]; then
-              gh workflow run release.yml --ref main -f bump=patch \
-                -f notes="Released early: the weekly scan found known vulnerabilities in $TAG."
-              releasing=yes
-            else
-              echo "Main has changed since $TAG, but its CI hasn't passed (${ci:-not run}); not releasing."
-            fi
-          fi
+          # The IDs each scan found: govulncheck's GO-… and the Vulnerability
+          # column of Trivy's table.
+          ids() {
+            {
+              grep -oE '^Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' "$1" 2>/dev/null | awk '{print $3}'
+              awk -F'│' '{gsub(/ /, "", $3); if ($3 ~ /^(CVE|GHSA|GO)-/) print $3}' "$2" 2>/dev/null
+            } | sort -u
+          }
+
+          case "$MAIN" in
+            unchanged)
+              next="Main has nothing new since $TAG to release. Once a fix is in (Renovate's, or one made by hand), the next scan releases it."
+              ;;
+            untested)
+              next="Main has changed since $TAG, but its CI hasn't passed, so nothing is released from it. Once it passes, the next scan checks it again."
+              ;;
+            changed)
+              fixed=$(comm -23 <(ids govulncheck.txt trivy.txt) <(ids govulncheck-main.txt trivy-main.txt))
+              if [ -n "$fixed" ]; then
+                count=$(wc -l <<< "$fixed")
+                [ "$count" = 1 ] && what="a known vulnerability" || what="$count known vulnerabilities"
+                gh workflow run release.yml --ref main -f bump=patch \
+                  -f notes="Released early: fixes $what found in $TAG by the weekly scan."
+                next="Main fixes $(paste -sd, - <<< "$fixed" | sed 's/,/, /g'), so a patch release has been started: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml. The new release is scanned as soon as it is out, and this issue closes itself if that scan is clean."
+              else
+                next="Main has changed since $TAG, but a scan of it finds the same vulnerabilities, so there is no fix to release yet. Once one is in (Renovate's, or one made by hand), the next scan releases it."
+              fi
+              ;;
+          esac
+          echo "$next"
 
           {
             echo "The scan of **$TAG** found known vulnerabilities."
             echo
-            if [ -n "$releasing" ]; then
-              echo "Main has changed since $TAG, so a patch release has been started with everything on it: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml. The new release is scanned as soon as it is out, and this issue closes itself if that scan is clean."
-            else
-              echo "Main has nothing new since $TAG to release. Once a fix is in (Renovate's, or one made by hand), the next scan releases it."
-            fi
+            echo "$next"
             echo
             echo "**Run:** $RUN_URL"
             if [ "$GOVULNCHECK" = true ]; then
