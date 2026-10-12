@@ -62,7 +62,7 @@ func TestBanner(t *testing.T) {
 		AuthMode: auth.ModeSetup,
 	})
 	out := b.String()
-	for _, want := range []string{"Throttles your download clients", ":7676", "First run", "not set up yet", "nothing yet"} {
+	for _, want := range []string{"Intelligently throttles download clients", ":7676", "First run", "not set up yet", "nothing yet"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("banner is missing %q", want)
 		}

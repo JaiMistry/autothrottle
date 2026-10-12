@@ -11,13 +11,14 @@ import (
 )
 
 // bannerArt is "AutoThrottle" in figlet's slant font, kept under 62
-// columns so it does not wrap in a default-width terminal.
+// columns so it does not wrap in a default-width terminal. It is indented
+// like the lines under it, so the block shares one left edge.
 const bannerArt = `
-    ___         __      ________               __  __  __
-   /   | __  __/ /_____/_  __/ /_  _________  / /_/ /_/ /__
-  / /| |/ / / / __/ __ \/ / / __ \/ ___/ __ \/ __/ __/ / _ \
- / ___ / /_/ / /_/ /_/ / / / / / / /  / /_/ / /_/ /_/ /  __/
-/_/  |_\__,_/\__/\____/_/ /_/ /_/_/   \____/\__/\__/_/\___/
+      ___         __      ________               __  __  __
+     /   | __  __/ /_____/_  __/ /_  _________  / /_/ /_/ /__
+    / /| |/ / / / __/ __ \/ / / __ \/ ___/ __ \/ __/ __/ / _ \
+   / ___ / /_/ / /_/ /_/ / / / / / / /  / /_/ / /_/ /_/ /  __/
+  /_/  |_\__,_/\__/\____/_/ /_/ /_/_/   \____/\__/\__/_/\___/
 `
 
 // startupInfo is what the banner reports beyond the build itself.
@@ -36,7 +37,7 @@ type startupInfo struct {
 func printBanner(out io.Writer, build version.Build, info startupInfo) {
 	var b strings.Builder
 	b.WriteString(bannerArt)
-	b.WriteString("  Throttles your download clients while something is playing.\n\n")
+	b.WriteString("\n  Intelligently throttles download clients while a media server has active playback.\n\n")
 
 	runtimeDesc := fmt.Sprintf("%s %s/%s", build.Go, build.OS, build.Arch)
 	if build.Docker {
