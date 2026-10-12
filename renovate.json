@@ -5,6 +5,10 @@
   "schedule": ["before 6am on monday"],
   "minimumReleaseAge": "3 days",
   "labels": ["dependencies"],
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "platformAutomerge": false,
   "postUpdateOptions": ["gomodTidy"],
   "vulnerabilityAlerts": {
     "labels": ["security"],
@@ -16,6 +20,12 @@
       "description": "Everything routine in one weekly pull request",
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "groupName": "dependencies"
+    },
+    {
+      "description": "Major updates in one monthly pull request. One at a time also suits E2E, which runs one suite at a time and cancels whatever queues behind the next",
+      "matchUpdateTypes": ["major"],
+      "groupName": "major dependencies",
+      "schedule": ["before 6am on the first day of the month"]
     },
     {
       "description": "Go's point releases are its security fixes, so they are not held back",
@@ -38,12 +48,6 @@
       "matchPackageNames": ["plexinc/pms-docker"],
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)-[0-9a-f]+$",
       "allowedVersions": "/^\\d+\\.\\d+\\.\\d+\\.\\d+-[0-9a-f]+$/"
-    },
-    {
-      "description": "The Puppeteer image and package must stay on the same version",
-      "matchDepNames": ["puppeteer-core", "ghcr.io/puppeteer/puppeteer"],
-      "matchUpdateTypes": ["major"],
-      "groupName": "Puppeteer"
     }
   ],
   "customManagers": [
