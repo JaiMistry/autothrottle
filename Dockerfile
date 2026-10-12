@@ -1,4 +1,7 @@
-FROM node:22-slim AS tailwind
+# Both build stages run on the builder's own platform, whatever the image
+# is for: the CSS is the same on every architecture, and Go cross-compiles
+# (CGO is off), so an arm64 image never runs its compiler under emulation.
+FROM --platform=$BUILDPLATFORM node:22-slim AS tailwind
 # Build-time only: Node never ships in the final image.
 WORKDIR /src
 COPY package.json package-lock.json ./
@@ -9,7 +12,7 @@ COPY internal/web/static ./internal/web/static
 # @imports ./tokens/*.css, which only resolve from their real location.
 RUN npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o /out/tailwind.css --minify
 
-FROM golang:1.27.2-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -21,15 +24,20 @@ ARG VERSION=dev
 # without them About falls back to what the binary can tell about itself.
 ARG COMMIT=""
 ARG BUILD_DATE=""
+# Set by BuildKit to the platform being built for.
+ARG TARGETOS TARGETARCH
 # modernc.org/sqlite is huge to compile; capping parallelism keeps the
 # build's memory peak flat instead of scaling with the core count.
 ENV GOFLAGS=-p=2 GOMAXPROCS=2
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags="-s -w \
         -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION} \
         -X github.com/JaiMistry/autothrottle/internal/version.Commit=${COMMIT} \
         -X github.com/JaiMistry/autothrottle/internal/version.BuildDate=${BUILD_DATE}" \
       -o /out/autothrottle ./cmd/autothrottle
+# A binary for the wrong architecture would still build, and the smoke
+# test only starts amd64: check what the toolchain recorded instead.
+RUN go version -m /out/autothrottle | grep -qw "GOARCH=${TARGETARCH:-$(go env GOARCH)}"
 RUN mkdir -p /out/data
 
 # Starts as root on purpose: the binary hands /data to PUID:PGID and
