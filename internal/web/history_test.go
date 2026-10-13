@@ -28,24 +28,33 @@ func TestHistoryCells(t *testing.T) {
 		t.Fatalf("rows labelled %q / %q, corner %q", today.Label, yday.Label, v.Corner)
 	}
 
-	// The fill is the hour's 40 minutes; the tooltip counts each period whole.
+	// The fill and the headline are the hour's own 40 minutes; a period
+	// running past the hour is named whole beneath.
 	c := yday.Cells[20]
-	if !c.Hot || c.Step != 3 || c.Value != "1hr 30m throttled" || c.Side != "r" {
+	if !c.Hot || c.Step != 3 || c.Value != "40 min throttled" || c.Side != "r" {
 		t.Errorf("Thu 20:00 = %+v", c)
 	}
-	if want := []string{"8:10 – 8:30 PM", "8:40 – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
-		t.Errorf("spans = %q, want each period whole", c.Spans)
+	if want := []string{"8:10 – 8:30 PM", "Part of 1hr 10m · 8:40 – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+		t.Errorf("spans = %q, want %q", c.Spans, want)
 	}
-	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "1hr 30m throttled · 8:10 – 8:30 PM") {
+	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "40 min throttled · 8:10 – 8:30 PM") {
 		t.Errorf("when %q, label %q", c.When, c.Label)
 	}
-	if next := yday.Cells[21]; next.Step != 4 || next.Value != "1hr 10m throttled" || next.Spans[0] != "8:40 – 9:50 PM" {
+	if next := yday.Cells[21]; next.Step != 4 || next.Value != "50 min throttled" || next.Spans[0] != "Part of 1hr 10m · 8:40 – 9:50 PM" {
 		t.Errorf("Thu 21:00 = %+v", next)
 	}
 
 	live := today.Cells[21]
 	if live.Value != "25 min throttled so far" || live.Spans[0] != "9:05 PM – now" {
 		t.Errorf("the hour in progress = %+v", live)
+	}
+	// Still going from an earlier hour: the whole so far, beneath.
+	ongoing := buildHistory([]db.Span{{Start: at(now, 20, 5)}}, runs, now, 7).Rows[0]
+	if c := ongoing.Cells[21]; c.Value != "30 min throttled so far" || c.Spans[0] != "Part of 1hr 25m so far · 8:05 PM – now" {
+		t.Errorf("an hour of a stretch still going = %+v", c)
+	}
+	if c := ongoing.Cells[20]; c.Value != "55 min throttled" {
+		t.Errorf("a finished hour of a stretch still going = %+v", c)
 	}
 	if !today.Cells[22].Future || today.Cells[22].Label != "" {
 		t.Errorf("a future hour = %+v", today.Cells[22])

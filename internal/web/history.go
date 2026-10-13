@@ -45,8 +45,8 @@ type historyCell struct {
 	Hot    bool // throttled at least a minute: the only cells with a tooltip
 	Step   int  // 0–4, the fill
 	Side   string
-	Value  string   // "2hr 35m throttled": each stretch through this hour, whole
-	Spans  []string // "8:12 – 10:47 PM"
+	Value  string   // "48 min throttled": this hour's own share, as the fill shows
+	Spans  []string // "8:12 – 8:37 PM", or "Part of 2hr 35m · 8:12 – 10:47 PM"
 	When   string   // "Fri 2 Oct"
 	Label  string   // the cell's aria-label
 }
@@ -106,9 +106,10 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				continue
 			}
 
-			// The fill is this hour's exact share; the tooltip names each
-			// stretch through it whole, so two hours read as two hours.
-			var throttled, whole time.Duration
+			// The fill and the tooltip's headline are this hour's own share.
+			// A stretch running past the hour is named whole beneath, so
+			// two hours still read as two hours.
+			var throttled time.Duration
 			for _, p := range periods {
 				end := p.End
 				if end.IsZero() {
@@ -116,14 +117,19 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				}
 				throttled += max(0, overlap(p.Start, end, a, b))
 			}
-			stillGoing := false
 			for _, st := range stretchList {
 				if overlap(st.start, st.end, a, b) <= 0 {
 					continue
 				}
-				whole += st.throttled
-				stillGoing = stillGoing || st.ongoing
-				cell.Spans = append(cell.Spans, clockRange(st.start, st.end, st.ongoing))
+				span := clockRange(st.start, st.end, st.ongoing)
+				if st.start.Before(a) || st.end.After(b) {
+					soFar := ""
+					if st.ongoing {
+						soFar = " so far"
+					}
+					span = "Part of " + throttledLabel(int(math.Round(st.throttled.Minutes()))) + soFar + " · " + span
+				}
+				cell.Spans = append(cell.Spans, span)
 			}
 			if len(cell.Spans) > maxTipSpans {
 				cell.Spans = append(cell.Spans[:maxTipSpans], fmt.Sprintf("and %d more", len(cell.Spans)-maxTipSpans))
@@ -141,10 +147,7 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 			cell.Step = stepOf(minutes)
 			if minutes > 0 {
 				cell.Hot = true
-				if stillGoing {
-					soFar = " so far"
-				}
-				cell.Value = throttledLabel(int(math.Round(whole.Minutes()))) + " throttled" + soFar
+				cell.Value = fmt.Sprintf("%d min throttled", minutes) + soFar
 				cell.Label = strings.Join(append(append([]string{cell.Value}, cell.Spans...), when), " · ")
 				if i < 7 {
 					v.Empty7 = false
