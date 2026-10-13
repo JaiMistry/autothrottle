@@ -28,22 +28,26 @@ func TestSafeNext(t *testing.T) {
 func TestLoginURL(t *testing.T) {
 	cases := []struct {
 		method, target string
-		hx             bool
+		from           string // the page htmx asked from; "" if not htmx
 		want           string
 	}{
-		{"GET", "/logs?level=warn", false, "/login?next=%2Flogs%3Flevel%3Dwarn"},
-		{"GET", "/", false, "/login"},
-		{"GET", "/events", false, "/login"},
-		{"GET", "/dashboard/live", true, "/login"},
-		{"POST", "/pause-toggle", false, "/login"},
+		{"GET", "/logs?level=warn", "", "/login?next=%2Flogs%3Flevel%3Dwarn"},
+		{"GET", "/", "", "/login"},
+		{"GET", "/events", "", "/login"},
+		{"POST", "/pause-toggle", "", "/login"},
+		{"GET", "/dashboard/live", "http://at.example/", "/login"},
+		{"GET", "/logs/page", "http://at.example/logs?level=warn", "/login?next=%2Flogs%3Flevel%3Dwarn"},
+		{"POST", "/configuration/test", "http://at.example/configuration", "/login?next=%2Fconfiguration"},
+		{"GET", "/dashboard/live", "", "/login"},
 	}
 	for _, c := range cases {
 		r := httptest.NewRequest(c.method, c.target, nil)
-		if c.hx {
+		if c.from != "" || c.target == "/dashboard/live" {
 			r.Header.Set("HX-Request", "true")
+			r.Header.Set("HX-Current-URL", c.from)
 		}
 		if got := loginURL(r); got != c.want {
-			t.Errorf("%s %s (hx %v) → %q, want %q", c.method, c.target, c.hx, got, c.want)
+			t.Errorf("%s %s (from %q) → %q, want %q", c.method, c.target, c.from, got, c.want)
 		}
 	}
 }

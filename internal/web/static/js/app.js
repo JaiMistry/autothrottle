@@ -337,10 +337,11 @@
   }
 
   document.body.addEventListener("htmx:beforeSwap", function (e) {
-    // A whole page aimed anywhere but the body would nest a second app
-    // inside the first (an inherited hx-target does it). Load it instead.
+    // A whole page aimed anywhere but the body would nest inside the app:
+    // a second app (an inherited hx-target does it), or the sign-in page
+    // reached through a redirect. Load it instead.
     var body = e.detail.serverResponse;
-    if (e.detail.target !== document.body && typeof body === "string" && body.indexOf('id="at-shell"') !== -1) {
+    if (e.detail.target !== document.body && typeof body === "string" && /^\s*<!doctype html/i.test(body)) {
       e.detail.shouldSwap = false;
       console.warn("AutoThrottle: a full page was aimed at #" + (e.detail.target && e.detail.target.id) + "; loading it instead");
       window.location.assign(e.detail.xhr.responseURL || window.location.href);

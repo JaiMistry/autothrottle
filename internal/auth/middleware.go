@@ -69,12 +69,12 @@ func RequireAuth(a *Authenticator, sessions *SessionManager) func(http.Handler) 
 				return
 			}
 			if a.NeedsSetup() {
-				http.Redirect(w, r, "/setup", http.StatusSeeOther)
+				redirect(w, r, "/setup")
 				return
 			}
 			cookie, err := r.Cookie(cookieName)
 			if err != nil || !sessions.Valid(cookie.Value) {
-				http.Redirect(w, r, loginURL(r), http.StatusSeeOther)
+				redirect(w, r, loginURL(r))
 				return
 			}
 			ctx := context.WithValue(r.Context(), sessionTokenKey, cookie.Value)

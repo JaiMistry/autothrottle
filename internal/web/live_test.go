@@ -115,6 +115,18 @@ func TestEventStreamNeedsSignIn(t *testing.T) {
 	}
 }
 
+// htmx follows a plain redirect and swaps the page it lands on in, which
+// put the sign-in form inside the app once a session expired.
+func TestExpiredSessionLoadsTheSignInPage(t *testing.T) {
+	app := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
+	app.htmx = true
+	rec := app.get("/dashboard/live")
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("HX-Redirect") != "/login" || rec.Header().Get("Location") != "" {
+		t.Errorf("signed out, from htmx: %d, HX-Redirect %q, Location %q",
+			rec.Code, rec.Header().Get("HX-Redirect"), rec.Header().Get("Location"))
+	}
+}
+
 // Open streams must not hold shutdown up for its whole timeout.
 func TestEventStreamEndsOnShutdown(t *testing.T) {
 	app := newApp(t)
