@@ -41,14 +41,14 @@ type historyRow struct {
 }
 
 type historyCell struct {
-	Future bool
-	Hot    bool // throttled at least a minute: the only cells with a tooltip
-	Step   int  // 0–4, the fill
-	Side   string
-	Value  string   // "48 min throttled": this hour's own share, as the fill shows
-	Spans  []string // "8:12 – 8:37 PM", or "Part of 2hr 35m · 8:12 – 10:47 PM"
-	When   string   // "Fri 2 Oct"
-	Label  string   // the cell's aria-label
+	Future  bool
+	Hot     bool // throttled at least a minute: the only cells with a tooltip
+	Step    int  // 0–4, the fill
+	Side    string
+	Value   string   // "2hr 35m throttled": the stretches through this hour, whole
+	Spans   []string // "Fri 2 Oct · 8:12 – 10:47 PM", one a stretch
+	Label   string   // the cell's aria-label
+	Stretch string   // those stretches, "3" or "3 4": hovering one highlights all their hours
 }
 
 // throttleSteps are the heatmap's five fills, by minutes throttled in the
@@ -85,7 +85,6 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 		if i > 0 && row.Month != v.Rows[i-1].Month {
 			row.MonthBreak = true
 		}
-		when := day.Format("Mon 2 Jan")
 		for hr := 0; hr < 24; hr++ {
 			a := time.Date(day.Year(), day.Month(), day.Day(), hr, 0, 0, 0, time.Local)
 			b := time.Date(day.Year(), day.Month(), day.Day(), hr+1, 0, 0, 0, time.Local)
@@ -93,7 +92,8 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				row.Cells = append(row.Cells, historyCell{Future: true})
 				continue
 			}
-			cell := historyCell{When: when}
+			when := day.Format("Mon 2 Jan") + " · " + hourRange(a, b)
+			var cell historyCell
 			if hr < 6 {
 				cell.Side = "l"
 			} else if hr > 17 {
@@ -106,9 +106,9 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				continue
 			}
 
-			// The fill and the tooltip's headline are this hour's own share.
-			// A stretch running past the hour is named whole beneath, so
-			// two hours still read as two hours.
+			// The fill is this hour's own share. The tooltip is the stretch
+			// through it, whole, and hovering highlights the stretch's hours,
+			// so every hour of it reads as one thing.
 			var throttled time.Duration
 			for _, p := range periods {
 				end := p.End
@@ -117,19 +117,17 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 				}
 				throttled += max(0, overlap(p.Start, end, a, b))
 			}
-			for _, st := range stretchList {
+			var ids []string
+			var whole time.Duration
+			stillGoing := false
+			for n, st := range stretchList {
 				if overlap(st.start, st.end, a, b) <= 0 {
 					continue
 				}
-				span := clockRange(st.start, st.end, st.ongoing)
-				if st.start.Before(a) || st.end.After(b) {
-					soFar := ""
-					if st.ongoing {
-						soFar = " so far"
-					}
-					span = "Part of " + throttledLabel(int(math.Round(st.throttled.Minutes()))) + soFar + " · " + span
-				}
-				cell.Spans = append(cell.Spans, span)
+				ids = append(ids, fmt.Sprint(n))
+				whole += st.throttled
+				stillGoing = stillGoing || st.ongoing
+				cell.Spans = append(cell.Spans, st.when())
 			}
 			if len(cell.Spans) > maxTipSpans {
 				cell.Spans = append(cell.Spans[:maxTipSpans], fmt.Sprintf("and %d more", len(cell.Spans)-maxTipSpans))
@@ -147,8 +145,12 @@ func buildHistory(periods, runs []db.Span, now time.Time, rangeDays int) history
 			cell.Step = stepOf(minutes)
 			if minutes > 0 {
 				cell.Hot = true
-				cell.Value = fmt.Sprintf("%d min throttled", minutes) + soFar
-				cell.Label = strings.Join(append(append([]string{cell.Value}, cell.Spans...), when), " · ")
+				cell.Stretch = strings.Join(ids, " ")
+				if stillGoing {
+					soFar = " so far"
+				}
+				cell.Value = throttledLabel(int(math.Round(whole.Minutes()))) + " throttled" + soFar
+				cell.Label = strings.Join(append([]string{cell.Value}, cell.Spans...), " · ")
 				if i < 7 {
 					v.Empty7 = false
 				}
@@ -208,7 +210,7 @@ func later(a, b time.Time) time.Time {
 // as one stretch, like an episode ending and the next beginning.
 const stretchGap = 5 * time.Minute
 
-// maxTipSpans caps the ranges one tooltip lists.
+// maxTipSpans caps the stretches one tooltip lists.
 const maxTipSpans = 3
 
 // stretch is throttle periods close enough together to read as one.
@@ -239,10 +241,19 @@ func stretches(periods []db.Span, now time.Time) []stretch {
 	return out
 }
 
-// clockRange is "9:18 – 10:00 PM", "11:40 PM – 12:20 AM" across noon or
-// midnight, "9:18 PM" within one minute, and "9:18 PM – now" if ongoing.
+// when is "Sat 10 Oct · 4:40 – 11:09 PM", or "Sat 10 Oct, 11:40 PM –
+// Sun 11 Oct, 1:15 AM" past midnight.
+func (st stretch) when() string {
+	from, to := st.start.In(time.Local), st.end.In(time.Local)
+	if st.ongoing || from.Format("2006-01-02") == to.Format("2006-01-02") {
+		return from.Format("Mon 2 Jan") + " · " + clockRange(from, to, st.ongoing)
+	}
+	return from.Format("Mon 2 Jan, 3:04 PM") + " – " + to.Format("Mon 2 Jan, 3:04 PM")
+}
+
+// clockRange is "9:18 – 10:00 PM", "11:40 AM – 12:20 PM" across noon,
+// "9:18 PM" within one minute, and "9:18 PM – now" if ongoing.
 func clockRange(from, to time.Time, ongoing bool) string {
-	from, to = from.In(time.Local), to.In(time.Local)
 	switch {
 	case ongoing:
 		return from.Format("3:04 PM") + " – now"
@@ -253,6 +264,14 @@ func clockRange(from, to time.Time, ongoing bool) string {
 	default:
 		return from.Format("3:04 PM") + " – " + to.Format("3:04 PM")
 	}
+}
+
+// hourRange is "8–9 PM", or "11 AM–12 PM" across noon or midnight.
+func hourRange(a, b time.Time) string {
+	if a.Format("PM") == b.Format("PM") {
+		return a.Format("3") + "–" + b.Format("3 PM")
+	}
+	return a.Format("3 PM") + "–" + b.Format("3 PM")
 }
 
 // throttledLabel is "42 min" under an hour and "2hr 35m" from there.

@@ -28,38 +28,45 @@ func TestHistoryCells(t *testing.T) {
 		t.Fatalf("rows labelled %q / %q, corner %q", today.Label, yday.Label, v.Corner)
 	}
 
-	// The fill and the headline are the hour's own 40 minutes; a period
-	// running past the hour is named whole beneath.
+	// The fill is the hour's own 40 minutes; the tooltip is the two
+	// stretches through it (10 minutes apart), whole.
 	c := yday.Cells[20]
-	if !c.Hot || c.Step != 3 || c.Value != "40 min throttled" || c.Side != "r" {
+	if !c.Hot || c.Step != 3 || c.Value != "1hr 30m throttled" || c.Side != "r" || c.Stretch != "0 1" {
 		t.Errorf("Thu 20:00 = %+v", c)
 	}
-	if want := []string{"8:10 – 8:30 PM", "Part of 1hr 10m · 8:40 – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+	if want := []string{"Thu 1 Oct · 8:10 – 8:30 PM", "Thu 1 Oct · 8:40 – 9:50 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
 		t.Errorf("spans = %q, want %q", c.Spans, want)
 	}
-	if c.When != "Thu 1 Oct" || !strings.HasPrefix(c.Label, "40 min throttled · 8:10 – 8:30 PM") {
-		t.Errorf("when %q, label %q", c.When, c.Label)
+	if !strings.HasPrefix(c.Label, "1hr 30m throttled · Thu 1 Oct · 8:10 – 8:30 PM") {
+		t.Errorf("label %q", c.Label)
 	}
-	if next := yday.Cells[21]; next.Step != 4 || next.Value != "50 min throttled" || next.Spans[0] != "Part of 1hr 10m · 8:40 – 9:50 PM" {
+	if next := yday.Cells[21]; next.Step != 4 || next.Value != "1hr 10m throttled" || next.Stretch != "1" {
 		t.Errorf("Thu 21:00 = %+v", next)
 	}
 
 	live := today.Cells[21]
-	if live.Value != "25 min throttled so far" || live.Spans[0] != "9:05 PM – now" {
+	if live.Value != "25 min throttled so far" || live.Stretch != "2" || live.Spans[0] != "Fri 2 Oct · 9:05 PM – now" {
 		t.Errorf("the hour in progress = %+v", live)
 	}
-	// Still going from an earlier hour: the whole so far, beneath.
+	// Still going from an earlier hour: every hour of it says so.
 	ongoing := buildHistory([]db.Span{{Start: at(now, 20, 5)}}, runs, now, 7).Rows[0]
-	if c := ongoing.Cells[21]; c.Value != "30 min throttled so far" || c.Spans[0] != "Part of 1hr 25m so far · 8:05 PM – now" {
-		t.Errorf("an hour of a stretch still going = %+v", c)
+	for _, hr := range []int{20, 21} {
+		if c := ongoing.Cells[hr]; c.Value != "1hr 25m throttled so far" || c.Stretch != "0" || c.Spans[0] != "Fri 2 Oct · 8:05 PM – now" {
+			t.Errorf("%d:00 of a stretch still going = %+v", hr, c)
+		}
 	}
-	if c := ongoing.Cells[20]; c.Value != "55 min throttled" {
-		t.Errorf("a finished hour of a stretch still going = %+v", c)
+	if c := ongoing.Cells[20]; c.Step != 4 {
+		t.Errorf("its first hour is filled for 55 minutes: step %d", c.Step)
+	}
+	// Past midnight, both days are named.
+	late := buildHistory([]db.Span{{Start: at(yesterday, 23, 40), End: at(now, 1, 15)}}, runs, now, 7)
+	if c := late.Rows[0].Cells[0]; c.Spans[0] != "Thu 1 Oct, 11:40 PM – Fri 2 Oct, 1:15 AM" || c.Value != "1hr 35m throttled" {
+		t.Errorf("a stretch past midnight = %+v", c)
 	}
 	if !today.Cells[22].Future || today.Cells[22].Label != "" {
 		t.Errorf("a future hour = %+v", today.Cells[22])
 	}
-	if quiet := today.Cells[10]; quiet.Hot || quiet.Label != "Not throttled · Fri 2 Oct" {
+	if quiet := today.Cells[10]; quiet.Hot || quiet.Label != "Not throttled · Fri 2 Oct · 10–11 AM" {
 		t.Errorf("a quiet hour = %+v", quiet)
 	}
 	// Three days ago, before the only run began: not running, not "not throttled".
@@ -114,8 +121,8 @@ func TestHistoryMergesFragments(t *testing.T) {
 	}
 	runs := []db.Span{{Start: now.Add(-24 * time.Hour), End: now}}
 	c := buildHistory(periods, runs, now, 7).Rows[0].Cells[20]
-	if want := []string{"8:42 – 8:50 PM", "8:58 PM"}; strings.Join(c.Spans, "|") != strings.Join(want, "|") {
-		t.Errorf("spans = %q, want %q", c.Spans, want)
+	if want := []string{"Fri 9 Oct · 8:42 – 8:50 PM", "Fri 9 Oct · 8:58 PM"}; c.Stretch != "0 1" || strings.Join(c.Spans, "|") != strings.Join(want, "|") {
+		t.Errorf("stretches %q, spans %q, want %q", c.Stretch, c.Spans, want)
 	}
 	// The minutes are the time throttled, not the gaps between.
 	if c.Value != "8 min throttled" {
@@ -146,6 +153,23 @@ func TestClockRange(t *testing.T) {
 	} {
 		if got := clockRange(c.from, c.to, c.ongoing); got != c.want {
 			t.Errorf("clockRange(%v, %v) = %q, want %q", c.from, c.to, got, c.want)
+		}
+	}
+}
+
+func TestHourRange(t *testing.T) {
+	at := func(h int) time.Time { return time.Date(2026, 10, 9, h, 0, 0, 0, time.Local) }
+	for _, c := range []struct {
+		hour int
+		want string
+	}{
+		{20, "8–9 PM"},
+		{0, "12–1 AM"},
+		{11, "11 AM–12 PM"},
+		{23, "11 PM–12 AM"},
+	} {
+		if got := hourRange(at(c.hour), at(c.hour+1)); got != c.want {
+			t.Errorf("hourRange(%d) = %q, want %q", c.hour, got, c.want)
 		}
 	}
 }

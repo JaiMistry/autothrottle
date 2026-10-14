@@ -1056,4 +1056,20 @@
   }
   window.atRefreshHistory = refreshHistory;
   setInterval(refreshHistory, 60000);
+
+  // Hovering an hour highlights every hour of its stretch, so how long the
+  // throttling ran shows in the grid rather than in the tooltip.
+  var hovered = null;
+  document.addEventListener("mouseover", function (e) {
+    var cell = e.target.closest && e.target.closest("#throttle-history [data-stretch]");
+    if (cell === hovered) return;
+    document.querySelectorAll(".at-hm-linked").forEach(function (el) { el.classList.remove("at-hm-linked"); });
+    hovered = cell;
+    if (!cell) return;
+    cell.getAttribute("data-stretch").split(" ").forEach(function (id) {
+      cell.parentNode.querySelectorAll('[data-stretch~="' + id + '"]').forEach(function (el) {
+        el.classList.add("at-hm-linked");
+      });
+    });
+  });
 })();

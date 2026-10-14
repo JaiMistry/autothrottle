@@ -1286,6 +1286,8 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 /* One cell height for both ranges, so 7d and 30d animate between each other. */
 .at-hm-cell { height: 16px; border-radius: 2px; }
 .at-hm-future { opacity: 0.5; }
+/* Every hour of the stretch under the pointer: how long it ran. */
+.at-hm-linked { box-shadow: 0 0 0 1.5px var(--accent); }
 #throttle-history[data-range="7d"] .at-hm-extra { display: none; }
 @media (max-width: 520px) {
   .at-hm { gap: 1px; }
@@ -1329,7 +1331,6 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 .at-tw:hover > .at-tip { opacity: 1; visibility: visible; transition: opacity 150ms ease-in 60ms, visibility 0s linear 60ms; }
 @media (prefers-reduced-motion: reduce) { .at-tw > .at-tip, .at-tw:hover > .at-tip { transition: none; } }
 .at-tip-value { font-weight: var(--weight-semibold); color: var(--warn); }
-.at-tip-span { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
 .at-tip-when { color: var(--text-faint); }
 
 .at-hm-legend {

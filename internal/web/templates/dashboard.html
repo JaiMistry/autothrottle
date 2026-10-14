@@ -137,7 +137,7 @@
         <span role="rowheader" class="at-hm-day{{$x}}" data-row="{{.Index}}"{{if .Today}} data-today{{end}}>{{.Label}}</span>
         {{- range .Cells}}
           {{- if .Future}}<span class="at-hm-cell at-hm-s0 at-hm-future{{$x}}" aria-hidden="true"></span>
-          {{- else if .Hot}}<span role="gridcell" aria-label="{{.Label}}" class="at-hm-cell at-hm-s{{.Step}} at-tw{{$x}}"><span class="at-tip{{if .Side}} {{.Side}}{{end}}"><span class="at-tip-value">{{.Value}}</span>{{range .Spans}}<span class="at-tip-span">{{.}}</span>{{end}}<span class="at-tip-when">{{.When}}</span></span></span>
+          {{- else if .Hot}}<span role="gridcell" aria-label="{{.Label}}" class="at-hm-cell at-hm-s{{.Step}} at-tw{{$x}}" data-stretch="{{.Stretch}}"><span class="at-tip{{if .Side}} {{.Side}}{{end}}"><span class="at-tip-value">{{.Value}}</span>{{range .Spans}}<span class="at-tip-when">{{.}}</span>{{end}}</span></span>
           {{- else}}<span role="gridcell" aria-label="{{.Label}}" class="at-hm-cell at-hm-s{{.Step}}{{$x}}"></span>
           {{- end}}
         {{- end}}
