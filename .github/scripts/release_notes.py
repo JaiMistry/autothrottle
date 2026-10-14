@@ -73,7 +73,8 @@ def go_requires(ref):
 
 def images(ref):
     found = {}
-    for m in re.finditer(r"^FROM\s+(\S+)", show(ref, "Dockerfile"), re.M):
+    # Past any flags: FROM --platform=$BUILDPLATFORM golang:1.27-alpine.
+    for m in re.finditer(r"^FROM\s+(?:--\S+\s+)*(\S+)", show(ref, "Dockerfile"), re.M):
         name, _, tag = m.group(1).partition(":")
         found[IMAGE_NAMES.get(name, name)] = re.sub(r"-(alpine|slim)$", "", tag) or "latest"
     return found
