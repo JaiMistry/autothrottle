@@ -268,7 +268,8 @@ const transmission = {
       const signedIn = await page.waitForSelector('.at-plexsignin[data-state="done"]', { timeout: 30000 }).catch(() => null);
       check(!!signedIn, 'Sign in with Plex picks up the approval by itself');
       // Plex closes its window once approved; the sign-in must survive that.
-      for (const p of await browser.pages()) if (p !== page) await p.close();
+      // The app may already have closed it, between listing and closing.
+      for (const p of await browser.pages()) if (p !== page) await p.close().catch(() => {});
       await sleep(4500);
       check(!!(await page.$('.at-plexsignin[data-state="done"]')), 'and survives the Plex window closing');
     } else {
