@@ -2,7 +2,7 @@ name: Docker Hub description
 
 # Docker Hub's page: the README from a release, trimmed to the logo, the
 # name, a link back to the repository and the setup sections, less the
-# Windows one. Called by
+# Windows installer. Called by
 # each stable release, or run from the Actions tab to resync the latest.
 on:
   workflow_dispatch:
