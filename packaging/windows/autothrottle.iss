@@ -162,6 +162,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Output, DataDir: String;
+  Purge: Boolean;
 begin
   if CurUninstallStep = usUninstall then begin
     CloseTrayIcons;
@@ -173,12 +174,19 @@ begin
     DataDir := ExpandConstant('{commonappdata}\AutoThrottle');
     if not DirExists(DataDir) then
       exit;
-    if UninstallSilent then begin
-      if HasParam('/PURGE') then
-        DelTree(DataDir, True, True, True);
-    end else if MsgBox('Also delete your AutoThrottle settings and history?' + Gap +
+    // Asked only when someone is there to answer: a silent uninstall
+    // keeps the data unless given /PURGE.
+    if UninstallSilent then
+      Purge := HasParam('/PURGE')
+    else
+      Purge := MsgBox('Also delete your AutoThrottle settings and history?' + Gap +
         'Choose No to keep them for a later reinstall. They are in ' + DataDir + '.',
-        mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-      DelTree(DataDir, True, True, True);
+        mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    if not Purge then
+      Log('Kept ' + DataDir)
+    else if DelTree(DataDir, True, True, True) then
+      Log('Deleted ' + DataDir)
+    else
+      Log('Could not delete all of ' + DataDir);
   end;
 end;

@@ -1,7 +1,8 @@
 name: Docker Hub description
 
 # Docker Hub's page: the README from a release, trimmed to the logo, the
-# name, a link back to the repository and the setup sections. Called by
+# name, a link back to the repository and the setup sections, less the
+# Windows one. Called by
 # each stable release, or run from the Actions tab to resync the latest.
 on:
   workflow_dispatch:
@@ -45,7 +46,9 @@ jobs:
               next
             }
             /^## .*Quick start/ { keep = 1; print "" }
-            keep' README.md |
+            # Docker Hub is for the image: the Windows installer stays on GitHub.
+            /^## / { windows = /Windows/ }
+            keep && !windows' README.md |
             perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' > dockerhub.md
           cat dockerhub.md
 

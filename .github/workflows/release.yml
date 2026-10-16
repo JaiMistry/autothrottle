@@ -10,6 +10,8 @@ name: Release
 # The notes are generated from the commits since the last release
 # (.github/scripts/release_notes.py), under a summary if one is given.
 #
+# Every release also carries the Windows installer (windows.yml).
+#
 # A pull request that changes how releases are built gets a dry run:
 # everything up to publishing, so a broken release is caught before it
 # merges rather than on release day.
@@ -34,6 +36,8 @@ on:
       - "Dockerfile"
       - ".github/workflows/release.yml"
       - ".github/scripts/release_notes.py"
+      - ".github/workflows/windows.yml"
+      - "packaging/windows/**"
 
 permissions:
   contents: write # to create the GitHub release and its tag
@@ -120,8 +124,19 @@ jobs:
             echo "date=$(git log -1 --format=%cI)"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  # The Windows installer, built and tested on real Windows before the
+  # release that carries it is published.
+  windows:
     needs: plan
+    if: needs.plan.outputs.release == 'true'
+    uses: ./.github/workflows/windows.yml
+    with:
+      version: ${{ needs.plan.outputs.tag }}
+      commit: ${{ github.sha }}
+      date: ${{ needs.plan.outputs.date }}
+
+  publish:
+    needs: [plan, windows]
     if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     env:
@@ -241,8 +256,14 @@ jobs:
             docker save "jaimistry/autothrottle:$version" | gzip -9 > "autothrottle-$TAG-linux-$arch.tar.gz"
           done
 
+      - name: Fetch the Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+
       # The release page the version badge and update check read from.
-      # Creating it creates the tag, on the commit just built.
+      # Creating it creates the tag, on the commit just built. About's
+      # update check on Windows links to the installer by this name.
       - name: Create the GitHub release
         if: env.DRY_RUN != 'true'
         env:
@@ -257,7 +278,7 @@ jobs:
           else
             flags+=(--target "$GITHUB_SHA")
           fi
-          gh release create "$TAG" "${flags[@]}" --title "$TAG" --notes-file notes.md autothrottle-*.tar.gz
+          gh release create "$TAG" "${flags[@]}" --title "$TAG" --notes-file notes.md autothrottle-*.tar.gz AutoThrottle-Setup-*.exe
 
   # Separate, so a problem there never holds a release back.
   docker-hub-description:

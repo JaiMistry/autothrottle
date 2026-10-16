@@ -36,9 +36,12 @@ function Install([string] $label) {
 function Uninstall([string] $label, [string[]] $extra = @()) {
     $p = Start-Process (Join-Path $app 'unins000.exe') -PassThru -ArgumentList (@('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\$label.log") + $extra)
     WaitExit $p $label
-    # The uninstaller hands over to a copy of itself and returns at once.
+    # The uninstaller hands over to a copy of itself and returns at once,
+    # and that copy's last step (deleting the data) comes after its own
+    # files are gone: it is done when its log is closed.
+    $log = "$logs\$label.log"
     $deadline = (Get-Date).AddSeconds(90)
-    while ((Test-Path (Join-Path $app 'unins000.exe')) -or (Get-Service AutoThrottle -ErrorAction SilentlyContinue)) {
+    while (-not ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Log closed' -Quiet))) {
         if ((Get-Date) -gt $deadline) { throw "FAIL  $label did not finish within 90s" }
         Start-Sleep -Milliseconds 500
     }
