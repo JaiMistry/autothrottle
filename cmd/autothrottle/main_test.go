@@ -2,41 +2,12 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
 	"github.com/JaiMistry/autothrottle/internal/version"
 )
-
-func TestIDFromEnv(t *testing.T) {
-	t.Setenv("PUID", "")
-	if id, err := idFromEnv("PUID"); err != nil || id != defaultID {
-		t.Errorf("unset PUID = %d %v, want %d", id, err, defaultID)
-	}
-	t.Setenv("PUID", "1234")
-	if id, _ := idFromEnv("PUID"); id != 1234 {
-		t.Errorf("PUID=1234 read as %d", id)
-	}
-	for _, bad := range []string{"abc", "-1", "1.5"} {
-		t.Setenv("PUID", bad)
-		if _, err := idFromEnv("PUID"); err == nil {
-			t.Errorf("PUID=%q was accepted", bad)
-		}
-	}
-}
-
-// Without root the privilege drop changes nothing.
-func TestDropPrivilegesIsANoOpWithoutRoot(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root; this covers the non-root path")
-	}
-	dir := t.TempDir()
-	if err := dropPrivileges(dir); err != nil {
-		t.Fatalf("dropPrivileges as non-root: %v", err)
-	}
-}
 
 func TestCheckWritable(t *testing.T) {
 	dir := t.TempDir()
@@ -45,13 +16,6 @@ func TestCheckWritable(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Error("the write probe was left behind")
-	}
-	if os.Geteuid() != 0 {
-		ro := filepath.Join(dir, "ro")
-		_ = os.Mkdir(ro, 0o500)
-		if err := checkWritable(ro); err == nil {
-			t.Error("a read-only dir passed")
-		}
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -123,9 +124,18 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 	default:
 		return updateView{
 			State: "available", Label: fmt.Sprintf("v%s available", latest),
-			NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". Pull the new image and restart.",
+			NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". " + upgradeHint(runtime.GOOS),
 		}
 	}
+}
+
+// upgradeHint is how to get a new release, which depends on how this
+// one was installed.
+func upgradeHint(goos string) string {
+	if goos == "windows" {
+		return "Run the new installer from the release page."
+	}
+	return "Pull the new image and restart."
 }
 
 // compareVersions orders two dot-separated release numbers, returning -1,

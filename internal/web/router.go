@@ -47,6 +47,7 @@ type Server struct {
 	startedAt     time.Time
 	live          *live.Hub
 	notFoundLog   notFoundLog
+	localStatus   bool
 }
 
 // parsePage builds one page's template set: layout, components and the
@@ -126,6 +127,9 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/logs", http.StatusMovedPermanently)
 	})
+	if s.localStatus {
+		mux.HandleFunc("GET /local/status", s.localStatusHandler)
+	}
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /{$}", s.dashboardPage)

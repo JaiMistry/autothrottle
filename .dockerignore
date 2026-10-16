@@ -9,6 +9,7 @@ data
 handoff*
 docs
 scripts
+packaging
 node_modules
 *.md
 docker-compose*.yml

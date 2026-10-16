@@ -12,12 +12,17 @@ COPY internal/web/static ./internal/web/static
 # @imports ./tokens/*.css, which only resolve from their real location.
 RUN npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o /out/tailwind.css --minify
 
-FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS source
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=tailwind /out/tailwind.css internal/web/static/css/tailwind.css
+# modernc.org/sqlite is huge to compile; capping parallelism keeps the
+# build's memory peak flat instead of scaling with the core count.
+ENV GOFLAGS=-p=2 GOMAXPROCS=2
+
+FROM source AS build
 ARG VERSION=dev
 # The build context carries no .git, so the revision and build date the
 # toolchain would normally embed have to be passed in. Both are optional:
@@ -26,9 +31,6 @@ ARG COMMIT=""
 ARG BUILD_DATE=""
 # Set by BuildKit to the platform being built for.
 ARG TARGETOS TARGETARCH
-# modernc.org/sqlite is huge to compile; capping parallelism keeps the
-# build's memory peak flat instead of scaling with the core count.
-ENV GOFLAGS=-p=2 GOMAXPROCS=2
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags="-s -w \
         -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION} \
@@ -39,6 +41,41 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpat
 # test only starts amd64: check what the toolchain recorded instead.
 RUN go version -m /out/autothrottle | grep -qw "GOARCH=${TARGETARCH:-$(go env GOARCH)}"
 RUN mkdir -p /out/data
+
+# The Windows build, for the installer: the same code and CSS as the
+# image, as .exe files with the icon and version stamped in. Built only
+# when asked for (--target windows); the image never includes it.
+FROM source AS windows-build
+ARG VERSION=dev
+ARG COMMIT=""
+ARG BUILD_DATE=""
+RUN go install github.com/tc-hib/go-winres@v0.3.3
+# Windows wants four numbers: v1.4.2 is 1.4.2.0, anything else 0.0.0.0.
+RUN set -e; \
+    v="${VERSION#v}"; v="${v%%-*}"; \
+    case "$v" in [0-9]*.[0-9]*.[0-9]*) number="$v.0" ;; *) number=0.0.0.0 ;; esac; \
+    for cmd in autothrottle autothrottle-tray; do \
+      manifest=cli; description="AutoThrottle"; \
+      if [ "$cmd" = autothrottle-tray ]; then manifest=gui; description="AutoThrottle tray icon"; fi; \
+      go-winres simply --arch amd64,arm64 --out "cmd/$cmd/rsrc" --manifest "$manifest" \
+        --icon cmd/autothrottle-tray/autothrottle.ico \
+        --product-name AutoThrottle --product-version "$number" --file-version "$number" \
+        --file-description "$description" --original-filename "$cmd.exe" \
+        --copyright "JaiMistry, GPL-3.0"; \
+    done; \
+    stamp="-s -w \
+      -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION} \
+      -X github.com/JaiMistry/autothrottle/internal/version.Commit=${COMMIT} \
+      -X github.com/JaiMistry/autothrottle/internal/version.BuildDate=${BUILD_DATE}"; \
+    for arch in amd64 arm64; do \
+      CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags="$stamp" \
+        -o /out/$arch/autothrottle.exe ./cmd/autothrottle; \
+      CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags="$stamp -H=windowsgui" \
+        -o /out/$arch/autothrottle-tray.exe ./cmd/autothrottle-tray; \
+    done
+
+FROM scratch AS windows
+COPY --from=windows-build /out /
 
 # Starts as root on purpose: the binary hands /data to PUID:PGID and
 # then drops to that user before it opens the database or a socket.

@@ -10,9 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	// The distroless image has no zoneinfo; without this TZ silently
@@ -30,26 +28,6 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/watcher"
 	"github.com/JaiMistry/autothrottle/internal/web"
 )
-
-func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-
-	// Fixed: where it lives on the host is the bind mount's business.
-	const dataDir = "/data"
-	if err := dropPrivileges(dataDir); err != nil {
-		logger.Error("switching to PUID/PGID", "error", err)
-		os.Exit(1)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// Not 8080, which is qBittorrent's default.
-	err := run(ctx, logger, dataDir, ":7676", os.Stdout)
-	stop()
-	if err != nil {
-		logger.Error("exiting", "error", err)
-		os.Exit(1)
-	}
-}
 
 // run starts everything and serves on addr until ctx ends.
 func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.Writer) error {
@@ -111,6 +89,9 @@ func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.
 	if err != nil {
 		_ = listener.Close()
 		return fmt.Errorf("initializing web server: %w", err)
+	}
+	if localStatusEnabled {
+		srv.EnableLocalStatus()
 	}
 
 	hub := srv.Live()
@@ -203,15 +184,14 @@ func countRows[T any](rows []T, err error) int {
 }
 
 // checkWritable fails early and plainly when the data directory can't be
-// written (usually a bind mount Docker created as root), rather than as
-// SQLite's opaque "unable to open database file".
+// written, rather than as SQLite's opaque "unable to open database file".
 func checkWritable(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("%w (check the bind mount for /data)", err)
+		return fmt.Errorf("%w (%s)", err, dataDirHint)
 	}
 	probe, err := os.CreateTemp(dir, ".write-test-*")
 	if err != nil {
-		return fmt.Errorf("cannot write to it as uid %d, gid %d. If the container is started with user:, that user must own the mounted directory; otherwise check the mount is not read-only", os.Getuid(), os.Getgid())
+		return notWritable()
 	}
 	name := probe.Name()
 	_ = probe.Close()
