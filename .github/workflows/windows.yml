@@ -1,0 +1,160 @@
+name: Windows
+
+# The Windows installer: built from the same code and CSS as the image,
+# then installed, upgraded and uninstalled on real Windows, x64 and Arm,
+# with the Go tests and linters run there too. On every change to what
+# ships, and called by the release workflow for the installer it attaches.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "packaging/windows/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "packaging/windows/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag, such as v1.4.2
+        type: string
+        required: true
+      commit:
+        type: string
+        required: true
+      date:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The Windows-only code (the service, the tray icon) is only compiled,
+  # linted and tested on Windows.
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.2"
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - name: Test
+        run: go test ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the commit's date, for a build that isn't a release
+      - name: Version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+          DATE: ${{ inputs.date }}
+        run: |
+          {
+            echo "version=${VERSION:-dev}"
+            echo "commit=${COMMIT:-$GITHUB_SHA}"
+            echo "date=${DATE:-$(git log -1 --format=%cI)}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the binaries
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: windows
+          outputs: type=local,dest=bin
+          # The CSS and module layers are the image's own.
+          cache-from: |
+            type=gha,scope=release
+            type=gha,scope=windows
+          cache-to: type=gha,mode=max,scope=windows
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ steps.version.outputs.commit }}
+            BUILD_DATE=${{ steps.version.outputs.date }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: bin
+          if-no-files-found: error
+
+  installer:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-binaries
+          path: bin
+      - name: Build the installer
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:VERSION) { $env:VERSION.TrimStart('v') } else { 'dev' }
+          $number = if ($version -match '^(\d+\.\d+\.\d+)') { "$($Matches[1]).0" } else { '0.0.0.0' }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc /Q "/DAppVersion=$version" "/DFileVersion=$number" "/DBinDir=$PWD\bin" packaging\windows\autothrottle.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem packaging\windows\out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: packaging/windows/out/*.exe
+          if-no-files-found: error
+
+  install:
+    needs: installer
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: installer
+      - name: Install, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer\*.exe | Select-Object -First 1
+          pwsh -File packaging\windows\test-install.ps1 -Installer $setup.FullName
+      - name: Logs
+        shell: pwsh
+        if: always()
+        run: |
+          Get-ChildItem install-logs -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.Name)"; Get-Content $_.FullName -Tail 60 }
+          $log = Join-Path $env:ProgramData 'AutoThrottle\autothrottle.log'
+          if (Test-Path $log) { "=== autothrottle.log"; Get-Content $log -Tail 60 }
