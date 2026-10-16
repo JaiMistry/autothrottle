@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,8 +16,8 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-// Nobody but SYSTEM, Administrators, the service account and the owner
-// can read the folder or anything in it.
+// Nobody but SYSTEM, Administrators, the service and whoever runs it can
+// read the folder or anything in it.
 func TestRestrictDataDirOnWindows(t *testing.T) {
 	dir := t.TempDir()
 	key := filepath.Join(dir, "encryption.key")
@@ -26,7 +27,9 @@ func TestRestrictDataDirOnWindows(t *testing.T) {
 	if err := restrictDataDir(dir); err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{"S-1-5-18": true, "S-1-5-32-544": true, "S-1-5-19": true}
+	// SYSTEM, Administrators and whoever runs the test; not LocalService,
+	// which every service running as it would share.
+	allowed := map[string]bool{"S-1-5-18": true, "S-1-5-32-544": true}
 	if user, err := windows.GetCurrentProcessToken().GetTokenUser(); err == nil {
 		allowed[user.User.Sid.String()] = true
 	}
@@ -53,6 +56,41 @@ func TestRestrictDataDirOnWindows(t *testing.T) {
 				t.Errorf("%s grants access to %s: %s", filepath.Base(path), sid, sd)
 			}
 		}
+	}
+}
+
+// The installer's claim makes Administrators the owner, and refuses a
+// folder that is really a link elsewhere, or a file.
+func TestClaimDataDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "AutoThrottle")
+	if err := claimDataDir(dir); err != nil {
+		t.Fatalf("claiming a new folder: %v", err)
+	}
+	sd, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner, _, err := sd.Owner(); err != nil || !owner.IsWellKnown(windows.WinBuiltinAdministratorsSid) {
+		t.Errorf("owner is %v (%v), want Administrators", owner, err)
+	}
+	// Claiming again, as an upgrade does, is fine.
+	if err := claimDataDir(dir); err != nil {
+		t.Errorf("claiming it a second time: %v", err)
+	}
+
+	link := filepath.Join(t.TempDir(), "link")
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, t.TempDir()).CombinedOutput(); err != nil {
+		t.Fatalf("making a junction: %v: %s", err, out)
+	}
+	if err := claimDataDir(link); err == nil || !strings.Contains(err.Error(), "link") {
+		t.Errorf("a junction was claimed: %v", err)
+	}
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := claimDataDir(file); err == nil || !strings.Contains(err.Error(), "is a file") {
+		t.Errorf("a file was claimed: %v", err)
 	}
 }
 

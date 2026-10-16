@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -27,7 +28,7 @@ const (
 )
 
 // runService runs under the service manager. There is no console, so the
-// banner and the log go to a file in the data folder.
+// banner, the log and any crash go to a file in the data folder.
 func runService(dir string) error {
 	logFile, err := openServiceLog(dir)
 	if err != nil {
@@ -35,6 +36,12 @@ func runService(dir string) error {
 	}
 	defer func() { _ = logFile.Close() }()
 	logger := slog.New(slog.NewTextHandler(logFile, nil))
+	// The rest of the program logs through the default logger, whose
+	// stderr a service does not have.
+	slog.SetDefault(logger)
+	if err := debug.SetCrashOutput(logFile, debug.CrashOptions{}); err != nil {
+		logger.Warn("crashes will not reach the log", "error", err)
+	}
 	err = svc.Run(serviceName, &service{logger: logger, dataDir: dir, addr: listenAddr, out: logFile})
 	if err != nil {
 		logger.Error("running as a service", "error", err)
@@ -46,9 +53,6 @@ func runService(dir string) error {
 // one beside it, so a crash's log survives the restart that follows it.
 func openServiceLog(dir string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return nil, err
-	}
-	if err := restrictDataDir(dir); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, logName)
@@ -110,15 +114,8 @@ func installService() error {
 	if err != nil {
 		return err
 	}
-	// Made here, as an administrator, so the service account is given
-	// the folder rather than having to be able to create it.
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
-	}
-	if err := restrictDataDir(dir); err != nil {
-		return err
-	}
-
+	// Before anything is touched: without administrator rights this fails
+	// here, rather than after the folder is made by the wrong account.
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("connecting to the service manager (run as administrator): %w", err)
@@ -130,6 +127,9 @@ func installService() error {
 		Description:      "Throttles download clients while a media server is playing. Manage it at http://localhost:7676.",
 		StartType:        mgr.StartAutomatic,
 		ServiceStartName: serviceAccount,
+		// Its own SID, NT SERVICE\AutoThrottle, which the data folder is
+		// given instead of everything that runs as LocalService.
+		SidType: windows.SERVICE_SID_TYPE_UNRESTRICTED,
 	}
 	s, err := m.OpenService(serviceName)
 	if err == nil {
@@ -153,8 +153,16 @@ func installService() error {
 	}
 	defer func() { _ = s.Close() }()
 
-	// Restart after a crash, backing off, and count a day without one as
-	// a clean slate.
+	// The service's SID exists now, for the folder's permissions to name.
+	if err := claimDataDir(dir); err != nil {
+		return err
+	}
+	return setRecovery(s)
+}
+
+// setRecovery restarts the service after a crash, backing off, and counts
+// a day without one as a clean slate.
+func setRecovery(s *mgr.Service) error {
 	restart := []mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
@@ -204,9 +212,15 @@ func startService() error {
 	if err != nil {
 		return err
 	}
+	// Stopping it suspends restarts after a crash (see stop).
+	if err := setRecovery(s); err != nil {
+		return err
+	}
 	if st.State != svc.Running {
-		if err := s.Start(); err != nil {
-			return fmt.Errorf("starting the service: %w", err)
+		if st.State != svc.StartPending {
+			if err := s.Start(); err != nil {
+				return fmt.Errorf("starting the service: %w", err)
+			}
 		}
 		if err := waitFor(s, svc.Running); err != nil {
 			return err
@@ -251,20 +265,50 @@ func openService() (*mgr.Mgr, *mgr.Service, error) {
 	return m, s, nil
 }
 
+// stop stops the service and waits for its process to exit, so its files
+// can be replaced. It also suspends restarts after a crash, which would
+// otherwise bring it back mid-upgrade; starting it restores them.
 func stop(s *mgr.Service) error {
+	if err := s.ResetRecoveryActions(); err != nil {
+		return fmt.Errorf("suspending restarts: %w", err)
+	}
 	st, err := s.Query()
 	if err != nil {
 		return err
 	}
-	if st.State == svc.Stopped {
-		return nil
-	}
-	if st.State != svc.StopPending {
-		if _, err := s.Control(svc.Stop); err != nil {
-			return fmt.Errorf("stopping the service: %w", err)
+	pid := st.ProcessId
+	if st.State != svc.Stopped {
+		if st.State != svc.StopPending {
+			if _, err := s.Control(svc.Stop); err != nil {
+				return fmt.Errorf("stopping the service: %w", err)
+			}
+		}
+		if err := waitFor(s, svc.Stopped); err != nil {
+			return err
 		}
 	}
-	return waitFor(s, svc.Stopped)
+	return waitForExit(pid)
+}
+
+// waitForExit waits for a process that reported itself stopped to be gone:
+// it still holds its files until then.
+func waitForExit(pid uint32) error {
+	if pid == 0 {
+		return nil
+	}
+	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid)
+	if err != nil {
+		return nil // already gone
+	}
+	defer func() { _ = windows.CloseHandle(h) }()
+	event, err := windows.WaitForSingleObject(h, uint32(serviceTimeout.Milliseconds()))
+	if err != nil {
+		return err
+	}
+	if event == uint32(windows.WAIT_TIMEOUT) {
+		return fmt.Errorf("the service stopped, but its process was still running after %s", serviceTimeout)
+	}
+	return nil
 }
 
 // waitFor polls until the service reaches want. Reaching Stopped while

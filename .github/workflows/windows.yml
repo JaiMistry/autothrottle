@@ -47,8 +47,10 @@ permissions:
 
 jobs:
   # The Windows-only code (the service, the tray icon) is only compiled,
-  # linted and tested on Windows.
+  # linted and tested on Windows. Not part of a release, which already
+  # passed it on main: a new linter rule shouldn't hold one back.
   test:
+    if: inputs.version == ''
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

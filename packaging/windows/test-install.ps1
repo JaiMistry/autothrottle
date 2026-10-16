@@ -99,8 +99,12 @@ Check ($profiles -match 'Private' -and $profiles -match 'Domain' -and $profiles 
 
 $acl = Get-Acl $data
 Check $acl.AreAccessRulesProtected 'the data folder does not inherit from ProgramData'
-$open = $acl.Access | Where-Object { "$($_.IdentityReference)" -match '^(BUILTIN\\Users|Everyone|NT AUTHORITY\\Authenticated Users)$' }
-Check ($null -eq $open) 'other users cannot read the data folder'
+$open = $acl.Access | Where-Object { "$($_.IdentityReference)" -match '^(BUILTIN\\Users|Everyone|NT AUTHORITY\\Authenticated Users|NT AUTHORITY\\LOCAL SERVICE)$' }
+Check ($null -eq $open) 'other users and services cannot read the data folder'
+Check ($null -ne ($acl.Access | Where-Object { "$($_.IdentityReference)" -eq 'NT SERVICE\AutoThrottle' })) 'the service reaches it by its own identity'
+Check ($acl.Owner -eq 'BUILTIN\Administrators') "Administrators own it ($($acl.Owner))"
+$sidType = (& sc.exe qsidtype AutoThrottle) -join ' '
+Check ($sidType -match 'UNRESTRICTED') 'the service has its own SID'
 
 $log = Join-Path $data 'autothrottle.log'
 Check ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'msg=listening')) 'the service writes its log'
@@ -117,6 +121,8 @@ Check ($token -ne '') 'the setup page carries a CSRF token'
 $posted = & curl.exe -s -o NUL -w '%{http_code}' -b $jar -c $jar --data-urlencode "csrf_token=$token" -d 'username=admin' -d 'password=ci-password-123' "$base/setup"
 Check ($posted -eq '303') "the account is created ($posted)"
 Check ((Http '/').StartsWith('303 http://127.0.0.1:7676/login')) 'signed out, the dashboard asks for a sign-in'
+# Logged through the default logger, which a service has no console for.
+Check ((Get-Content $log -Raw) -match 'setup complete') 'messages from the whole program reach the log'
 
 Write-Host "== The service comes back after a crash"
 $before = (ServiceInfo).ProcessId

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 )
 
 // EnableLocalStatus serves GET /local/status, without a sign-in, to
@@ -47,19 +48,31 @@ func (s *Server) localStatusHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(status)
 }
 
-// fromThisMachine is a loopback connection that no proxy forwarded: a
-// reverse proxy on the same machine also connects from loopback, but on
-// someone else's behalf.
+// fromThisMachine is a loopback connection, addressed to this machine,
+// that no proxy forwarded. A reverse proxy on the same machine connects
+// from loopback too, on someone else's behalf, and a web page that points
+// its own hostname at 127.0.0.1 (DNS rebinding) reaches loopback with that
+// hostname still in Host.
 func fromThisMachine(r *http.Request) bool {
 	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Real-Ip"} {
 		if r.Header.Get(h) != "" {
 			return false
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	addr, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	if ip := net.ParseIP(addr); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	name := r.Host
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		name = h
+	}
+	switch strings.ToLower(name) {
+	case "localhost", "127.0.0.1", "::1", "[::1]":
+		return true
+	}
+	return false
 }

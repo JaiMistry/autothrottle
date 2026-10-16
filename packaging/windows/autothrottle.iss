@@ -72,7 +72,9 @@ Name: "{autoprograms}\AutoThrottle"; Filename: "{app}\autothrottle-tray.exe"; Pa
 Name: "{commonstartup}\AutoThrottle"; Filename: "{app}\autothrottle-tray.exe"; Tasks: trayicon
 
 [Run]
-Filename: "{app}\autothrottle-tray.exe"; Flags: nowait runasoriginaluser; Tasks: trayicon
+; Not on a silent install, which is often a management tool running as
+; SYSTEM with nobody signed in: the icon starts at the next sign-in.
+Filename: "{app}\autothrottle-tray.exe"; Flags: nowait runasoriginaluser skipifsilent; Tasks: trayicon
 Filename: "{app}\autothrottle-tray.exe"; Parameters: "open"; Description: "Open AutoThrottle"; Flags: postinstall nowait runasoriginaluser skipifsilent
 
 [Code]
@@ -90,7 +92,11 @@ var
   OutFile: String;
   Text: AnsiString;
 begin
-  OutFile := AddBackslash(GetTempDir) + 'autothrottle-setup-step.txt';
+  // Setup's own private folder; the uninstaller has none, so it uses TEMP.
+  if IsUninstaller then
+    OutFile := AddBackslash(GetTempDir) + 'autothrottle-uninstall-step.txt'
+  else
+    OutFile := ExpandConstant('{tmp}\step.txt');
   DeleteFile(OutFile);
   Result := Exec(ExpandConstant('{cmd}'), '/C ""' + Exe + '" ' + Params + ' > "' + OutFile + '" 2>&1"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);

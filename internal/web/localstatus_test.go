@@ -11,9 +11,13 @@ import (
 
 // localGet asks for the tray's status as a client at remoteAddr would.
 func (a *testApp) localGet(remoteAddr string, header map[string]string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest("GET", "/local/status", nil)
+	req := httptest.NewRequest("GET", "http://127.0.0.1:7676/local/status", nil)
 	req.RemoteAddr = remoteAddr
 	for k, v := range header {
+		if k == "Host" {
+			req.Host = v
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	rec := httptest.NewRecorder()
@@ -64,6 +68,17 @@ func TestLocalStatusAnswersThisMachineOnly(t *testing.T) {
 	for _, h := range []string{"X-Forwarded-For", "X-Real-Ip", "Forwarded"} {
 		if rec := app.localGet("127.0.0.1:50000", map[string]string{h: "203.0.113.9"}); rec.Code != http.StatusNotFound {
 			t.Errorf("a request forwarded with %s got %d", h, rec.Code)
+		}
+	}
+	// Addressed by any other name: a page using DNS rebinding, or a proxy.
+	for _, host := range []string{"evil.example", "evil.example:7676", "192.168.1.5:7676"} {
+		if rec := app.localGet("127.0.0.1:50000", map[string]string{"Host": host}); rec.Code != http.StatusNotFound {
+			t.Errorf("Host %s got %d", host, rec.Code)
+		}
+	}
+	for _, host := range []string{"localhost:7676", "LOCALHOST", "[::1]:7676", "127.0.0.1"} {
+		if rec := app.localGet("127.0.0.1:50000", map[string]string{"Host": host}); rec.Code != http.StatusOK {
+			t.Errorf("Host %s got %d", host, rec.Code)
 		}
 	}
 	if rec := app.localGet("not-an-address", nil); rec.Code != http.StatusNotFound {
