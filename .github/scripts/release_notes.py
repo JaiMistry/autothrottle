@@ -10,9 +10,10 @@ Commits that only touch tests, CI or docs are left out of the notes, and
 on their own never make a release.
 
 Commits are sorted by their first word: Add under Added, Fix under Fixed,
-the rest under Changed. Dependency versions are compared between the two
-releases instead of read from commits, so a month of updates reads as one
-line per package. A section with nothing in it is left out.
+the rest under Changed. Dependencies get a line per package a commit
+updated, read from the versions before and after it, with who updated it
+and in which pull request (or commit), since Renovate groups a week's
+updates into one. A section with nothing in it is left out.
 """
 import json
 import os
@@ -50,7 +51,7 @@ def commits(prev):
         sha, author, subject = line.split("\x1f")
         files = git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split()
         if any(ships(f) for f in files):
-            yield author, subject, files
+            yield sha, author, subject, files
 
 
 def go_requires(ref):
@@ -73,9 +74,14 @@ def go_requires(ref):
 
 def images(ref):
     found = {}
+    dockerfile = show(ref, "Dockerfile")
+    # FROM source builds on an earlier stage, and FROM scratch on nothing.
+    stages = {"scratch", *re.findall(r"^FROM\s.*\sAS\s+(\S+)", dockerfile, re.M | re.I)}
     # Past any flags: FROM --platform=$BUILDPLATFORM golang:1.27-alpine.
-    for m in re.finditer(r"^FROM\s+(?:--\S+\s+)*(\S+)", show(ref, "Dockerfile"), re.M):
+    for m in re.finditer(r"^FROM\s+(?:--\S+\s+)*(\S+)", dockerfile, re.M):
         name, _, tag = m.group(1).partition(":")
+        if name in stages:
+            continue
         found[IMAGE_NAMES.get(name, name)] = re.sub(r"-(alpine|slim)$", "", tag) or "latest"
     return found
 
@@ -90,21 +96,27 @@ def npm_direct(ref):
     return {n: lock.get("packages", {}).get(f"node_modules/{n}", {}).get("version", "") for n in names}
 
 
-def version_changes(prev):
+def version_changes(old_ref, new_ref):
     lines = []
     for read in (images, go_requires, npm_direct):
-        old, new = read(prev), read("HEAD")
+        old, new = read(old_ref), read(new_ref)
         for name in sorted(old.keys() | new.keys(), key=lambda n: (n not in IMAGE_NAMES.values(), n)):
             a, b = old.get(name), new.get(name)
             if a == b:
                 continue
             if not a:
-                lines.append(f"{name} {b} (new)")
+                lines.append(f"Add {name} {b}")
             elif not b:
-                lines.append(f"{name} (removed)")
+                lines.append(f"Remove {name}")
             else:
-                lines.append(f"{name} {a} → {b}")
+                lines.append(f"Update {name} to {b}")
     return lines
+
+
+def credit(sha, author, subject):
+    """by @author in #12, or in the commit when it didn't come from a pull request."""
+    pr = re.search(r"\(#(\d+)\)$", subject)
+    return f"by @{author} in " + (f"#{pr.group(1)}" if pr else sha[:7])
 
 
 def notes(prev, tag, summary=""):
@@ -112,18 +124,18 @@ def notes(prev, tag, summary=""):
     if not prev:
         return "\n".join(out or ["Initial release."]).strip() + "\n"
 
-    sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": version_changes(prev)}
-    compared = {line.split()[0].lower() for line in sections["Dependencies"]}
-    for author, subject, files in commits(prev):
-        if author.startswith("renovate"):
-            continue  # its updates are in the version comparison
+    sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": []}
+    for sha, author, subject, files in commits(prev):
         word = subject.split()[0]
-        if word in ("Update", "Bump") and all(f in DEP_FILES for f in files):
-            # A hand-made update to something the comparison doesn't
-            # cover, such as a package only the CSS build's tools use.
-            if not any(name in subject.lower() for name in compared):
-                rest = subject.removeprefix(word + " ")
-                sections["Dependencies"].append(re.sub(r"^(\S+) to v?(\S+)$", r"\1 \2", rest))
+        update = author.startswith("renovate") or (word in ("Update", "Bump") and all(f in DEP_FILES for f in files))
+        if any(f in DEP_FILES for f in files):
+            changes = version_changes(f"{sha}^", sha)
+            if not changes and update:
+                # Something the comparison doesn't read, such as a package
+                # only the CSS build's tools use.
+                changes = [re.sub(r"\s*\(#\d+\)$", "", subject)]
+            sections["Dependencies"] += [f"{c} {credit(sha, author, subject)}" for c in changes]
+        if update:
             continue
         sections["Added" if word == "Add" else "Fixed" if word == "Fix" else "Changed"].append(subject)
 
