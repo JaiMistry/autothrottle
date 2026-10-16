@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -40,32 +41,37 @@ func TestRestrictDataDirOnWindows(t *testing.T) {
 				t.Errorf("the folder still inherits from its parent (control %#x, %v)", control, err)
 			}
 		}
-		sddl := sd.String()
-		for _, sid := range sidsIn(sddl) {
+		sids, err := daclSIDs(sd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sids) == 0 {
+			t.Errorf("%s has no access entries: %s", filepath.Base(path), sd)
+		}
+		for _, sid := range sids {
 			if !allowed[sid] {
-				t.Errorf("%s grants access to %s: %s", filepath.Base(path), sid, sddl)
+				t.Errorf("%s grants access to %s: %s", filepath.Base(path), sid, sd)
 			}
 		}
 	}
 }
 
-// sidsIn lists the account in each ACE of an SDDL string, with the
-// well-known abbreviations expanded.
-func sidsIn(sddl string) []string {
-	short := map[string]string{"SY": "S-1-5-18", "BA": "S-1-5-32-544", "LS": "S-1-5-19", "BU": "S-1-5-32-545", "WD": "S-1-1-0", "AU": "S-1-5-11", "CO": "S-1-3-0", "OW": "S-1-3-4"}
-	var sids []string
-	for _, ace := range strings.Split(sddl, "(")[1:] {
-		fields := strings.Split(strings.TrimSuffix(strings.SplitN(ace, ")", 2)[0], ")"), ";")
-		if len(fields) < 6 {
-			continue
-		}
-		sid := fields[5]
-		if long, ok := short[sid]; ok {
-			sid = long
-		}
-		sids = append(sids, sid)
+// daclSIDs lists the account each entry of a security descriptor's DACL
+// applies to, in full S-1-... form.
+func daclSIDs(sd *windows.SECURITY_DESCRIPTOR) ([]string, error) {
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return nil, err
 	}
-	return sids
+	var sids []string
+	for i := uint16(0); i < dacl.AceCount; i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, uint32(i), &ace); err != nil {
+			return nil, err
+		}
+		sids = append(sids, (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String())
+	}
+	return sids, nil
 }
 
 // The service starts, serves, and stops cleanly when asked.

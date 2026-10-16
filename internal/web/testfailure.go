@@ -36,17 +36,19 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 	}
 
 	switch {
-	case strings.Contains(msg, "connection refused"):
+	// Windows words both of these its own way.
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "actively refused"):
 		return []string{fieldURL}, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
 
-	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"):
+	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network is unreachable"),
+		strings.Contains(msg, "unreachable host"), strings.Contains(msg, "unreachable network"):
 		// Usually an unanswered ARP on the local subnet: nothing at that
 		// address, rather than the container's networking.
-		return []string{fieldURL}, "Nothing answered at that address. Check the address is right and the machine is up. If it is on another network, make sure the container can reach it."
+		return []string{fieldURL}, "Nothing answered at that address. Check the address is right and the machine is up. If it is on another network, make sure " + host + " can reach it."
 
 	case strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
 		strings.Contains(msg, "timeout awaiting"):
-		return []string{fieldURL}, "No reply in " + clients.RequestTimeout.String() + ". Usually the address is unreachable from the AutoThrottle container, not that the " + thing + " is down."
+		return []string{fieldURL}, "No reply in " + clients.RequestTimeout.String() + ". Usually the address is unreachable from " + host + ", not that the " + thing + " is down."
 
 	case strings.Contains(msg, "x509"), strings.Contains(msg, "certificate"), strings.Contains(msg, "tls:"):
 		return []string{fieldURL}, "TLS handshake failed. Use http:// on a LAN address, or install the certificate."

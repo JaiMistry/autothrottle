@@ -20,14 +20,22 @@ function Check([bool] $ok, [string] $what) {
     Write-Host "PASS  $what"
 }
 
-function Install([string] $label) {
-    $p = Start-Process $Installer -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\$label.log"
+# Start-Process -Wait would also wait for everything the installer starts,
+# and the tray icon it starts never exits.
+function WaitExit([Diagnostics.Process] $p, [string] $label) {
+    $null = $p.Handle # without it, ExitCode reads empty once the process is gone
+    if (-not $p.WaitForExit(180000)) { throw "FAIL  $label did not finish within 3 minutes" }
     Check ($p.ExitCode -eq 0) "$label exits 0 (got $($p.ExitCode))"
 }
 
+function Install([string] $label) {
+    $p = Start-Process $Installer -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\$label.log"
+    WaitExit $p $label
+}
+
 function Uninstall([string] $label, [string[]] $extra = @()) {
-    $p = Start-Process (Join-Path $app 'unins000.exe') -Wait -PassThru -ArgumentList (@('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\$label.log") + $extra)
-    Check ($p.ExitCode -eq 0) "$label exits 0 (got $($p.ExitCode))"
+    $p = Start-Process (Join-Path $app 'unins000.exe') -PassThru -ArgumentList (@('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\$label.log") + $extra)
+    WaitExit $p $label
     # The uninstaller hands over to a copy of itself and returns at once.
     $deadline = (Get-Date).AddSeconds(90)
     while ((Test-Path (Join-Path $app 'unins000.exe')) -or (Get-Service AutoThrottle -ErrorAction SilentlyContinue)) {

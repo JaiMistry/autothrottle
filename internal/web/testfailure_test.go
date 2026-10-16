@@ -16,8 +16,10 @@ func TestClassifyProbeError(t *testing.T) {
 	}{
 		{"refused names the port", probeServer, errors.New("dial tcp 10.0.0.1:32400: connect: connection refused"), fieldURL, "Nothing is listening"},
 		{"refused on a downloader says WebUI", probeDownloader, errors.New("connect: connection refused"), fieldURL, "WebUI port"},
+		{"refused, as Windows says it", probeServer, errors.New("dial tcp 10.0.0.1:32400: connectex: No connection could be made because the target machine actively refused it."), fieldURL, "Nothing is listening"},
+		{"unreachable, as Windows says it", probeServer, errors.New("dial tcp 192.168.9.9:32400: connectex: A socket operation was attempted to an unreachable host."), fieldURL, "Nothing answered at that address"},
 		{"no route blames the address", probeServer, errors.New("dial tcp 192.168.1.99:32400: connect: no route to host"), fieldURL, "Nothing answered at that address"},
-		{"timeout blames reachability", probeServer, errors.New("dial tcp: i/o timeout"), fieldURL, "unreachable from the AutoThrottle container"},
+		{"timeout blames reachability", probeServer, errors.New("dial tcp: i/o timeout"), fieldURL, "unreachable from " + host},
 		{"timeout quotes the real limit", probeServer, errors.New("context deadline exceeded"), fieldURL, "No reply in 8s"},
 		{"401 blames the credential", probeServer, errors.New("unexpected status 401 Unauthorized"), fieldCredential, "credential was rejected"},
 		{"403 on a downloader names both fields", probeDownloader, errors.New("403 Forbidden"), fieldCredential, "username or password"},
@@ -64,5 +66,14 @@ func TestMissingRequiredNamesEveryBlank(t *testing.T) {
 	// A credential already stored counts as present.
 	if fields, _ := missingRequired("plex", "http://x", "stored-token", true); fields != nil {
 		t.Errorf("a supplied credential should satisfy the check, got %v", fields)
+	}
+}
+
+func TestHostFor(t *testing.T) {
+	if got := hostFor("windows"); got != "this PC" {
+		t.Errorf("windows: %q", got)
+	}
+	if got := hostFor("linux"); got != "the AutoThrottle container" {
+		t.Errorf("linux: %q", got)
 	}
 }
