@@ -14,6 +14,7 @@
   <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/github/v/release/JaiMistry/autothrottle?label=version" alt="Latest version"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/pulls/jaimistry/autothrottle" alt="Docker pulls"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/image-size/jaimistry/autothrottle/latest?label=size" alt="Size"></a>
+  <a href="https://ca.unraid.net/apps/autothrottle-0xufrs017fz9b0"><img src="https://img.shields.io/badge/Unraid-Community%20Apps-f15a2c" alt="Unraid Community Apps"></a>
 </p>
 
 AutoThrottle dynamically lowers your download client speeds while something is playing on your media server, and restores them when playback stops. Set it up once and it looks after itself from then on. The throttling is aware of what is actually happening. A paused stream stays throttled, one that has sat paused or stalled for 30 minutes is let go, and playback on your own network can be ignored. When you want full speed regardless, one click turns throttling off until you turn it back on.
@@ -53,7 +54,7 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 
 ## 🚀 Quick start
 
-`docker compose`:
+Docker compose:
 
 ```yaml
 services:
@@ -71,7 +72,7 @@ services:
     restart: unless-stopped
 ```
 
-`docker run`:
+Docker run:
 
 ```sh
 docker run -d \
@@ -84,6 +85,10 @@ docker run -d \
   --restart unless-stopped \
   jaimistry/autothrottle:latest
 ```
+
+Windows:
+
+Download and run `AutoThrottle-Setup-<version>.exe` from the [latest release](https://github.com/JaiMistry/autothrottle/releases/latest).
 
 ## ⚙️ Environment variables
 

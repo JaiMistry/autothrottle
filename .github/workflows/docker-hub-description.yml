@@ -47,7 +47,8 @@ jobs:
             }
             /^## .*Quick start/ { keep = 1; print "" }
             # Docker Hub is for the image: the Windows installer stays on GitHub.
-            /^## / { windows = /Windows/ }
+            /^Windows:$/ { windows = 1 }
+            /^## / { windows = 0 }
             keep && !windows' README.md |
             perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' > dockerhub.md
           cat dockerhub.md
