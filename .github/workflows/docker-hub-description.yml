@@ -6,6 +6,11 @@ name: Docker Hub description
 # each stable release, or run from the Actions tab to resync the latest.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag or branch to sync from (the latest release when empty)
+        type: string
+        required: false
   workflow_call:
     inputs:
       tag:
