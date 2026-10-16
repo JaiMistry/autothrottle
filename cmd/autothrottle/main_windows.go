@@ -37,12 +37,12 @@ func main() {
 	}
 	dir, err := dataDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	inService, err := svc.IsWindowsService()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "detecting the service manager:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "detecting the service manager:", err)
 		os.Exit(1)
 	}
 	if inService {
@@ -65,7 +65,7 @@ func main() {
 // command runs one of the service subcommands, returning the exit code.
 func command(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 2 || args[0] != "service" {
-		fmt.Fprintln(stderr, usage)
+		_, _ = fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	actions := map[string]func() error{
@@ -76,14 +76,14 @@ func command(args []string, stdout, stderr io.Writer) int {
 	}
 	action, ok := actions[args[1]]
 	if !ok {
-		fmt.Fprintln(stderr, usage)
+		_, _ = fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	if err := action(); err != nil {
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "service %s: done\n", args[1])
+	_, _ = fmt.Fprintf(stdout, "service %s: done\n", args[1])
 	return 0
 }
 

@@ -78,6 +78,9 @@ Filename: "{app}\autothrottle-tray.exe"; Parameters: "open"; Description: "Open 
 [Code]
 const
   FirewallRule = 'AutoThrottle';
+  // A blank line in a message. Spelled out rather than as #13#10: the
+  // preprocessor takes any line that starts with # for one of its own.
+  Gap = #13#10#13#10;
 
 // Run a program, wait for it, and log what it printed. Output is the
 // printed text, for an error message.
@@ -124,14 +127,14 @@ begin
   CloseTrayIcons;
   Exe := ExpandConstant('{app}\autothrottle.exe');
   if FileExists(Exe) and not RunStep(Exe, 'service stop', 'Stopping the service', Output) then
-    Result := 'The AutoThrottle service could not be stopped:' + #13#10#13#10 + Output +
-      #13#10#13#10 + 'Stop it from Services, then run Setup again.';
+    Result := 'The AutoThrottle service could not be stopped:' + Gap + Output +
+      Gap + 'Stop it from Services, then run Setup again.';
 end;
 
 procedure Fail(const What, Output: String);
 begin
-  SuppressibleMsgBox('AutoThrottle was installed, but Setup could not ' + What + ':' + #13#10#13#10 + Output +
-    #13#10#13#10 + 'Run Setup again, or open an issue at {#Repo}/issues.', mbError, MB_OK, IDOK);
+  SuppressibleMsgBox('AutoThrottle was installed, but Setup could not ' + What + ':' + Gap + Output +
+    Gap + 'Run Setup again, or open an issue at {#Repo}/issues.', mbError, MB_OK, IDOK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -163,7 +166,7 @@ begin
   if CurUninstallStep = usUninstall then begin
     CloseTrayIcons;
     if not RunStep(ExpandConstant('{app}\autothrottle.exe'), 'service uninstall', 'Removing the service', Output) then
-      SuppressibleMsgBox('The AutoThrottle service could not be removed:' + #13#10#13#10 + Output, mbError, MB_OK, IDOK);
+      SuppressibleMsgBox('The AutoThrottle service could not be removed:' + Gap + Output, mbError, MB_OK, IDOK);
     RunStep('netsh.exe', 'advfirewall firewall delete rule name="' + FirewallRule + '"', 'Removing the firewall rule', Output);
   end;
   if CurUninstallStep = usPostUninstall then begin
@@ -173,7 +176,7 @@ begin
     if UninstallSilent then begin
       if HasParam('/PURGE') then
         DelTree(DataDir, True, True, True);
-    end else if MsgBox('Also delete your AutoThrottle settings and history?' + #13#10#13#10 +
+    end else if MsgBox('Also delete your AutoThrottle settings and history?' + Gap +
         'Choose No to keep them for a later reinstall. They are in ' + DataDir + '.',
         mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
       DelTree(DataDir, True, True, True);
