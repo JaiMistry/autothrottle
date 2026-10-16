@@ -92,8 +92,11 @@ func TestEmbyWatcherSocketRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	done := make(chan error, 1)
-	go func() { done <- w.connectAndListen(ctx) }()
+	done := make(chan struct{})
+	go func() {
+		_ = w.connectAndListen(ctx)
+		close(done)
+	}()
 
 	// Jellyfin 12 refuses a key in the URL: it goes in the header, as on
 	// the REST calls.
