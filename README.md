@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/JaiMistry/autothrottle/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/JaiMistry/autothrottle/ci.yml?branch=main&label=build" alt="Build status"></a>
   <a href="https://codecov.io/gh/JaiMistry/autothrottle"><img src="https://codecov.io/gh/JaiMistry/autothrottle/branch/main/graph/badge.svg" alt="Coverage"></a>
-  <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/github/v/release/JaiMistry/autothrottle?label=version" alt="Latest version"></a>
+  <a href="https://github.com/JaiMistry/autothrottle/releases/latest"><img src="https://img.shields.io/docker/v/jaimistry/autothrottle?sort=semver&label=version" alt="Latest version"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/pulls/jaimistry/autothrottle" alt="Docker pulls"></a>
   <a href="https://hub.docker.com/r/jaimistry/autothrottle"><img src="https://img.shields.io/docker/image-size/jaimistry/autothrottle/latest?label=size" alt="Size"></a>
   <a href="https://ca.unraid.net/apps/autothrottle-0xufrs017fz9b0"><img src="https://img.shields.io/badge/Unraid-Community%20Apps-f15a2c" alt="Unraid Community Apps"></a>
