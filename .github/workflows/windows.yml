@@ -28,7 +28,14 @@ on:
       - "package-lock.json"
       - "packaging/windows/**"
       - ".github/workflows/windows.yml"
+  # A version builds that release's installer from this commit, for a
+  # release that went out without one.
   workflow_dispatch:
+    inputs:
+      version:
+        description: The release tag, such as v1.4.2 (empty for a dev build)
+        type: string
+        required: false
   workflow_call:
     inputs:
       version:
