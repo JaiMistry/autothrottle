@@ -32,6 +32,7 @@ func testConfigPage(tab string) configPageData {
 		About:        aboutView{Commit: "a3f9c21", BuiltNote: "built 12 Aug 2026", Runtime: "go1.26 · linux/amd64 · docker", BootNote: "last restart: 16 Aug 2026, 09:41", BootUnix: 1755337260000},
 		Uptime:       "0d : 00h : 00m : 00s",
 		AuthSummary:  "enabled · signed in as admin",
+		AuthNote:     "Set via environment variables at deploy time",
 		Update:       idleUpdate(),
 	}
 }
@@ -195,5 +196,33 @@ func TestRowHealthyStateIsADot(t *testing.T) {
 		if flag != "" && !strings.Contains(html, flag) {
 			t.Errorf("server %s lost its %q flag", state, flag)
 		}
+	}
+}
+
+// On Windows the update note's button is the installer itself; Docker
+// keeps the release page.
+func TestUpdateCheckButton(t *testing.T) {
+	tmpl, err := parsePage("configuration", templateFuncs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(v updateView) string {
+		var b strings.Builder
+		if err := tmpl.ExecuteTemplate(&b, "updatecheck", v); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	win := render(available("windows", "1.0.1", "1.1.0"))
+	if !strings.Contains(win, `href="https://github.com/JaiMistry/autothrottle/releases/download/v1.1.0/AutoThrottle-Setup-1.1.0.exe"`) ||
+		!strings.Contains(win, ">Download installer</a>") || strings.Contains(win, "View release") {
+		t.Errorf("windows:\n%s", win)
+	}
+	docker := render(available("linux", "1.0.1", "1.1.0"))
+	if !strings.Contains(docker, ">View release</a>") || strings.Contains(docker, "Download installer") {
+		t.Errorf("docker:\n%s", docker)
+	}
+	if idle := render(idleUpdate()); !strings.Contains(idle, ">Releases</a>") {
+		t.Errorf("idle:\n%s", idle)
 	}
 }

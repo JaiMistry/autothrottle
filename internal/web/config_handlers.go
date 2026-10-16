@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,7 @@ type configPageData struct {
 	MediaServers      []mediaServerView
 	Downloaders       []downloaderView
 	AuthSummary       string
+	AuthNote          string
 	Update            updateView
 	MappingOn         map[string]bool
 	About             aboutView
@@ -194,6 +196,7 @@ func (s *Server) buildConfigPageData(r *http.Request, tab string) (configPageDat
 		About:        s.aboutView(),
 		Uptime:       uptimeSince(s.startedAt),
 		AuthSummary:  s.authSummary(),
+		AuthNote:     authNote(runtime.GOOS),
 		Update:       idleUpdate(),
 	}, nil
 }

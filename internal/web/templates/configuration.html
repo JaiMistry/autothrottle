@@ -48,7 +48,7 @@
     {{/* app.js ticks this forward from the boot timestamp. */}}
     {{template "readonly" dict "Label" "Uptime" "Value" .Uptime "Note" .About.BootNote "Tick" .About.BootUnix}}
     {{template "readonly" dict "Label" "Runtime" "Value" .About.Runtime "Note" "Currently running processes"}}
-    {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" "Set via environment variables at deploy time"}}
+    {{template "readonly" dict "Label" "Authentication" "Value" .AuthSummary "Note" .AuthNote}}
     <div id="update-check">{{template "updatecheck" .Update}}</div>
   </section>
 </div>
@@ -127,8 +127,9 @@
   <span class="at-update-actions">
     <button class="at-btn at-btn--sm" data-updatebtn hx-get="/configuration/update-check" hx-target="#update-check" hx-swap="innerHTML"
             {{if eq .State "checking"}}disabled{{end}}>{{if eq .State "failed"}}Try again{{else}}Check for updates{{end}}</button>
-    <a class="at-btn at-btn--sm {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
-       href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>
+    {{if .Download}}<a class="at-btn at-btn--sm at-btn--primary" href="{{.Download}}" rel="noreferrer">Download installer</a>
+    {{else}}<a class="at-btn at-btn--sm {{if eq .State "available"}}at-btn--primary{{else}}at-btn--ghost{{end}}"
+       href="https://github.com/JaiMistry/autothrottle/releases" target="_blank" rel="noreferrer">{{if eq .State "available"}}View release{{else}}Releases{{end}}</a>{{end}}
   </span>
 </div>{{end}}
 
@@ -349,7 +350,7 @@
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
-        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
+        <span class="at-field-hint">As reachable from {{host}}</span></label>
       {{/* Each credential has its own input name and the server picks by type,
            so a hidden blank field can't win over the one filled in. */}}
       <div data-credgroup="plex" class="at-stack">
@@ -408,7 +409,7 @@
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required>
-        <span class="at-field-hint">As reachable from the AutoThrottle container</span></label>
+        <span class="at-field-hint">As reachable from {{host}}</span></label>
       <div style="display:grid;gap:var(--space-6);grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
         <label class="at-field"><span class="at-field-label">Username</span>
           <input class="at-input" type="text" name="username" value="{{.EditDownloader.Username}}" autocomplete="off"></label>

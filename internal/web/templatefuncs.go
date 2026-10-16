@@ -11,6 +11,7 @@ import (
 // logic belongs in handlers, where it can be tested.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+		"host":            func() string { return host },
 		"dict":            dict,
 		"commas":          commas,
 		"count":           count,

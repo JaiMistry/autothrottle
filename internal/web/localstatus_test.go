@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -85,11 +86,30 @@ func TestLocalStatusReportsSetupAndPause(t *testing.T) {
 	}
 }
 
-func TestUpgradeHint(t *testing.T) {
-	if got := upgradeHint("windows"); got != "Run the new installer from the release page." {
-		t.Errorf("windows: %q", got)
+// Docker installs are told how to update; on Windows the button
+// downloads the new installer instead.
+func TestAvailableUpdate(t *testing.T) {
+	docker := available("linux", "1.0.1", "1.1.0")
+	if docker.NotePost != ". Pull the new image and restart." || docker.Download != "" {
+		t.Errorf("linux: %+v", docker)
 	}
-	if got := upgradeHint("linux"); got != "Pull the new image and restart." {
-		t.Errorf("linux: %q", got)
+	win := available("windows", "1.0.1", "1.1.0")
+	if win.NotePost != "." || win.Download != "https://github.com/JaiMistry/autothrottle/releases/download/v1.1.0/AutoThrottle-Setup-1.1.0.exe" {
+		t.Errorf("windows: %+v", win)
+	}
+	if win.State != "available" || win.Label != "v1.1.0 available" || win.NoteStrong != "v1.0.1" {
+		t.Errorf("windows lost the common parts: %+v", win)
+	}
+}
+
+func TestPlatformWords(t *testing.T) {
+	if authNote("windows") != "Created on first run" || authNote("linux") != "Set via environment variables at deploy time" {
+		t.Errorf("auth notes: %q, %q", authNote("windows"), authNote("linux"))
+	}
+	if got := logHint("windows", `C:\ProgramData`); !strings.Contains(got, "AutoThrottle") || !strings.HasPrefix(got, "Check the log in ") {
+		t.Errorf("windows log hint: %q", got)
+	}
+	if got := logHint("linux", ""); got != "Check the container log." {
+		t.Errorf("linux log hint: %q", got)
 	}
 }

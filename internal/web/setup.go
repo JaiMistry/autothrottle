@@ -7,6 +7,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
@@ -90,7 +92,7 @@ func (s *Server) completeSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	default:
 		slog.Error("completing setup", "error", err)
-		retry.Error = "The account could not be saved. Check the container log."
+		retry.Error = "The account could not be saved. " + logHint(runtime.GOOS, os.Getenv("ProgramData"))
 		s.renderSetup(w, r, http.StatusInternalServerError, retry)
 		return
 	}

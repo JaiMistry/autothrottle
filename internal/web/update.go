@@ -22,6 +22,8 @@ type updateView struct {
 	NotePre    string
 	NoteStrong string
 	NotePost   string
+	// Download is the new release's installer, on Windows.
+	Download string
 }
 
 // idleUpdate is what About shows before anyone asks: checks are manual
@@ -122,20 +124,22 @@ func checkLatestRelease(ctx context.Context, current string) updateView {
 			NoteStrong: "v" + latest, NotePost: " is the latest release.",
 		}
 	default:
-		return updateView{
-			State: "available", Label: fmt.Sprintf("v%s available", latest),
-			NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". " + upgradeHint(runtime.GOOS),
-		}
+		return available(runtime.GOOS, running, latest)
 	}
 }
 
-// upgradeHint is how to get a new release, which depends on how this
-// one was installed.
-func upgradeHint(goos string) string {
-	if goos == "windows" {
-		return "Run the new installer from the release page."
+// available is the note for a newer release. Docker installs are told
+// how to update; on Windows the button downloads the installer.
+func available(goos, running, latest string) updateView {
+	v := updateView{
+		State: "available", Label: fmt.Sprintf("v%s available", latest),
+		NotePre: "You are on ", NoteStrong: "v" + running, NotePost: ". Pull the new image and restart.",
 	}
-	return "Pull the new image and restart."
+	if goos == "windows" {
+		v.NotePost = "."
+		v.Download = installerURL(latest)
+	}
+	return v
 }
 
 // compareVersions orders two dot-separated release numbers, returning -1,
