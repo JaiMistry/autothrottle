@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS media_servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('plex', 'emby', 'jellyfin')),
+    type TEXT NOT NULL CHECK (type IN ('plex', 'emby', 'jellyfin', 'dispatcharr')),
     url TEXT NOT NULL,
     credential_encrypted TEXT NOT NULL,
     skip_local_playback INTEGER NOT NULL DEFAULT 0,

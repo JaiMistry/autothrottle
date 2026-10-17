@@ -10,7 +10,7 @@ import (
 // media server type. The database allows a wider set.
 func SupportedMediaServerType(msType string) bool {
 	switch msType {
-	case "plex", "emby", "jellyfin":
+	case "plex", "emby", "jellyfin", "dispatcharr":
 		return true
 	}
 	return false
@@ -25,6 +25,8 @@ func TestMediaServer(ctx context.Context, msType, baseURL, token string) error {
 		return TestEmby(ctx, baseURL, token)
 	case "jellyfin":
 		return TestJellyfin(ctx, baseURL, token)
+	case "dispatcharr":
+		return TestDispatcharr(ctx, baseURL, token)
 	default:
 		return fmt.Errorf("unsupported media server type %q", msType)
 	}
@@ -32,7 +34,7 @@ func TestMediaServer(ctx context.Context, msType, baseURL, token string) error {
 
 // SessionWatcher is one media server's live session feed, emitting an
 // event when a session starts or stops counting. Implemented by
-// PlexWatcher and EmbyWatcher (Emby and Jellyfin).
+// PlexWatcher, EmbyWatcher (Emby and Jellyfin), and DispatcharrWatcher.
 type SessionWatcher interface {
 	// Run connects, and reconnects with backoff, until ctx is done.
 	Run(ctx context.Context)

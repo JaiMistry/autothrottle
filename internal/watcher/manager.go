@@ -177,10 +177,7 @@ func (m *Manager) Reconcile() {
 // newWatcher builds the SessionWatcher for a media server's type, with
 // its abandoned-pause clocks kept in the database.
 func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWatcher, error) {
-	var w interface {
-		clients.SessionWatcher
-		SetPauseStore(clients.PauseStore)
-	}
+	var w clients.SessionWatcher
 	switch ms.Type {
 	case "plex":
 		w = clients.NewPlexWatcher(ms.URL, token, ms.SkipLocalPlayback)
@@ -188,10 +185,14 @@ func (m *Manager) newWatcher(ms db.MediaServer, token string) (clients.SessionWa
 		w = clients.NewEmbyWatcher(ms.URL, token, ms.SkipLocalPlayback)
 	case "jellyfin":
 		w = clients.NewJellyfinWatcher(ms.URL, token, ms.SkipLocalPlayback)
+	case "dispatcharr":
+		w = clients.NewDispatcharrWatcher(ms.URL, token, ms.SkipLocalPlayback)
 	default:
 		return nil, fmt.Errorf("no watcher implementation for type %q", ms.Type)
 	}
-	w.SetPauseStore(pauseStore{db: m.db, mediaServerID: ms.ID})
+	if pausable, ok := w.(interface{ SetPauseStore(clients.PauseStore) }); ok {
+		pausable.SetPauseStore(pauseStore{db: m.db, mediaServerID: ms.ID})
+	}
 	return w, nil
 }
 

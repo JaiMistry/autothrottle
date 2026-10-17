@@ -193,7 +193,7 @@ func TestReconcileIsIdempotent(t *testing.T) {
 }
 
 func TestSupportedTypes(t *testing.T) {
-	for _, msType := range []string{"plex", "emby", "jellyfin"} {
+	for _, msType := range []string{"plex", "emby", "jellyfin", "dispatcharr"} {
 		if !clients.SupportedMediaServerType(msType) {
 			t.Errorf("SupportedMediaServerType(%q) = false, want true", msType)
 		}

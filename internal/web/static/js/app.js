@@ -380,7 +380,7 @@
 })();
 
 /* ── Credential method sub-tabs ───────────────────────────────────
-   Plex takes a token or a sign-in; Emby and Jellyfin only a key. */
+   Plex takes a token or a sign-in; the other servers take an API key. */
 (function () {
   "use strict";
 
@@ -389,6 +389,9 @@
     var type = form.querySelector('select[name="type"]');
     if (!type || !form.querySelector("[data-credgroup]")) return;
     var isPlex = type.value === "plex";
+    form.querySelectorAll("[data-serverhint]").forEach(function (hint) {
+      hint.hidden = hint.dataset.serverhint !== type.value;
+    });
     form.querySelectorAll("[data-credgroup]").forEach(function (group) {
       group.hidden = group.dataset.credgroup !== (isPlex ? "plex" : "apikey");
     });

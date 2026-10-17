@@ -62,6 +62,9 @@ func (d *DB) Close() error {
 // migrate adds columns CREATE TABLE IF NOT EXISTS cannot. Each is
 // idempotent: a duplicate-column error means already applied.
 func (d *DB) migrate() error {
+	if err := d.migrateMediaServerTypes(); err != nil {
+		return err
+	}
 	for _, stmt := range []string{
 		`ALTER TABLE session_history ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE session_history ADD COLUMN device TEXT NOT NULL DEFAULT ''`,

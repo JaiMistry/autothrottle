@@ -347,6 +347,7 @@
           <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
           <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
           <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
+          <option value="dispatcharr" {{if eq .EditMediaServer.Type "dispatcharr"}}selected{{end}}>Dispatcharr</option>
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
         <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
@@ -372,6 +373,7 @@
         {{template "credentialfield" dict "Label" "API key" "Name" "api_token"
           "HasCredential" .EditMediaServer.HasCredential "Placeholder" "API key"}}
       </div>
+      <p class="at-field-hint" data-serverhint="dispatcharr" hidden>Use a Dispatcharr administrator API key. Connected live TS proxy clients are checked every two seconds. Direct redirects and VOD are not included.</p>
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
         <span class="at-check-text">

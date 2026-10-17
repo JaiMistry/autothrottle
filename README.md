@@ -46,11 +46,20 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 | <a href="https://www.plex.tv"><img src=".github/assets/logos/plex.png" width="18" alt="Plex Media Server"></a> | Plex Media Server | 1.43+ |
 | <a href="https://jellyfin.org"><img src=".github/assets/logos/jellyfin.png" width="18" alt="Jellyfin"></a> | Jellyfin | 10.11+ |
 | <a href="https://emby.media"><img src=".github/assets/logos/emby.png" width="18" alt="Emby"></a> | Emby | 4.9+ |
+| | [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr) | 0.32+ |
 
 | | Download client | Version |
 |:-:|---|---|
 | <a href="https://www.qbittorrent.org"><img src=".github/assets/logos/qbittorrent.svg" width="18" alt="qBittorrent"></a> | qBittorrent | 5.2+ |
 | <a href="https://transmissionbt.com"><img src=".github/assets/logos/transmission.png" width="18" alt="Transmission"></a> | Transmission | 4.1+ |
+
+### Dispatcharr
+
+Add a media server with type **Dispatcharr**, its base URL, and an administrator API key. Map it to a download client as usual. AutoThrottle checks `/proxy/ts/status` every two seconds, authenticating with `X-API-Key`. The connection test verifies the authenticated response; an expiring JWT is not needed.
+
+Each connected live TS proxy client counts as playback, including recording clients. A channel buffer with no clients does not count. **Ignore local network playback** uses each client's reported IP address; unknown addresses still count. Reverse proxies must preserve the real client IP for that exemption to be useful. Channel detail is requested when the summary omits clients beyond its ten-client limit.
+
+This integration does not observe VOD, catch-up, direct redirects that bypass the live proxy, or the player's pause/position state. An open connection continues to count. If polling fails, the last known sessions are kept until a successful response reconciles them.
 
 ## 🚀 Quick start
 
