@@ -54,8 +54,8 @@ type dispatcharrCatchupSession struct {
 
 // DispatcharrWatcher watches the sessions Dispatcharr exposes through its
 // combined live, VOD and catch-up statistics. A reported connection counts
-// even when paused. Provider redirects and DVR file playback are not exposed
-// by that API; their absence cannot be interpreted as stopped playback.
+// even when paused. Active recording jobs use the live proxy and count too.
+// Provider redirects and playback of finished DVR files do not count.
 type DispatcharrWatcher struct {
 	BaseURL           string
 	APIKey            string
