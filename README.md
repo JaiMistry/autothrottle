@@ -55,19 +55,19 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 
 ### Dispatcharr
 
-Add a media server with type **Dispatcharr**, its base URL, and an administrator API key. Map it to a download client as usual. AutoThrottle checks the combined `/proxy/stats/` endpoint every two seconds, authenticating with `X-API-Key`. The connection test requires valid live, VOD and catch-up sections; an expiring JWT is not needed.
+Add a media server with type **Dispatcharr**, its base URL, and an administrator API key. Map it to a download client as usual. AutoThrottle polls Dispatcharr's combined `/proxy/stats/` endpoint every two seconds using the `X-API-Key` header.
 
-Each reported live, VOD or catch-up client counts as playback, including clients making a recording. A live channel buffer with no clients does not count. **Ignore local network playback** uses each client's reported IP address; unknown addresses still count. Reverse proxies must preserve the real client IP for that exemption to be useful. Live channel detail is requested when the summary omits clients beyond its ten-client limit.
+The rule is based on Dispatcharr's reported clients: **one or more clients means throttle; a successful response with no clients means release the throttle.** Live, VOD and catch-up status are read together. The player, stream format and playback route do not affect this decision. Active recordings count through their reported live-stream clients. A paused session counts as long as Dispatcharr still reports it.
 
-VOD position/duration and catch-up pause/position are displayed when Dispatcharr reports them. A paused catch-up session still counts. Other players may buffer or pause without reporting that state; a reported connection continues to count. Dispatcharr can retain an idle VOD session for reconnection, so release follows the server's session lifecycle. If polling fails or a required status section is missing, the last known sessions are kept until a successful response reconciles them.
-
-This integration monitors playback for which Dispatcharr fetches the upstream video: live TV, VOD, catch-up and active recording jobs. One reported client is enough to trigger throttling. Direct provider redirects and playback of finished DVR files do not count; an active recording counts through its normal live-stream connection. See the [playback coverage report](docs/dispatcharr-playback-coverage.md) for live-test evidence.
+**Ignore local network playback** remains optional and is off by default. When enabled, it filters clients by their reported IP address; unknown addresses still count. A live buffer without clients does not count. If a required status section is missing or a request fails, AutoThrottle keeps its last known state. Release follows Dispatcharr's session lifecycle, including any idle VOD sessions it retains. See the [status and test report](docs/dispatcharr-playback-coverage.md).
 
 ### qBittorrent speed schedules
 
-When qBittorrent's speed scheduler is enabled, AutoThrottle follows its own normal and alternative rates instead of applying the configured Default rates. While playback is active, both rate sets are temporarily capped at the configured Throttled rates. An existing stricter limit stays stricter. Schedule times, weekdays and the selected speed mode are never changed, so a time boundary during playback works without reproducing qBittorrent's clock or time zone logic.
+Previously, AutoThrottle applied its configured fixed Default/Throttled rates. That could overwrite qBittorrent's own time-dependent limits. When qBittorrent's speed scheduler is enabled, AutoThrottle now uses qBittorrent's existing normal and alternative limits as the baseline instead of its configured Default rates.
 
-The original rate sets are saved before the first change and survive an AutoThrottle restart. A failed media-server snapshot at startup cannot release a pending throttle; recovery waits for an authoritative response. Once playback ends, AutoThrottle restores each rate it still owns; external rate edits are preserved. Recovery also runs on graceful shutdown and before disabling, deleting or moving the download-client connection. Without qBittorrent scheduling, the existing fixed Default/Throttled rate policy is unchanged.
+While a reported media client exists, both rate sets are temporarily capped at the configured Throttled rates, for download and upload. A stricter existing limit stays stricter. For example, with normal download at 20,000 KiB/s, alternative download at 3,000 KiB/s and a throttle cap of 5,000 KiB/s, the temporary limits are 5,000 and 3,000 KiB/s. qBittorrent still decides when to switch between them: schedule times, weekdays and mode selection are unchanged.
+
+When the last client disappears, the original normal and alternative limits are restored, leaving the currently applicable rate to qBittorrent's schedule. The originals are saved before any change and survive an AutoThrottle restart. External limit edits are preserved. Recovery also runs on graceful shutdown and before disabling, deleting or moving a download-client connection; an unavailable media-server status at startup cannot release a recovered throttle prematurely. When qBittorrent scheduling is disabled, the existing fixed Default/Throttled behavior is unchanged.
 
 ## 🚀 Quick start
 
