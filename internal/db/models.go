@@ -8,7 +8,7 @@ import (
 type MediaServer struct {
 	ID                   int64
 	Name                 string
-	Type                 string // plex, emby, jellyfin
+	Type                 string // plex, emby, jellyfin, dispatcharr
 	URL                  string
 	CredentialEncrypted  string
 	SkipLocalPlayback    bool

@@ -84,6 +84,23 @@ type RateLimiter interface {
 	SetLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error
 }
 
+// LimitStateStore keeps recovery information before a downloader is changed.
+type LimitStateStore interface {
+	GetSetting(string) (string, bool, error)
+	SetSetting(string, string) error
+}
+
+type AppliedLimits struct {
+	DownloadKBps, UploadKBps int64
+	FollowSchedule           bool
+}
+
+// ScheduledRateLimiter defers idle rates to the client's own scheduler. A
+// nil result means scheduling is off and the ordinary fixed rates apply.
+type ScheduledRateLimiter interface {
+	ApplyScheduledLimits(context.Context, string, string, string, bool, int64, int64, LimitStateStore, string) (*AppliedLimits, error)
+}
+
 // SupportedDownloaderType reports whether this build can control a
 // download client type.
 func SupportedDownloaderType(dlType string) bool { return RateLimiterFor(dlType) != nil }

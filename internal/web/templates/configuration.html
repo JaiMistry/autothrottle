@@ -428,6 +428,7 @@
         "DownName" "backup_download_limit" "UpName" "backup_upload_limit"
         "Down" .EditDownloader.BackupDownloadLimit "Up" .EditDownloader.BackupUploadLimit
         "Note" "Rates are KB/s. 0 means unlimited, and the field says so as you type."}}
+      <p class="at-field-hint">When qBittorrent's speed scheduler is enabled, its normal and alternative rates are preserved automatically. Playback temporarily caps both sets of rates without changing the schedule; Default rates apply when scheduling is off.</p>
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="enabled" {{if .EditDownloader.Enabled}}checked{{end}}>
         <span class="at-check-text"><span>Enabled</span></span>

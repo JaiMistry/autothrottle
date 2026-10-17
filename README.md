@@ -61,6 +61,12 @@ Each connected live TS proxy client counts as playback, including recording clie
 
 This integration does not observe VOD, catch-up, direct redirects that bypass the live proxy, or the player's pause/position state. An open connection continues to count. If polling fails, the last known sessions are kept until a successful response reconciles them.
 
+### qBittorrent speed schedules
+
+When qBittorrent's speed scheduler is enabled, AutoThrottle follows its own normal and alternative rates instead of applying the configured Default rates. While playback is active, both rate sets are temporarily capped at the configured Throttled rates. An existing stricter limit stays stricter. Schedule times, weekdays and the selected speed mode are never changed, so a time boundary during playback works without reproducing qBittorrent's clock or time zone logic.
+
+The original rate sets are saved before the first change and survive an AutoThrottle restart. Once playback ends, AutoThrottle restores each rate it still owns; external rate edits are preserved. Recovery also runs on graceful shutdown and before disabling, deleting or moving the download-client connection. Without qBittorrent scheduling, the existing fixed Default/Throttled rate policy is unchanged.
+
 ## 🚀 Quick start
 
 Docker compose:

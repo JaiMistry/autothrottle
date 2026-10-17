@@ -27,8 +27,10 @@ type Scheduler struct {
 	encryptionKey []byte
 	settings      *settings.Store
 
-	mu     sync.Mutex
-	active map[int64]map[string]bool // media server ID -> active session keys
+	mu        sync.Mutex
+	resolveMu sync.Mutex                // serialises remote rate changes and recovery writes
+	stopped   bool                      // guarded by resolveMu
+	active    map[int64]map[string]bool // media server ID -> active session keys
 	// live is each active session's latest description (title, device,
 	// position) for the Dashboard; throttling needs only the keys.
 	live map[int64]map[string]clients.Session
@@ -53,8 +55,10 @@ type appliedState struct {
 	throttled                  bool
 	downloadLimit, uploadLimit int64
 
-	cause   string // the media server that caused it
-	failure string // the last apply error, verbatim
+	cause                              string // the media server that caused it
+	failure                            string // the last apply error, verbatim
+	scheduled                          bool
+	requestedDownload, requestedUpload int64
 }
 
 // DownloaderState is one downloader's live state, for the Dashboard.
@@ -368,13 +372,23 @@ func (s *Scheduler) recordSession(mediaServerID int64, session clients.Session, 
 }
 
 type resolution struct {
-	downloader      db.Downloader
-	throttled       bool
-	causeServerName string
-	causeServerID   int64 // for the log's cause tags
+	downloader       db.Downloader
+	throttled        bool
+	causeServerName  string
+	causeServerID    int64 // for the log's cause tags
+	refreshScheduled bool
 }
 
 func (s *Scheduler) resolve(ctx context.Context) {
+	s.resolveWithSchedules(ctx, false)
+}
+
+func (s *Scheduler) resolveWithSchedules(ctx context.Context, refresh bool) {
+	s.resolveMu.Lock()
+	defer s.resolveMu.Unlock()
+	if s.stopped {
+		return
+	}
 	mediaServers, err := s.db.ListMediaServers()
 	if err != nil {
 		slog.Error("scheduler: listing media servers", "error", err)
@@ -389,6 +403,17 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	if err != nil {
 		slog.Error("scheduler: listing mappings", "error", err)
 		return
+	}
+	pending := make(map[int64]bool)
+	for _, dl := range downloaders {
+		if !dl.Enabled && dl.Type == "qbittorrent" {
+			value, _, err := s.db.GetSetting(scheduleStateKey(dl.ID))
+			if err != nil {
+				slog.Error("scheduler: reading rate recovery", "error", err)
+				return
+			}
+			pending[dl.ID] = value != ""
+		}
 	}
 
 	// A disabled server's sessions never count, even if some survive.
@@ -412,13 +437,13 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	paused := s.paused
 	var toApply []resolution
 	for _, dl := range downloaders {
-		if !dl.Enabled {
+		if !dl.Enabled && !pending[dl.ID] {
 			continue
 		}
 		throttled := false
 		causeServerName := ""
 		causeServerID := int64(0)
-		if !paused {
+		if !paused && dl.Enabled {
 			for _, m := range byDownloader[dl.ID] {
 				if _, enabled := msNameByID[m.MediaServerID]; !enabled {
 					continue
@@ -432,10 +457,11 @@ func (s *Scheduler) resolve(ctx context.Context) {
 			}
 		}
 		toApply = append(toApply, resolution{
-			downloader:      dl,
-			throttled:       throttled,
-			causeServerName: causeServerName,
-			causeServerID:   causeServerID,
+			downloader:       dl,
+			throttled:        throttled,
+			causeServerName:  causeServerName,
+			causeServerID:    causeServerID,
+			refreshScheduled: refresh && s.applied[dl.ID].scheduled,
 		})
 	}
 
@@ -515,19 +541,21 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 		message = fmt.Sprintf("throttled %s because %s is playing", dl.Name, causeServerName)
 	}
 	want := appliedState{
-		throttled:     throttled,
-		downloadLimit: downloadLimit,
-		uploadLimit:   uploadLimit,
-		cause:         causeServerName,
+		throttled:         throttled,
+		downloadLimit:     downloadLimit,
+		uploadLimit:       uploadLimit,
+		cause:             causeServerName,
+		requestedDownload: downloadLimit,
+		requestedUpload:   uploadLimit,
 	}
 
 	s.mu.Lock()
 	prev, known := s.applied[dl.ID]
 	// A recorded failure is never "the same state": it must retry.
 	if known && prev.throttled == want.throttled &&
-		prev.downloadLimit == want.downloadLimit &&
-		prev.uploadLimit == want.uploadLimit &&
-		prev.cause == want.cause && prev.failure == "" {
+		prev.requestedDownload == want.requestedDownload &&
+		prev.requestedUpload == want.requestedUpload &&
+		prev.cause == want.cause && prev.failure == "" && !r.refreshScheduled {
 		s.mu.Unlock()
 		return
 	}
@@ -553,9 +581,31 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 		return
 	}
 
-	if err := limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
+	var scheduled *clients.AppliedLimits
+	if aware, ok := limiter.(clients.ScheduledRateLimiter); ok {
+		scheduled, err = aware.ApplyScheduledLimits(ctx, dl.URL, username, password, throttled, downloadLimit, uploadLimit, s.db, scheduleStateKey(dl.ID))
+	}
+	if err == nil && scheduled == nil {
+		err = limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit)
+	}
+	if err != nil {
 		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, clients.Redact(err)))
 		return
+	}
+	if scheduled != nil {
+		s.mu.Lock()
+		state := s.applied[dl.ID]
+		state.scheduled = scheduled.FollowSchedule
+		state.downloadLimit, state.uploadLimit = scheduled.DownloadKBps, scheduled.UploadKBps
+		s.applied[dl.ID] = state
+		s.mu.Unlock()
+		if !throttled {
+			message = fmt.Sprintf("following qBittorrent scheduled rates for %s", dl.Name)
+		}
+	}
+	if r.refreshScheduled && prev.failure == "" && prev.throttled == throttled &&
+		prev.requestedDownload == want.requestedDownload && prev.requestedUpload == want.requestedUpload && prev.cause == want.cause {
+		return // Polling updates the display without filling the event log.
 	}
 
 	if err := s.db.InsertEvent(db.Event{

@@ -131,6 +131,7 @@ func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.
 
 	go maintenance.Run(ctx)
 	go sched.RetryFailed(ctx)
+	go sched.RefreshSchedules(ctx)
 	go func() {
 		heartbeat(ctx, database, runID)
 		close(beating)
@@ -149,6 +150,9 @@ func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
+	if err := sched.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("restoring scheduled rate limits: %w", err)
+	}
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown failed: %w", err)
 	}

@@ -25,6 +25,10 @@ func restartingQbit(t *testing.T) (*httptest.Server, *atomic.Bool) {
 		if r.URL.Path == "/api/v2/auth/login" {
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test"})
 		}
+		if r.URL.Path == "/api/v2/app/preferences" {
+			_, _ = w.Write([]byte(`{"scheduler_enabled":false}`))
+			return
+		}
 		_, _ = w.Write([]byte("Ok."))
 	}))
 	t.Cleanup(srv.Close)

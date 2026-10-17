@@ -686,7 +686,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		err = s.db.UpdateDownloader(dl)
+		err = s.scheduler.UpdateDownloader(r.Context(), dl)
 	}
 	if err != nil {
 		slog.Error("saving downloader", "error", err)
@@ -703,7 +703,7 @@ func (s *Server) deleteDownloader(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
-	if err := s.db.DeleteDownloader(id); err != nil {
+	if err := s.scheduler.DeleteDownloader(r.Context(), id); err != nil {
 		slog.Error("deleting downloader", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

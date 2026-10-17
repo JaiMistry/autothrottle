@@ -101,6 +101,10 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	}
 
 	qbit := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/app/preferences" {
+			_, _ = w.Write([]byte(`{"scheduler_enabled":false}`))
+			return
+		}
 		if r.URL.Path == "/api/v2/auth/login" {
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test"})
 		}
