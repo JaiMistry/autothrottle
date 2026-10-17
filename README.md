@@ -55,11 +55,13 @@ AutoThrottle dynamically lowers your download client speeds while something is p
 
 ### Dispatcharr
 
-Add a media server with type **Dispatcharr**, its base URL, and an administrator API key. Map it to a download client as usual. AutoThrottle checks `/proxy/ts/status` every two seconds, authenticating with `X-API-Key`. The connection test verifies the authenticated response; an expiring JWT is not needed.
+Add a media server with type **Dispatcharr**, its base URL, and an administrator API key. Map it to a download client as usual. AutoThrottle checks the combined `/proxy/stats/` endpoint every two seconds, authenticating with `X-API-Key`. The connection test requires valid live, VOD and catch-up sections; an expiring JWT is not needed.
 
-Each connected live TS proxy client counts as playback, including recording clients. A channel buffer with no clients does not count. **Ignore local network playback** uses each client's reported IP address; unknown addresses still count. Reverse proxies must preserve the real client IP for that exemption to be useful. Channel detail is requested when the summary omits clients beyond its ten-client limit.
+Each reported live, VOD or catch-up client counts as playback, including clients making a recording. A live channel buffer with no clients does not count. **Ignore local network playback** uses each client's reported IP address; unknown addresses still count. Reverse proxies must preserve the real client IP for that exemption to be useful. Live channel detail is requested when the summary omits clients beyond its ten-client limit.
 
-This integration does not observe VOD, catch-up, direct redirects that bypass the live proxy, or the player's pause/position state. An open connection continues to count. If polling fails, the last known sessions are kept until a successful response reconciles them.
+VOD position/duration and catch-up pause/position are displayed when Dispatcharr reports them. A paused catch-up session still counts. Other players may buffer or pause without reporting that state; a reported connection continues to count. Dispatcharr can retain an idle VOD session for reconnection, so release follows the server's session lifecycle. If polling fails or a required status section is missing, the last known sessions are kept until a successful response reconciles them.
+
+**Coverage is incomplete; the integration PR is held closed.** Live tests confirmed that provider redirects and playback of saved DVR files can transfer video while all three Dispatcharr statistics sections report zero clients. Complete playback coverage requires additional session reporting from Dispatcharr and, for provider redirects, a way to observe playback after the hand-off. These are unresolved requirements, not excluded features. See the [playback coverage report](docs/dispatcharr-playback-coverage.md).
 
 ### qBittorrent speed schedules
 

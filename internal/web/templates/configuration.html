@@ -373,7 +373,7 @@
         {{template "credentialfield" dict "Label" "API key" "Name" "api_token"
           "HasCredential" .EditMediaServer.HasCredential "Placeholder" "API key"}}
       </div>
-      <p class="at-field-hint" data-serverhint="dispatcharr" hidden>Use a Dispatcharr administrator API key. Connected live TS proxy clients are checked every two seconds. Direct redirects and VOD are not included.</p>
+      <p class="at-field-hint" data-serverhint="dispatcharr" hidden>Use a Dispatcharr administrator API key. Live, VOD and catch-up sessions are checked every two seconds. Coverage is incomplete: Dispatcharr currently does not report provider redirects or saved DVR file playback.</p>
       <label class="at-check-label">
         <input class="at-checkbox" type="checkbox" name="skip_local_playback" {{if .EditMediaServer.SkipLocalPlayback}}checked{{end}}>
         <span class="at-check-text">

@@ -24,9 +24,38 @@ type dispatcharrChannel struct {
 	Clients     []dispatcharrClient `json:"clients"`
 }
 
-// DispatcharrWatcher watches connected live TS proxy clients. Dispatcharr
-// has no player pause/position feed: a connected client counts until it
-// disconnects, including a client consuming a recording.
+type dispatcharrVODClient struct {
+	ID        string  `json:"client_id"`
+	IP        string  `json:"client_ip"`
+	UserAgent string  `json:"user_agent"`
+	Position  float64 `json:"position_seconds"`
+}
+
+type dispatcharrVODContent struct {
+	Type        string                 `json:"content_type"`
+	ID          string                 `json:"content_uuid"`
+	Name        string                 `json:"content_name"`
+	ClientCount int                    `json:"connection_count"`
+	Clients     []dispatcharrVODClient `json:"connections"`
+	Metadata    struct {
+		Duration float64 `json:"duration_secs"`
+	} `json:"content_metadata"`
+}
+
+type dispatcharrCatchupSession struct {
+	ID             string              `json:"session_id"`
+	Name           string              `json:"channel_name"`
+	ClientCount    int                 `json:"connection_count"`
+	Clients        []dispatcharrClient `json:"connections"`
+	Paused         bool                `json:"paused"`
+	Position       *float64            `json:"playback_base_secs"`
+	PositionAnchor *float64            `json:"position_anchor_at"`
+}
+
+// DispatcharrWatcher watches the sessions Dispatcharr exposes through its
+// combined live, VOD and catch-up statistics. A reported connection counts
+// even when paused. Provider redirects and DVR file playback are not exposed
+// by that API; their absence cannot be interpreted as stopped playback.
 type DispatcharrWatcher struct {
 	BaseURL           string
 	APIKey            string
@@ -85,7 +114,7 @@ func (w *DispatcharrWatcher) update(ctx context.Context, sessions []Session) {
 	for key, session := range next {
 		if prev, had := previous[key]; !had {
 			emit(ctx, w.events, session, true)
-		} else if prev.Title != session.Title || prev.Device != session.Device || prev.Local != session.Local {
+		} else if prev != session {
 			emitDetail(ctx, w.events, session)
 		}
 	}
@@ -102,21 +131,116 @@ func (w *DispatcharrWatcher) get(ctx context.Context, path string, out any) erro
 	}, out)
 }
 
-// Snapshot also serves the manager's reconciliation path. The summary
-// includes at most ten clients per channel; request details when truncated
-// so a remote viewer beyond those ten cannot be exempted as local.
+// Snapshot requires all three sections. Falling back to live-only statistics
+// would silently release the throttle during VOD or catch-up playback.
 func (w *DispatcharrWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 	var status struct {
-		Channels *[]dispatcharrChannel `json:"channels"`
+		Live struct {
+			Channels *[]dispatcharrChannel `json:"channels"`
+		} `json:"live"`
+		VOD struct {
+			Contents *[]dispatcharrVODContent `json:"vod_connections"`
+			Total    int                      `json:"total_connections"`
+		} `json:"vod"`
+		Catchup struct {
+			Sessions *[]dispatcharrCatchupSession `json:"timeshift_sessions"`
+			Total    int                          `json:"total_connections"`
+		} `json:"catchup"`
 	}
-	if err := w.get(ctx, "/proxy/ts/status", &status); err != nil {
-		return nil, fmt.Errorf("reading Dispatcharr live proxy status: %w", err)
+	if err := w.get(ctx, "/proxy/stats/", &status); err != nil {
+		return nil, fmt.Errorf("reading Dispatcharr playback status: %w", err)
 	}
-	if status.Channels == nil {
-		return nil, fmt.Errorf("Dispatcharr live proxy status is missing the channels list")
+	if status.Live.Channels == nil || status.VOD.Contents == nil || status.Catchup.Sessions == nil || status.VOD.Total < 0 || status.Catchup.Total < 0 {
+		return nil, fmt.Errorf("Dispatcharr playback status must include live, VOD and catch-up lists")
 	}
+	sessions, err := w.liveSessions(ctx, *status.Live.Channels)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	vodReported := 0
+	for _, content := range *status.VOD.Contents {
+		if content.ID == "" || content.Type == "" || content.ClientCount < 0 {
+			return nil, fmt.Errorf("invalid Dispatcharr VOD content identity or count")
+		}
+		seen := make(map[string]bool)
+		for _, client := range content.Clients {
+			if client.ID == "" || seen[client.ID] {
+				return nil, fmt.Errorf("invalid Dispatcharr VOD client identity")
+			}
+			seen[client.ID] = true
+			local := embySessionIsLocal(client.IP)
+			if w.SkipLocalPlayback && local {
+				continue
+			}
+			sessions = append(sessions, Session{
+				Key:   "vod/" + content.Type + "/" + content.ID + "/" + client.ID,
+				Title: content.Name, Device: client.UserAgent, Local: local,
+				Position: dispatcharrSeconds(client.Position), PositionAt: now,
+				Duration: dispatcharrSeconds(content.Metadata.Duration),
+			})
+		}
+		count := max(content.ClientCount, len(seen))
+		vodReported += count
+		if content.ClientCount > len(seen) {
+			sessions = append(sessions, Session{Key: "vod/" + content.Type + "/" + content.ID + "/unreported", Title: content.Name})
+		}
+	}
+	if status.VOD.Total > vodReported {
+		sessions = append(sessions, Session{Key: "vod/unreported", Title: "VOD"})
+	}
+	catchupReported := 0
+	for _, playback := range *status.Catchup.Sessions {
+		if playback.ID == "" || playback.ClientCount < 0 {
+			return nil, fmt.Errorf("invalid Dispatcharr catch-up session identity or count")
+		}
+		var position time.Duration
+		if playback.Position != nil {
+			position = dispatcharrSeconds(*playback.Position)
+			if !playback.Paused && playback.PositionAnchor != nil {
+				position += dispatcharrSeconds(float64(now.UnixNano())/1e9 - *playback.PositionAnchor)
+			}
+		}
+		seen := make(map[string]bool)
+		for _, client := range playback.Clients {
+			if client.ID == "" || seen[client.ID] {
+				return nil, fmt.Errorf("invalid Dispatcharr catch-up client identity")
+			}
+			seen[client.ID] = true
+			local := embySessionIsLocal(client.IP)
+			if w.SkipLocalPlayback && local {
+				continue
+			}
+			sessions = append(sessions, Session{
+				Key:   "catchup/" + playback.ID + "/" + client.ID,
+				Title: playback.Name, Device: client.UserAgent, Local: local,
+				Paused: playback.Paused, Position: position, PositionAt: now,
+			})
+		}
+		catchupReported += max(playback.ClientCount, len(seen))
+		if playback.ClientCount > len(seen) {
+			sessions = append(sessions, Session{Key: "catchup/" + playback.ID + "/unreported", Title: playback.Name, Paused: playback.Paused})
+		}
+	}
+	if status.Catchup.Total > catchupReported {
+		sessions = append(sessions, Session{Key: "catchup/unreported", Title: "Catch-up"})
+	}
+	return sessions, nil
+}
+
+func dispatcharrSeconds(seconds float64) time.Duration {
+	// Treat absent, negative and overflowing timing metadata as unknown.
+	if seconds <= 0 || seconds >= float64(1<<63-1)/float64(time.Second) {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
+}
+
+// The live summary includes at most ten clients per channel. Request details
+// when truncated so a remote viewer beyond those ten cannot be exempted.
+func (w *DispatcharrWatcher) liveSessions(ctx context.Context, channels []dispatcharrChannel) ([]Session, error) {
 	var sessions []Session
-	for _, channel := range *status.Channels {
+	for _, channel := range channels {
 		if channel.ID == "" || channel.ClientCount < 0 {
 			return nil, fmt.Errorf("invalid Dispatcharr channel status")
 		}
