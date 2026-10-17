@@ -2,7 +2,7 @@
 
 The integration monitors playback for which Dispatcharr fetches the upstream video: live TV, VOD, catch-up and active recording jobs. One reported client is enough to trigger throttling. Direct provider redirects and playback of finished DVR files are outside the agreed bandwidth-monitoring scope. An active recording counts through its normal live-stream connection.
 
-The PR remains a draft as requested. Redirect and finished-recording playback are accepted boundaries, not blockers requiring additional Dispatcharr features.
+Redirect and finished-recording playback are accepted boundaries, not blockers requiring additional Dispatcharr features.
 
 ## Verification on Unraid
 
