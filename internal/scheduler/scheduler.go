@@ -31,6 +31,7 @@ type Scheduler struct {
 	resolveMu sync.Mutex                // serialises remote rate changes and recovery writes
 	stopped   bool                      // guarded by resolveMu
 	active    map[int64]map[string]bool // media server ID -> active session keys
+	observed  map[int64]bool            // an authoritative snapshot has arrived this run
 	// live is each active session's latest description (title, device,
 	// position) for the Dashboard; throttling needs only the keys.
 	live map[int64]map[string]clients.Session
@@ -77,6 +78,7 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		encryptionKey: encryptionKey,
 		settings:      store,
 		active:        make(map[int64]map[string]bool),
+		observed:      make(map[int64]bool),
 		live:          make(map[int64]map[string]clients.Session),
 		applied:       make(map[int64]appliedState),
 		limiterFor:    clients.RateLimiterFor,
@@ -215,6 +217,7 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 	s.mu.Lock()
 	delete(s.active, mediaServerID)
 	delete(s.live, mediaServerID)
+	delete(s.observed, mediaServerID)
 	s.mu.Unlock()
 	live.Notify(s.notify, live.Dashboard)
 
@@ -227,7 +230,7 @@ func (s *Scheduler) ClearSessions(mediaServerID int64) {
 
 // ReplaceSessions overwrites a server's active set with an authoritative
 // snapshot, correcting event-stream drift. It runs on a timer, so it
-// re-resolves only when the set actually changed.
+// re-resolves when the set changes or the first authoritative snapshot arrives.
 func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Session) {
 	next := make(map[string]bool, len(sessions))
 	detail := make(map[string]clients.Session, len(sessions))
@@ -239,6 +242,8 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	// Detail is written even when the set is unchanged: position moves,
 	// and event-started sessions get their title from snapshots.
 	s.mu.Lock()
+	firstSnapshot := !s.observed[mediaServerID]
+	s.observed[mediaServerID] = true
 	unchanged := sameSessionSet(s.active[mediaServerID], next)
 	shown := !unchanged || len(s.live[mediaServerID]) != len(detail)
 	for key, session := range detail {
@@ -263,6 +268,9 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	}
 
 	if unchanged {
+		if firstSnapshot {
+			s.ResolveAsync()
+		}
 		return
 	}
 
@@ -377,6 +385,7 @@ type resolution struct {
 	causeServerName  string
 	causeServerID    int64 // for the log's cause tags
 	refreshScheduled bool
+	holdForSnapshot  bool
 }
 
 func (s *Scheduler) resolve(ctx context.Context) {
@@ -406,7 +415,7 @@ func (s *Scheduler) resolveWithSchedules(ctx context.Context, refresh bool) {
 	}
 	pending := make(map[int64]bool)
 	for _, dl := range downloaders {
-		if !dl.Enabled && dl.Type == "qbittorrent" {
+		if _, aware := s.limiterFor(dl.Type).(clients.ScheduledRateLimiter); dl.Type == "qbittorrent" && aware {
 			value, _, err := s.db.GetSetting(scheduleStateKey(dl.ID))
 			if err != nil {
 				slog.Error("scheduler: reading rate recovery", "error", err)
@@ -456,12 +465,21 @@ func (s *Scheduler) resolveWithSchedules(ctx context.Context, refresh bool) {
 				}
 			}
 		}
+		hold := false
+		if dl.Enabled && !throttled && !paused && pending[dl.ID] {
+			for _, m := range byDownloader[dl.ID] {
+				if _, enabled := msNameByID[m.MediaServerID]; enabled && !s.observed[m.MediaServerID] {
+					hold = true
+				}
+			}
+		}
 		toApply = append(toApply, resolution{
 			downloader:       dl,
 			throttled:        throttled,
 			causeServerName:  causeServerName,
 			causeServerID:    causeServerID,
 			refreshScheduled: refresh && s.applied[dl.ID].scheduled,
+			holdForSnapshot:  hold,
 		})
 	}
 
@@ -533,6 +551,9 @@ func (s *Scheduler) ThrottlingSince() (since time.Time, ok bool) {
 }
 
 func (s *Scheduler) applyState(ctx context.Context, r resolution) {
+	if r.holdForSnapshot {
+		return // An unavailable server is not evidence that playback ended.
+	}
 	dl, throttled, causeServerName, causeServerID := r.downloader, r.throttled, r.causeServerName, r.causeServerID
 	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)

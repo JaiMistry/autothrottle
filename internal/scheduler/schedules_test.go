@@ -78,6 +78,8 @@ func scheduleFixture(t *testing.T) (*Scheduler, *db.DB, *scheduledQbit, int64, i
 	if _, err := d.CreateMapping(msID, dlID); err != nil {
 		t.Fatal(err)
 	}
+	s.ReplaceSessions(msID, nil)
+	s.resolve(context.Background())
 	return s, d, q, msID, dlID
 }
 
@@ -101,7 +103,7 @@ func TestScheduledRatesFollowModeAndRecoverAfterRestart(t *testing.T) {
 		t.Fatalf("wrong current-mode display: %+v", s.State(dl))
 	}
 	restarted := New(d, make([]byte, 32), settings.New(d))
-	restarted.HandleSessionEvent(ms, clients.Session{Key: "viewer"}, true)
+	restarted.ReplaceSessions(ms, []clients.Session{{Key: "viewer"}})
 	restarted.resolve(context.Background())
 	restarted.HandleSessionEvent(ms, clients.Session{Key: "viewer"}, false)
 	restarted.resolve(context.Background())
@@ -111,6 +113,28 @@ func TestScheduledRatesFollowModeAndRecoverAfterRestart(t *testing.T) {
 	value, _, err := d.GetSetting(scheduleStateKey(dl))
 	if err != nil || value != "" {
 		t.Fatalf("recovery state not cleared: %s, %v", value, err)
+	}
+}
+
+func TestScheduledRecoveryWaitsForAuthoritativeEmptySnapshot(t *testing.T) {
+	s, d, q, ms, _ := scheduleFixture(t)
+	original := q.snapshot()
+	s.HandleSessionEvent(ms, clients.Session{Key: "viewer"}, true)
+	s.resolve(context.Background())
+	capped := q.snapshot()
+	restarted := New(d, make([]byte, 32), settings.New(d))
+	// A failed startup snapshot has reported nothing: it must not release
+	// the durable throttle left by the previous process.
+	restarted.resolve(context.Background())
+	if !reflect.DeepEqual(q.snapshot(), capped) {
+		t.Fatal("released rates before the media server answered")
+	}
+	// Even an empty first snapshot must resolve, although the session set
+	// was already empty in memory. Otherwise recovery remains stuck.
+	restarted.ReplaceSessions(ms, nil)
+	restarted.resolve(context.Background())
+	if !reflect.DeepEqual(q.snapshot(), original) {
+		t.Fatalf("authoritative empty snapshot did not release: %v", q.snapshot())
 	}
 }
 
