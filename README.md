@@ -61,7 +61,7 @@ Each reported live, VOD or catch-up client counts as playback, including clients
 
 VOD position/duration and catch-up pause/position are displayed when Dispatcharr reports them. A paused catch-up session still counts. Other players may buffer or pause without reporting that state; a reported connection continues to count. Dispatcharr can retain an idle VOD session for reconnection, so release follows the server's session lifecycle. If polling fails or a required status section is missing, the last known sessions are kept until a successful response reconciles them.
 
-**Coverage is incomplete; the integration PR is held closed.** Live tests confirmed that provider redirects and playback of saved DVR files can transfer video while all three Dispatcharr statistics sections report zero clients. Complete playback coverage requires additional session reporting from Dispatcharr and, for provider redirects, a way to observe playback after the hand-off. These are unresolved requirements, not excluded features. See the [playback coverage report](docs/dispatcharr-playback-coverage.md).
+**Coverage is incomplete; the integration PR is a draft.** Live tests confirmed that provider redirects and playback of saved DVR files can transfer video while all three Dispatcharr statistics sections report zero clients. Complete playback coverage requires additional session reporting from Dispatcharr and, for provider redirects, a way to observe playback after the hand-off. These are unresolved requirements, not excluded features. See the [playback coverage report](docs/dispatcharr-playback-coverage.md).
 
 ### qBittorrent speed schedules
 

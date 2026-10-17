@@ -1,6 +1,6 @@
 # Dispatcharr playback coverage
 
-The requirement is to throttle whenever any Dispatcharr video is playing, starting with one viewer. The integration remains incomplete and its PR is held closed until that requirement can be verified. Missing playback paths are blockers rather than accepted scope exclusions.
+The requirement is to throttle whenever any Dispatcharr video is playing, starting with one viewer. The integration remains incomplete and its PR remains a draft until that requirement can be verified. Missing playback paths are blockers rather than accepted scope exclusions.
 
 ## Verification on Unraid
 
@@ -26,7 +26,7 @@ The failed initial redirect attempts returned provider HTTP 403 and were not cou
 - Preserve the existing local-playback option, conservative handling of unknown IPs, full live client detail beyond the summary's ten-client cap, and outage/restart recovery.
 - Count saved-recording playback independently of the recording job that originally fetched its live channel.
 - Obtain trustworthy start, ongoing-playback and stop information for provider redirects. A 302 request only proves a hand-off; it cannot prove how long the player remains connected to the provider. A fixed timeout would be a guess and would not meet the requirement.
-- Re-run end-to-end first-viewer throttle/release tests for every supported playback path before reopening the PR.
+- Re-run end-to-end first-viewer throttle/release tests for every supported playback path before marking the PR ready for review.
 
 ## Dispatcharr evidence
 
