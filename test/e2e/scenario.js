@@ -784,14 +784,12 @@ const deluge = {
     const anon = await (await browser.createBrowserContext()).newPage();
     await anon.setViewport({ width: 1440, height: 1000 });
     const anonAt = () => new URL(anon.url()).pathname + new URL(anon.url()).search;
-    const lost = await anon.goto(APP + '/no-such-page', { waitUntil: 'networkidle2' });
-    const anonButtons = await anon.$$eval('.at-nf-actions a', (as) => as.map((a) => a.textContent.trim()));
-    check(lost.status() === 404 && JSON.stringify(anonButtons) === '["Log in"]', 'a dead link signed out gets the 404 with only Log in', `${lost.status()} ${JSON.stringify(anonButtons)}`);
-    await Promise.all([anon.waitForNavigation(), anon.click('.at-nf-actions a')]);
+    await anon.goto(APP + '/no-such-page', { waitUntil: 'networkidle2' });
+    check(anonAt() === '/login' && !(await anon.$('.at-nf')), 'a dead link signed out goes to the sign-in page, not a 404', anonAt());
     await anon.type('[name=username]', 'admin');
     await anon.type('[name=password]', 'e2e-password');
     await Promise.all([anon.waitForNavigation(), anon.click('button[type=submit]')]);
-    check(anonAt() === '/no-such-page' && (await anon.$$('.at-nf-actions a')).length === 2, 'signing in from it comes back to the same address', anonAt());
+    check(anonAt() === '/' && (await anon.title()) === 'AutoThrottle', 'and signing in goes to the Dashboard, not back to the dead link', anonAt());
     const anon2 = await (await browser.createBrowserContext()).newPage();
     await anon2.goto(APP + '/logs?level=warn', { waitUntil: 'networkidle2' });
     check(new URL(anon2.url()).pathname === '/login', 'a real page signed out asks for a sign-in first', anon2.url());
