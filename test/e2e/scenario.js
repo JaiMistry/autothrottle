@@ -137,6 +137,21 @@ const qbittorrent = {
 };
 
 // Stops and starts containers through the Docker socket run.sh mounts in.
+// What Docker's HEALTHCHECK last said of a container.
+function dockerHealth(container = 'e2e-autothrottle') {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: '/var/run/docker.sock', path: `/containers/${container}/json` }, (res) => {
+      let body = '';
+      res.on('data', (d) => { body += d; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body).State?.Health?.Status || 'none'); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 function docker(action, container = 'e2e-autothrottle') {
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath: '/var/run/docker.sock', method: 'POST', path: `/containers/${container}/${action}` }, (res) => {
@@ -382,6 +397,8 @@ const deluge = {
       return d.hero === 'Nothing is throttled' && d.downloaders.every((s) => s === 'normal') ? d : null;
     }, 30000);
     check(!!idle, 'the Dashboard says nothing is throttled', JSON.stringify(await dashboard()));
+    const healthy = await until('Docker to call it healthy', async () => ((await dockerHealth()) === 'healthy' ? true : null), 60000);
+    check(!!healthy, 'Docker\'s health check calls it healthy', await dockerHealth());
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited');
     check((await deluge.limits()).down === 0, 'Deluge is unlimited');
@@ -460,6 +477,8 @@ const deluge = {
     check(!!rejoined, 'the open page reconnects its stream after the restart', await stream());
     await navigate('/');
     check(at() === '/', 'the browser is still signed in after the restart', at());
+    const healthyAgain = await until('Docker to call it healthy again', async () => ((await dockerHealth()) === 'healthy' ? true : null), 60000);
+    check(!!healthyAgain, 'and healthy again', await dockerHealth());
     const resumed = await until('the Dashboard to show it', async () =>
       ((await dashboard()).downloaders.every((s) => s === 'throttled') ? true : null), 30000);
     check(!!resumed, 'the Dashboard shows the clients throttled again');
@@ -528,11 +547,33 @@ const deluge = {
 
     section('Playback stops');
     await player.stop();
+    // Autoplay starts the next episode seconds later: the throttle holds.
+    // qBittorrent itself is watched all the way through.
+    const samples = [];
+    const watch = async (ms) => {
+      for (const end = Date.now() + ms; Date.now() < end; await sleep(250)) samples.push((await qbittorrent.limits()).down);
+    };
+    // Plex can take a few seconds to drop the session.
+    let hint = '';
+    for (const end = Date.now() + 20000; Date.now() < end && !/Playback ended/.test(hint);) {
+      await watch(1000);
+      hint = await text('#dash-live .at-hero-reason');
+    }
+    check(/Playback ended/.test(hint), 'the throttle holds a moment after playback ends, and the Dashboard says why', hint);
+    const nextEpisode = startPlayer();
+    await watch(4000);
+    const nextShown = await until('the next episode to show', async () => ((await dashboard()).hero.includes('throttled') && !(await text('#dash-live .at-hero-reason')) ? true : null), 30000);
+    check(!!nextShown, 'the next episode carries on the throttle', await text('#dash-live .at-hero-reason'));
+    check(samples.length > 10 && samples.every((d) => d === 1500 * 1024), 'with qBittorrent never restored in between', JSON.stringify([...new Set(samples)]));
+    await nextEpisode.stop();
+    const stoppedAt = Date.now();
     const released = await until('the release', async () => {
       const d = await dashboard();
       return d.hero === 'Nothing is throttled' ? d : null;
     });
     check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
+    const waited = Math.round((Date.now() - stoppedAt) / 1000);
+    check(waited >= 25 && waited <= 45, 'about 30 seconds after the last playback ended', `${waited}s`);
     check((await dashboard()).pill === 'Idle', 'and the status beside the title is back to Idle', (await dashboard()).pill);
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
