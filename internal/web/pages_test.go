@@ -253,8 +253,9 @@ func TestTabTitles(t *testing.T) {
 	expectBody(t, fresh.get("/setup"), "<title>Set up</title>")
 }
 
-// An unknown address gets the 404 signed in or not; a real page asks for
-// a sign-in first.
+// An unknown address gets the 404 signed in. Signed out, it is the
+// sign-in page, from which the Dashboard follows, not the dead link; a
+// real page signed out comes back after the sign-in.
 func TestNotFoundPage(t *testing.T) {
 	app := newApp(t)
 	rec := app.get("/no-such-page")
@@ -268,14 +269,20 @@ func TestNotFoundPage(t *testing.T) {
 	expectStatus(t, app.post("/no-such-page", nil), http.StatusNotFound)
 
 	signedOut := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
-	rec = signedOut.get("/config/servers/9?x=1")
-	expectStatus(t, rec, http.StatusNotFound)
-	expectBody(t, rec, "no route for GET /config/servers/9")
-	expectBody(t, rec, `href="/login?next=%2Fconfig%2Fservers%2F9%3Fx%3D1">Log in`)
-	if strings.Contains(rec.Body.String(), "Open Logs") {
-		t.Error("the signed-out 404 offers Logs")
+	expectRedirect(t, signedOut.get("/config/servers/9?x=1"), "/login")
+	expectRedirect(t, signedOut.post("/no-such-page", nil), "/login")
+	signedOut.htmx = true
+	if rec := signedOut.get("/no-such-page"); rec.Header().Get("HX-Redirect") != "/login" {
+		t.Errorf("an htmx request signed out: %d, HX-Redirect %q", rec.Code, rec.Header().Get("HX-Redirect"))
 	}
+	signedOut.htmx = false
 	expectRedirect(t, signedOut.get("/logs"), "/login?next=%2Flogs")
+	// Once setup is done, /setup is a dead link like any other.
+	expectRedirect(t, signedOut.get("/setup"), "/login")
+	// And a signed-out scan of made-up addresses leaves the log alone.
+	if events, _ := signedOut.db.ListEvents(50); len(events) != 0 {
+		t.Errorf("signed-out 404s were logged: %+v", events)
+	}
 }
 
 // Signing in returns to the page asked for, and only ever one of this app.

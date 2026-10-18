@@ -24,9 +24,10 @@ func TestNotFoundIsLogged(t *testing.T) {
 	if events, _ := app.db.ListEvents(10); len(events) != 1 {
 		t.Errorf("%d events, want the first one only", len(events))
 	}
+	// Signed out, a dead link is the sign-in page, and nothing is logged.
 	anon := newAppWith(t, map[string]string{"AUTH_USERNAME": testUser, "AUTH_PASSWORD": testPass})
-	anon.get("/old-bookmark")
-	if events, _ := anon.db.ListEvents(10); len(events) != 1 || events[0].Message != "no route for GET /old-bookmark" {
+	expectRedirect(t, anon.get("/old-bookmark"), "/login")
+	if events, _ := anon.db.ListEvents(10); len(events) != 0 {
 		t.Errorf("signed-out 404 events = %+v", events)
 	}
 }

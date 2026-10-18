@@ -2,7 +2,6 @@ package web
 
 import (
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/JaiMistry/autothrottle/internal/auth"
@@ -56,22 +55,23 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 // notFoundData is the 404 page: the request written up as a log line.
 type notFoundData struct {
 	pageData
-	SignedIn bool
-	Time     string
-	Message  string
-	LoginURL string
+	Time    string
+	Message string
 }
 
-// notFound answers an address no page lives at, signed in or not; its Log
-// in button comes back here.
+// notFound answers an address no page lives at. Only someone signed in
+// sees it: anyone else goes to the sign-in page, and from there to the
+// Dashboard rather than back to the dead link.
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
+	if !auth.Authenticated(s.auth, s.sessions, r) {
+		auth.RedirectToLogin(w, r)
+		return
+	}
 	now := time.Now()
 	data := notFoundData{
 		pageData: pageData{Title: "Page not found", Version: version.Label(), Asset: s.assets.URL},
-		SignedIn: auth.Authenticated(s.auth, s.sessions, r),
 		Time:     now.Format("15:04:05"),
 		Message:  notFoundMessage(r.Method, r.URL.Path),
-		LoginURL: "/login?next=" + url.QueryEscape(r.URL.RequestURI()),
 	}
 	s.recordNotFound(r, data.Message, now)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

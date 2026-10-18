@@ -38,6 +38,10 @@ func redirect(w http.ResponseWriter, r *http.Request, to string) {
 	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
+// RedirectToLogin sends someone signed out to the sign-in page, with
+// nothing to come back to afterwards.
+func RedirectToLogin(w http.ResponseWriter, r *http.Request) { redirect(w, r, "/login") }
+
 // SafeNext returns raw if it is an address in this app, else "/", so a
 // crafted login link cannot redirect off-site.
 func SafeNext(raw string) string {

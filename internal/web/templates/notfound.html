@@ -13,12 +13,8 @@
     <span class="at-nf-msg">{{.Message}}</span>
   </div>
   <div class="at-nf-actions">
-    {{if .SignedIn}}
     <a class="at-btn at-btn--primary" href="/">Go to Dashboard</a>
     <a class="at-btn" href="/logs">Open Logs</a>
-    {{else}}
-    <a class="at-btn at-btn--primary" href="{{.LoginURL}}">Log in</a>
-    {{end}}
   </div>
 </div>
 {{end}}

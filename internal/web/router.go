@@ -171,8 +171,8 @@ func (s *Server) Router() http.Handler {
 			http.Redirect(w, r, "/setup", http.StatusSeeOther)
 			return
 		}
-		// Real pages ask for a sign-in; an address with no page gets the
-		// 404 signed in or not, as there is nothing behind it to protect.
+		// Real pages ask for a sign-in and come back after it; an address
+		// with no page is the 404 signed in, the sign-in page signed out.
 		if _, pattern := protected.Handler(r); pattern == "" {
 			s.notFound(w, r)
 			return
