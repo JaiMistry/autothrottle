@@ -37,6 +37,8 @@ type Scheduler struct {
 	applied map[int64]appliedState
 	// paused mirrors the persisted setting so resolve never reads it.
 	paused bool
+	// exiting is set by Release: from then on nothing is throttled.
+	exiting bool
 
 	// nextEpisodeBy is, per media server, until when an episode that just
 	// ended near its end holds the throttle for autoplay's next one, and
@@ -118,6 +120,16 @@ func (s *Scheduler) SetPaused(ctx context.Context, paused bool) {
 	if err := s.settings.SetPaused(paused); err != nil {
 		slog.Error("scheduler: persisting pause state", "error", err)
 	}
+	s.resolve(ctx)
+}
+
+// Release puts every downloader back to its default rates and keeps it
+// there, for an exit: a client left throttled stays so until AutoThrottle
+// next runs. Nothing is persisted, so the next start throttles afresh.
+func (s *Scheduler) Release(ctx context.Context) {
+	s.mu.Lock()
+	s.exiting = true
+	s.mu.Unlock()
 	s.resolve(ctx)
 }
 
@@ -472,7 +484,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	}
 
 	s.mu.Lock()
-	paused := s.paused
+	paused := s.paused || s.exiting
 	now := time.Now()
 	var toApply []resolution
 	for _, dl := range downloaders {
@@ -602,6 +614,11 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	dl, throttled, causeServerName, causeServerID := r.downloader, r.throttled, r.causeServerName, r.causeServerID
 	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
 	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
+	s.mu.Lock()
+	if s.exiting {
+		message = fmt.Sprintf("restored default rate for %s (AutoThrottle is exiting)", dl.Name)
+	}
+	s.mu.Unlock()
 	if throttled {
 		downloadLimit, uploadLimit = dl.BackupDownloadLimit, dl.BackupUploadLimit
 		message = fmt.Sprintf("throttled %s because %s is playing", dl.Name, causeServerName)

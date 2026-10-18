@@ -19,6 +19,10 @@ const dataDirHint = "check the bind mount for /data"
 // The tray icon that reads it is Windows-only.
 const localStatusEnabled = false
 
+// Not in the container: a restart, as for an update, would lift a throttle
+// mid-stream for the seconds it takes.
+const releaseOnExit = false
+
 // Not 8080, which is qBittorrent's default.
 const listenAddr = ":7676"
 

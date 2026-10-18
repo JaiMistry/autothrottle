@@ -19,6 +19,10 @@ const dataDirHint = "check that the folder is not read-only"
 // The tray icon reads it to show what AutoThrottle is doing.
 const localStatusEnabled = true
 
+// Exit in the tray stops the service: a client it left throttled would
+// stay so until the next start.
+const releaseOnExit = true
+
 // Not 8080, which is qBittorrent's default.
 const listenAddr = ":7676"
 

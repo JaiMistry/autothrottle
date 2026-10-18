@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,39 @@ func TestNextEpisodeLikely(t *testing.T) {
 		if got := nextEpisodeLikely(c.session, now); got != c.want {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// An exit restores default rates, says why, and nothing throttles again
+// after it. It isn't a pause: the next start throttles as usual.
+func TestReleaseRestoresForGood(t *testing.T) {
+	s, database, limiter := newTestScheduler(t)
+	msID, dlID := addServerAndDownloader(t, database)
+	if _, err := database.CreateMapping(msID, dlID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s.HandleSessionEvent(msID, clients.Session{Key: "movie"}, true)
+	s.resolve(ctx)
+	if last(limiter).download != 500 {
+		t.Fatalf("not throttled: %+v", limiter.snapshot())
+	}
+
+	s.Release(ctx)
+	if last(limiter).download != 0 || s.State(dlID).Throttled {
+		t.Fatalf("not restored: %+v", limiter.snapshot())
+	}
+	events, err := database.ListEvents(1)
+	if err != nil || len(events) != 1 || !strings.Contains(events[0].Message, "AutoThrottle is exiting") {
+		t.Errorf("the restore's event = %+v, %v", events, err)
+	}
+
+	s.HandleSessionEvent(msID, clients.Session{Key: "another"}, true)
+	s.resolve(ctx)
+	if last(limiter).download != 0 || s.State(dlID).Throttled {
+		t.Errorf("throttled again after the exit: %+v", limiter.snapshot())
+	}
+	if s.Paused() {
+		t.Error("an exit was saved as a pause")
 	}
 }

@@ -146,6 +146,11 @@ func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.
 	case <-ctx.Done():
 	}
 	logger.Info("shutting down")
+	if releaseOnExit {
+		releaseCtx, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
+		sched.Release(releaseCtx)
+		cancelRelease()
+	}
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
