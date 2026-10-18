@@ -78,6 +78,9 @@ Check ($null -ne $svc) 'the service is registered'
 Check ($svc.State -eq 'Running') "the service is running ($($svc.State))"
 Check ($svc.StartMode -eq 'Auto') "it starts with Windows ($($svc.StartMode))"
 Check ($svc.StartName -eq 'NT AUTHORITY\LocalService') "it runs as LocalService ($($svc.StartName))"
+# RP and WP: start and stop, for the tray's Exit and relaunch.
+$sddl = (& sc.exe sdshow AutoThrottle) -join ''
+Check ($sddl -match '\(A;;[A-Z]*RPWP[A-Z]*;;;IU\)') "anyone signed in can start and stop it ($sddl)"
 
 # 12 is Arm64 in Win32_Processor; everything else here is x64.
 $arm = (Get-CimInstance Win32_Processor | Select-Object -First 1).Architecture -eq 12

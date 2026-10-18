@@ -1,6 +1,6 @@
 // Command autothrottle-tray is the Windows tray icon. It shows what the
 // AutoThrottle service is doing and opens its page; the service does the
-// work whether or not the icon is running.
+// work whether or not the icon is running. Exit stops both.
 package main
 
 import (
@@ -32,7 +32,7 @@ func fetch(client *http.Client, url string) (status, error) {
 	return st, err
 }
 
-// describe is the menu's status line, and whether AutoThrottle answered.
+// describe is the tooltip's status line, and whether AutoThrottle answered.
 func describe(st status, err error) (string, bool) {
 	switch {
 	case err != nil:

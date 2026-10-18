@@ -90,7 +90,7 @@ func (s *service) Execute(_ []string, requests <-chan svc.ChangeRequest, status 
 			case svc.Interrogate:
 				status <- req.CurrentStatus
 			case svc.Stop, svc.Shutdown:
-				// run's own shutdown takes up to ten seconds.
+				// run's own shutdown takes up to fifteen seconds.
 				status <- svc.Status{State: svc.StopPending, WaitHint: 20000}
 				cancel()
 				if err := <-done; err != nil {
@@ -157,7 +157,30 @@ func installService() error {
 	if err := claimDataDir(dir); err != nil {
 		return err
 	}
+	if err := setAccess(s); err != nil {
+		return err
+	}
 	return setRecovery(s)
+}
+
+// serviceAccess is Windows' default for a service, except that anyone
+// signed in may also start and stop it (RP, WP), as the tray's Exit and
+// relaunch do. Changing or deleting it stays with administrators.
+const serviceAccess = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)"
+
+func setAccess(s *mgr.Service) error {
+	sd, err := windows.SecurityDescriptorFromString(serviceAccess)
+	if err != nil {
+		return err
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	if err := windows.SetSecurityInfo(s.Handle, windows.SE_SERVICE, windows.DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		return fmt.Errorf("letting users start and stop the service: %w", err)
+	}
+	return nil
 }
 
 // setRecovery restarts the service after a crash, backing off, and counts
