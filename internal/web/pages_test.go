@@ -186,7 +186,7 @@ func TestHeroStatements(t *testing.T) {
 		{"two throttled", heroInput{throttled: []string{"qBittorrent", "Transmission"}, servers: 1, downloaders: 2}, heroState{Statement: "qBittorrent and Transmission throttled", Tone: "warn"}},
 		{"three throttled", heroInput{throttled: []string{"A", "B", "C"}, servers: 1, downloaders: 3}, heroState{Statement: "A, B and 1 other throttled", Tone: "warn"}},
 		{"five throttled", heroInput{throttled: []string{"A", "B", "C", "D", "E"}, servers: 1, downloaders: 5}, heroState{Statement: "A, B and 3 others throttled", Tone: "warn"}},
-		{"playback just ended", heroInput{throttled: []string{"qBittorrent"}, releasing: true, servers: 1, downloaders: 1}, heroState{Statement: "qBittorrent throttled", Tone: "warn", Reason: "Playback ended. Default rates return in a moment, unless something starts playing again."}},
+		{"an episode just ended", heroInput{throttled: []string{"qBittorrent"}, releasing: true, servers: 1, downloaders: 1}, heroState{Statement: "qBittorrent throttled", Tone: "warn", Reason: "An episode just ended. Default rates return in a moment, unless the next one starts."}},
 		{"releasing one while another server plays", heroInput{throttled: []string{"qBittorrent"}, releasing: true, sessions: 1, servers: 2, downloaders: 2}, heroState{Statement: "qBittorrent throttled", Tone: "warn"}},
 		{"just booted", heroInput{unresolved: true, servers: 1, downloaders: 2}, heroState{Statement: "State not resolved yet", Tone: "dim", Reason: "Nothing mapped is playing."}},
 		{"idle", heroInput{servers: 1, downloaders: 2}, heroState{Statement: "Nothing is throttled", Tone: "good", Reason: "All downloaders at default rates."}},

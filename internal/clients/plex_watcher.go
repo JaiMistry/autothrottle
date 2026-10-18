@@ -193,6 +193,7 @@ func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
 			Duration:   time.Duration(s.Duration) * time.Millisecond,
 			Paused:     s.Player.State == "paused",
 			Local:      s.Player.Local,
+			Episode:    s.Type == "episode",
 		})
 		return
 	}
@@ -239,6 +240,7 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 			Duration:   time.Duration(s.Duration) * time.Millisecond,
 			Paused:     s.Player.State == "paused",
 			Local:      s.Player.Local,
+			Episode:    s.Type == "episode",
 		})
 	}
 	w.paused.retain(present)

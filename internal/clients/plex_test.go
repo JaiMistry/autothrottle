@@ -403,6 +403,10 @@ func TestPlexSnapshot(t *testing.T) {
 		byKey["s"].Title != "Andor" || !byKey["s"].Paused {
 		t.Fatalf("snapshot %+v", got)
 	}
+	// Whether autoplay may follow it with the next episode.
+	if !byKey["1"].Episode || byKey["m"].Episode {
+		t.Errorf("episode = %v, movie = %v", byKey["1"].Episode, byKey["m"].Episode)
+	}
 	if _, ok := w.lastPos["ended"]; ok {
 		t.Error("an ended session's position was kept")
 	}

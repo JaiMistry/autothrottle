@@ -38,10 +38,12 @@ type Scheduler struct {
 	// paused mirrors the persisted setting so resolve never reads it.
 	paused bool
 
-	// releaseAt is when each downloader whose playback ended goes back to
-	// its default rates; see restoreDelay.
-	releaseAt    map[int64]time.Time
-	restoreDelay time.Duration
+	// nextEpisodeBy is, per media server, until when an episode that just
+	// ended near its end holds the throttle for autoplay's next one, and
+	// releaseAt when each downloader so held goes back to default rates.
+	nextEpisodeBy map[int64]time.Time
+	releaseAt     map[int64]time.Time
+	restoreDelay  time.Duration
 
 	// throttlingSince is when the current throttle period began, zero
 	// while nothing is throttled. historyMu serialises period records.
@@ -80,6 +82,7 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		active:        make(map[int64]map[string]bool),
 		live:          make(map[int64]map[string]clients.Session),
 		applied:       make(map[int64]appliedState),
+		nextEpisodeBy: make(map[int64]time.Time),
 		releaseAt:     make(map[int64]time.Time),
 		restoreDelay:  settings.RestoreDelay,
 		limiterFor:    clients.RateLimiterFor,
@@ -98,7 +101,7 @@ func (s *Scheduler) SetNotifier(n live.Notifier) { s.notify = n }
 func (s *Scheduler) SetRestoreDelay(d time.Duration) { s.restoreDelay = d }
 
 // ReleasePending reports whether a downloader is still throttled only
-// because its playback ended moments ago.
+// because an episode ended moments ago, for autoplay's next one.
 func (s *Scheduler) ReleasePending() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,6 +168,10 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 		}
 		if !session.Local {
 			session.Local = prev.Local
+		}
+		// Plex's notifications don't say what kind of item it is.
+		if !session.Episode {
+			session.Episode = prev.Episode
 		}
 	}
 	s.live[mediaServerID][session.Key] = session
@@ -256,6 +263,8 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	// and event-started sessions get their title from snapshots.
 	s.mu.Lock()
 	unchanged := sameSessionSet(s.active[mediaServerID], next)
+	// What the ended ones were playing, for noteEnded below.
+	previous := s.live[mediaServerID]
 	shown := !unchanged || len(s.live[mediaServerID]) != len(detail)
 	for key, session := range detail {
 		if prev, ok := s.live[mediaServerID][key]; !ok || detailChanged(prev, session) {
@@ -285,6 +294,10 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	s.mu.Lock()
 	current := s.active[mediaServerID]
 	started, ended := changedSessionKeys(current, next)
+	now := time.Now()
+	for _, key := range ended {
+		s.noteEnded(mediaServerID, previous[key], now)
+	}
 	if len(next) == 0 {
 		delete(s.active, mediaServerID)
 	} else {
@@ -361,6 +374,9 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 			s.live[mediaServerID][session.Key] = session
 		}
 	} else {
+		if set[session.Key] {
+			s.noteEnded(mediaServerID, s.live[mediaServerID][session.Key], time.Now())
+		}
 		delete(set, session.Key)
 		delete(s.live[mediaServerID], session.Key)
 	}
@@ -385,6 +401,33 @@ func (s *Scheduler) recordSession(mediaServerID int64, session clients.Session, 
 		slog.Error("scheduler: recording session history",
 			"media_server_id", mediaServerID, "session", session.Key, "active", active, "error", err)
 	}
+}
+
+// noteEnded gives an episode that ended in its closing stretch a hold on
+// its server's downloaders, for autoplay's next episode. Anything else
+// restores at once. Called with s.mu held.
+func (s *Scheduler) noteEnded(mediaServerID int64, session clients.Session, now time.Time) {
+	if s.restoreDelay <= 0 || !nextEpisodeLikely(session, now) {
+		return
+	}
+	if until := now.Add(s.restoreDelay); until.After(s.nextEpisodeBy[mediaServerID]) {
+		s.nextEpisodeBy[mediaServerID] = until
+	}
+}
+
+// nextEpisodeLikely: a TV episode, playing (not paused, which an
+// abandoned pause ends as) until it stopped within its closing stretch,
+// where the credits and autoplay's countdown are. Its last reported
+// position is carried forward to now.
+func nextEpisodeLikely(session clients.Session, now time.Time) bool {
+	if !session.Episode || session.Paused || session.Duration <= 0 {
+		return false
+	}
+	position := session.Position
+	if !session.PositionAt.IsZero() {
+		position += now.Sub(session.PositionAt)
+	}
+	return session.Duration-position <= max(settings.EpisodeEnd, session.Duration/10)
 }
 
 type resolution struct {
@@ -439,13 +482,15 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		throttled := false
 		causeServerName := ""
 		causeServerID := int64(0)
-		mapped := false
+		var hold time.Time
 		if !paused {
 			for _, m := range byDownloader[dl.ID] {
 				if _, enabled := msNameByID[m.MediaServerID]; !enabled {
 					continue
 				}
-				mapped = true
+				if until := s.nextEpisodeBy[m.MediaServerID]; until.After(hold) {
+					hold = until
+				}
 				if len(s.active[m.MediaServerID]) > 0 {
 					throttled = true
 					causeServerName = msNameByID[m.MediaServerID]
@@ -455,24 +500,18 @@ func (s *Scheduler) resolve(ctx context.Context) {
 			}
 		}
 		switch prev := s.applied[dl.ID]; {
-		case throttled, !mapped, s.restoreDelay <= 0, !prev.throttled, prev.failure != "":
-			// Playing, turned off by the user (paused, or its mapping or
-			// server disabled), or nothing to hold.
+		case throttled, !hold.After(now), !prev.throttled, prev.failure != "":
+			// Playing, nothing to wait for, or turned off by the user:
+			// paused, or its mapping or server disabled, leave no hold.
 			delete(s.releaseAt, dl.ID)
 		default:
-			// Playback ended, but the next episode may be seconds away:
-			// the throttle holds a little longer before it is lifted.
-			at, holding := s.releaseAt[dl.ID]
-			if !holding {
-				at = now.Add(s.restoreDelay)
-				s.releaseAt[dl.ID] = at
-				time.AfterFunc(s.restoreDelay, s.ResolveAsync)
+			// An episode ended near its end, and autoplay's next one may
+			// be seconds away: the throttle holds until then.
+			if !s.releaseAt[dl.ID].Equal(hold) {
+				s.releaseAt[dl.ID] = hold
+				time.AfterFunc(hold.Sub(now), s.ResolveAsync)
 			}
-			if now.Before(at) {
-				throttled, causeServerName = true, prev.cause
-			} else {
-				delete(s.releaseAt, dl.ID)
-			}
+			throttled, causeServerName = true, prev.cause
 		}
 		toApply = append(toApply, resolution{
 			downloader:      dl,
@@ -496,6 +535,11 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	for id := range s.releaseAt {
 		if !kept[id] {
 			delete(s.releaseAt, id)
+		}
+	}
+	for id, until := range s.nextEpisodeBy {
+		if !until.After(now) {
+			delete(s.nextEpisodeBy, id)
 		}
 	}
 	s.mu.Unlock()

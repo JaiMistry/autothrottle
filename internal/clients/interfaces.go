@@ -74,6 +74,8 @@ type Session struct {
 	// Local is informational; skip_local_playback decides whether a
 	// local session counts.
 	Local bool
+	// Episode is a TV episode, which autoplay may follow with the next.
+	Episode bool
 }
 
 // RateLimiter applies a download client's global speed limits, in KB/s;

@@ -318,7 +318,7 @@ func buildHero(in heroInput) heroState {
 		}
 		h := heroState{Statement: names + " throttled", Tone: "warn"}
 		if in.releasing && in.sessions == 0 {
-			h.Reason = "Playback ended. Default rates return in a moment, unless something starts playing again."
+			h.Reason = "An episode just ended. Default rates return in a moment, unless the next one starts."
 		}
 		return h
 	case in.unresolved:

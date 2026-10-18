@@ -51,6 +51,7 @@ type embyNowPlaying struct {
 	SeasonNumber *int   `json:"ParentIndexNumber"`
 	Episode      *int   `json:"IndexNumber"`
 	RunTimeTicks int64  `json:"RunTimeTicks"` // .NET ticks, not ms
+	Type         string `json:"Type"`         // "Episode", "Movie", ...
 }
 
 // embySession is the subset of /Sessions this app reads.

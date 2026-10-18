@@ -179,8 +179,8 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 		}
 		_, _ = rw.Write([]byte(`[
 			{"Id":"lan","RemoteEndPoint":"192.168.1.20","NowPlayingItem":{"Name":"A"},"PlayState":{"IsPaused":false}},
-			{"Id":"remote","RemoteEndPoint":"8.8.8.8","NowPlayingItem":{"Name":"B"},"PlayState":{"IsPaused":false}},
-			{"Id":"paused","RemoteEndPoint":"8.8.8.8","NowPlayingItem":{"Name":"C"},"PlayState":{"IsPaused":true}},
+			{"Id":"remote","RemoteEndPoint":"8.8.8.8","NowPlayingItem":{"Name":"B","Type":"Episode"},"PlayState":{"IsPaused":false}},
+			{"Id":"paused","RemoteEndPoint":"8.8.8.8","NowPlayingItem":{"Name":"C","Type":"Movie"},"PlayState":{"IsPaused":true}},
 			{"Id":"idle","RemoteEndPoint":"8.8.8.8"}
 		]`))
 	}))
@@ -193,11 +193,16 @@ func TestEmbySnapshotFiltersAndResetsBaseline(t *testing.T) {
 	}
 	// "lan" is exempted and "idle" has nothing loaded; "paused" counts.
 	got := map[string]bool{}
+	episode := map[string]bool{}
 	for _, k := range keys {
 		got[k.Key] = true
+		episode[k.Key] = k.Episode
 	}
 	if len(keys) != 2 || !got["remote"] || !got["paused"] {
 		t.Fatalf("got %v, want [remote paused]", keys)
+	}
+	if !episode["remote"] || episode["paused"] {
+		t.Errorf("the episode and the movie were told apart wrongly: %v", episode)
 	}
 
 	// The baseline now matches, so the same state pushed is silent.

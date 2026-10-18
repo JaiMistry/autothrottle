@@ -257,8 +257,9 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 		active[s.ID] = Session{
 			Key: s.ID, Title: s.label(), Device: s.DeviceName,
 			Position: s.position(), PositionAt: time.Now(), Duration: s.duration(),
-			Paused: s.PlayState.IsPaused,
-			Local:  embySessionIsLocal(s.RemoteEndPoint),
+			Paused:  s.PlayState.IsPaused,
+			Local:   embySessionIsLocal(s.RemoteEndPoint),
+			Episode: s.NowPlayingItem.Type == "Episode",
 		}
 	}
 	w.paused.retain(present)
