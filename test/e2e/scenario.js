@@ -227,6 +227,8 @@ const transmission = {
   const savedNames = () => page.$$eval('tbody tr td:first-child', (cells) => cells.map((c) => c.innerText.trim()));
   const dashboard = async () => page.evaluate(() => ({
     hero: document.querySelector('#dash-live p')?.innerText.trim() || '',
+    // Outside the live block: it rides along with each refresh, out of band.
+    pill: document.querySelector('#dash-pill')?.innerText.trim() || '',
     downloaders: [...document.querySelectorAll('.at-dlrow-wrap')].map((r) => r.dataset.state),
     sessionTime: document.querySelector('.at-session-time')?.textContent.trim() || '',
     paused: document.querySelector('.at-session-progress')?.dataset.paused === '1',
@@ -376,6 +378,7 @@ const transmission = {
     console.log(`        (${shownAt - appliedAt}ms after qBittorrent was limited)`);
     console.log(`      (shown ${shownAt - appliedAt}ms after it landed)`);
     check(/throttled/.test((await dashboard()).hero), 'the headline says what is throttled');
+    check((await dashboard()).pill === 'Throttling', 'so does the status beside the title', (await dashboard()).pill);
     const q = await qbittorrent.limits();
     check(q.down === 1500 * 1024 && q.up === 300 * 1024, 'qBittorrent really is limited to 1500/300 KB/s', JSON.stringify(q));
     const t = await transmission.limits();
@@ -472,6 +475,7 @@ const transmission = {
       return d.hero === 'Nothing is throttled' ? d : null;
     });
     check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
+    check((await dashboard()).pill === 'Idle', 'and the status beside the title is back to Idle', (await dashboard()).pill);
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
 

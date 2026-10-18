@@ -333,7 +333,25 @@
 
     mergeAttributes(target, incoming);
     mergeChildren(target, incoming);
+    swapOutOfBand(parsed, incoming);
     return true;
+  }
+
+  /* htmx applies a response's hx-swap-oob elements only in a swap it makes
+     itself, and the merge cancels that one: the header's status pill and
+     actions would keep the state of the last full page load. Each replaces
+     its namesake only when it changed, so the pill's animation doesn't
+     restart on every refresh. */
+  function swapOutOfBand(parsed, merged) {
+    [].slice.call(parsed.children).forEach(function (el) {
+      if (el === merged || !el.id || !el.hasAttribute("hx-swap-oob")) return;
+      var current = document.getElementById(el.id);
+      if (!current) return;
+      el.removeAttribute("hx-swap-oob");
+      if (current.outerHTML === el.outerHTML) return;
+      current.replaceWith(el);
+      htmx.process(el);
+    });
   }
 
   document.body.addEventListener("htmx:beforeSwap", function (e) {
