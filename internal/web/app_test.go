@@ -94,6 +94,7 @@ func newAppWith(t *testing.T, env map[string]string) *testApp {
 	}
 	key := []byte("0123456789abcdef0123456789abcdef")
 	sched := scheduler.New(database, key, settings.New(database))
+	sched.SetRestoreDelay(0)
 	watchers := &fakeWatchers{running: map[int64]bool{}, dropped: map[int64]bool{}}
 	srv, err := New(database, authenticator, key, sched, watchers)
 	if err != nil {

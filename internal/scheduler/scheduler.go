@@ -38,6 +38,11 @@ type Scheduler struct {
 	// paused mirrors the persisted setting so resolve never reads it.
 	paused bool
 
+	// releaseAt is when each downloader whose playback ended goes back to
+	// its default rates; see restoreDelay.
+	releaseAt    map[int64]time.Time
+	restoreDelay time.Duration
+
 	// throttlingSince is when the current throttle period began, zero
 	// while nothing is throttled. historyMu serialises period records.
 	throttlingSince time.Time
@@ -75,6 +80,8 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		active:        make(map[int64]map[string]bool),
 		live:          make(map[int64]map[string]clients.Session),
 		applied:       make(map[int64]appliedState),
+		releaseAt:     make(map[int64]time.Time),
+		restoreDelay:  settings.RestoreDelay,
 		limiterFor:    clients.RateLimiterFor,
 		// Persisted, so a restart does not silently re-enable throttling.
 		paused: store.Paused(),
@@ -84,6 +91,19 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 // SetNotifier makes the scheduler announce changes to open pages. Set
 // once, before anything runs.
 func (s *Scheduler) SetNotifier(n live.Notifier) { s.notify = n }
+
+// SetRestoreDelay changes how long a throttle outlasts the playback that
+// caused it; 0 restores at once. Set once, before anything runs: tests
+// use it to see a release without waiting.
+func (s *Scheduler) SetRestoreDelay(d time.Duration) { s.restoreDelay = d }
+
+// ReleasePending reports whether a downloader is still throttled only
+// because its playback ended moments ago.
+func (s *Scheduler) ReleasePending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.releaseAt) > 0
+}
 
 // SetPaused toggles the override that holds every downloader at its
 // default rate. Sessions are still tracked, so resuming re-resolves
@@ -410,6 +430,7 @@ func (s *Scheduler) resolve(ctx context.Context) {
 
 	s.mu.Lock()
 	paused := s.paused
+	now := time.Now()
 	var toApply []resolution
 	for _, dl := range downloaders {
 		if !dl.Enabled {
@@ -418,17 +439,39 @@ func (s *Scheduler) resolve(ctx context.Context) {
 		throttled := false
 		causeServerName := ""
 		causeServerID := int64(0)
+		mapped := false
 		if !paused {
 			for _, m := range byDownloader[dl.ID] {
 				if _, enabled := msNameByID[m.MediaServerID]; !enabled {
 					continue
 				}
+				mapped = true
 				if len(s.active[m.MediaServerID]) > 0 {
 					throttled = true
 					causeServerName = msNameByID[m.MediaServerID]
 					causeServerID = m.MediaServerID
 					break
 				}
+			}
+		}
+		switch prev := s.applied[dl.ID]; {
+		case throttled, !mapped, s.restoreDelay <= 0, !prev.throttled, prev.failure != "":
+			// Playing, turned off by the user (paused, or its mapping or
+			// server disabled), or nothing to hold.
+			delete(s.releaseAt, dl.ID)
+		default:
+			// Playback ended, but the next episode may be seconds away:
+			// the throttle holds a little longer before it is lifted.
+			at, holding := s.releaseAt[dl.ID]
+			if !holding {
+				at = now.Add(s.restoreDelay)
+				s.releaseAt[dl.ID] = at
+				time.AfterFunc(s.restoreDelay, s.ResolveAsync)
+			}
+			if now.Before(at) {
+				throttled, causeServerName = true, prev.cause
+			} else {
+				delete(s.releaseAt, dl.ID)
 			}
 		}
 		toApply = append(toApply, resolution{
@@ -448,6 +491,11 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	for id := range s.applied {
 		if !kept[id] {
 			delete(s.applied, id)
+		}
+	}
+	for id := range s.releaseAt {
+		if !kept[id] {
+			delete(s.releaseAt, id)
 		}
 	}
 	s.mu.Unlock()

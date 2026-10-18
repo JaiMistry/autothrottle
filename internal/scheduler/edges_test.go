@@ -110,6 +110,7 @@ func TestThrottlingSurvivesAFailingDatabase(t *testing.T) {
 	limiter := &fakeLimiter{}
 	s := New(database, make([]byte, 32), settings.New(database))
 	s.limiterFor = func(string) clients.RateLimiter { return limiter }
+	s.SetRestoreDelay(0)
 	msID, dlID := addServerAndDownloader(t, database)
 	if _, err := database.CreateMapping(msID, dlID); err != nil {
 		t.Fatal(err)

@@ -49,6 +49,8 @@ func newTestScheduler(t *testing.T) (*Scheduler, *db.DB, *fakeLimiter) {
 	limiter := &fakeLimiter{}
 	s := New(database, make([]byte, 32), settings.New(database))
 	s.limiterFor = func(string) clients.RateLimiter { return limiter }
+	// Releases land at once; restore_test.go covers the delay.
+	s.SetRestoreDelay(0)
 	return s, database, limiter
 }
 

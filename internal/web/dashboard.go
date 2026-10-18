@@ -231,6 +231,7 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 	data.Hero = buildHero(heroInput{
 		paused: paused, sessions: totalSessions, throttled: throttledNames,
 		servers: len(mediaServers), downloaders: len(downloaders), unresolved: unresolved,
+		releasing: s.scheduler.ReleasePending(),
 	})
 	if since, ok := s.scheduler.ThrottlingSince(); ok && data.Hero.Tone == "warn" {
 		data.Hero.Since = since
@@ -283,6 +284,8 @@ type heroInput struct {
 	servers     int
 	downloaders int
 	unresolved  bool
+	// releasing: a throttle outlasting its playback for a moment.
+	releasing bool
 }
 
 // buildHero writes the sentence at the top of the page.
@@ -313,7 +316,11 @@ func buildHero(in heroInput) heroState {
 		if rest := len(in.throttled) - 2; rest > 0 {
 			names = fmt.Sprintf("%s, %s and %s", in.throttled[0], in.throttled[1], count(rest, "other", "others"))
 		}
-		return heroState{Statement: names + " throttled", Tone: "warn"}
+		h := heroState{Statement: names + " throttled", Tone: "warn"}
+		if in.releasing && in.sessions == 0 {
+			h.Reason = "Playback ended. Default rates return in a moment, unless something starts playing again."
+		}
+		return h
 	case in.unresolved:
 		return heroState{Statement: "State not resolved yet", Reason: "Nothing mapped is playing.", Tone: "dim"}
 	default:

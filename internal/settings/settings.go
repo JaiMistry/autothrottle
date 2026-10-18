@@ -25,6 +25,11 @@ const (
 
 	// MaintenanceInterval is how often retention runs.
 	MaintenanceInterval = time.Hour
+
+	// RestoreDelay holds a throttle this long after playback ends before
+	// restoring default rates, so autoplay's next episode, a few seconds
+	// later, doesn't flip the downloaders off and back on.
+	RestoreDelay = 30 * time.Second
 )
 
 // The pause switch, and when it was last switched on.
