@@ -23,9 +23,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let failures = 0;
 let step = 0;
+// The first failure also prints AutoThrottle's event log as it stood
+// then: what was throttled and restored, and why.
+let eventLog = null;
+const eventLogDumps = [];
 function check(ok, what, detail = '') {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${what}${!ok && detail ? `\n          ${detail}` : ''}`);
-  if (!ok) failures++;
+  if (!ok && ++failures === 1 && eventLog) {
+    eventLogDumps.push(eventLog().then(
+      (rows) => console.log(`\n--- event log at the first failure, newest first ---\n${rows.join('\n')}\n`),
+      (e) => console.log(`\n(event log unavailable: ${e.message})\n`)));
+  }
 }
 function section(title) { console.log(`\n${++step}. ${title}`); }
 
@@ -231,6 +239,10 @@ const deluge = {
   page.on('request', (r) => { if (r.url().includes('/dashboard/live')) liveFetches++; });
   const stream = () => page.evaluate(() => document.documentElement.dataset.liveStream || '');
 
+  eventLog = () => page.evaluate(async () => {
+    const doc = new DOMParser().parseFromString(await (await fetch('/logs?per=50')).text(), 'text/html');
+    return [...doc.querySelectorAll('.at-logrow')].map((r) => r.textContent.replace(/\s+/g, ' ').trim());
+  });
   const at = () => new URL(page.url()).pathname;
   const text = (sel) => page.$eval(sel, (e) => e.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
   const navigate = (p) => page.goto(APP + p, { waitUntil: 'networkidle2' });
@@ -467,9 +479,9 @@ const deluge = {
     const dl = await deluge.limits();
     check(dl.down === 1200 && dl.up === 240, 'Deluge really is limited to 1200/240 KB/s', JSON.stringify(dl));
     check((await page.content()).includes(MEDIA.itemName), 'the playing title is shown');
-    const clock = () => page.$eval('.at-timer-clock', (e) => e.textContent.replace(/\s+/g, '')).catch(() => '');
+    const clock = () => page.$eval('.at-timer-clock', (e) => `${e.textContent.replace(/\s+/g, '')} since ${e.dataset.throttledSince}`).catch(() => '');
     const t1 = await clock(); await sleep(2100); const t2 = await clock();
-    check(t1 && t2 && t1 !== t2, 'a session timer counts while throttled', `${t1} → ${t2}`);
+    check(t1 && t2 && t1.split(' ')[0] !== t2.split(' ')[0], 'a session timer counts while throttled', `${t1} → ${t2}`);
 
     const before = (await dashboard()).sessionTime;
     await sleep(4000);
@@ -812,6 +824,7 @@ const deluge = {
     check(false, 'the scenario ran to the end', e.stack);
     await page.screenshot({ path: path.join(__dirname, '.state/failure.png'), fullPage: true }).catch(() => {});
   } finally {
+    await Promise.all(eventLogDumps);
     await browser.close();
   }
 
