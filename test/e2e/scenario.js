@@ -238,9 +238,19 @@ const deluge = {
     await page.$eval(sel, (e) => { e.value = ''; });
     await page.type(sel, value);
   }
+  // Requests still waiting on a response, which is what keeps the network
+  // from going idle: named when it never does.
+  const unanswered = new Map();
+  page.on('request', (r) => unanswered.set(r, Date.now()));
+  page.on('response', (r) => unanswered.delete(r.request()));
+  page.on('requestfailed', (r) => unanswered.delete(r));
   // htmx-boosted submits swap over XHR; wait for the network to settle.
   async function settle(action) {
-    await Promise.all([page.waitForNetworkIdle({ idleTime: 400, timeout: 30000 }), action()]);
+    const idle = page.waitForNetworkIdle({ idleTime: 400, timeout: 30000 }).catch((e) => {
+      const waiting = [...unanswered].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)}s)`);
+      throw new Error(`${e.message}; unanswered: ${waiting.join(', ') || 'none, but requests kept coming'}`);
+    });
+    await Promise.all([idle, action()]);
   }
   const submit = (formSel) => settle(() => page.click(`${formSel} [data-submit]`));
   async function testConnection(formSel) {
