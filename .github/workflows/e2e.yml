@@ -6,10 +6,10 @@ name: E2E
 # change what it tests: dependency updates, chiefly, where it proves the
 # new versions work before they merge.
 #
-# Nightly it also runs against each server's newest release, alongside,
-# and keeps one issue open while that fails: an upstream release that
-# breaks AutoThrottle is found before users find it. On demand that round
-# is optional, since checking a change only needs the pinned versions.
+# Nightly it also runs against each server's newest release, at the same
+# time, and keeps one issue open while that fails: an upstream release
+# that breaks AutoThrottle is found before users find it. On demand that
+# round is optional, since checking a change only needs the pinned ones.
 on:
   workflow_dispatch:
     inputs:
