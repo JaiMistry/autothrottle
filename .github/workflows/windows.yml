@@ -105,9 +105,19 @@ jobs:
           npm ci
           npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o ./internal/web/static/css/tailwind.css --minify
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version: "1.27.2"
-          cache: true
+          # setup-go's own cache is keyed by OS and go.sum alone, so this
+          # job would restore CI's, which holds no Windows builds, and
+          # never save one.
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: windows-go${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
       - name: Build the binaries
         env:
           VERSION: ${{ steps.version.outputs.version }}
