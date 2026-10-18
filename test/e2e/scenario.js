@@ -45,27 +45,27 @@ async function until(what, fn, timeoutMs = 90000) {
 // the timeline a client sends. Either way the server holds a real session.
 const AUTH = `MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0", Token="${MEDIA.userToken}"`;
 const mediaBrowserPlayer = {
-  async send(endpoint, positionSeconds, paused) {
+  async send(endpoint, item, positionSeconds, paused) {
     const res = await fetch(MEDIA.base + endpoint, {
       method: 'POST',
       // Jellyfin reads Authorization; Emby reads its own header.
       headers: { 'Content-Type': 'application/json', Authorization: AUTH, 'X-Emby-Authorization': AUTH, 'X-Emby-Token': MEDIA.userToken },
       body: JSON.stringify({
-        ItemId: MEDIA.itemId, PlayMethod: 'DirectStream', CanSeek: true,
+        ItemId: item.id, PlayMethod: 'DirectStream', CanSeek: true,
         PositionTicks: Math.round(positionSeconds * 1e7), IsPaused: paused, PlaySessionId: 'e2e-1',
       }),
     });
     if (!res.ok) throw new Error(`${MEDIA.kind} ${endpoint}: ${res.status}`);
   },
-  start(pos) { return this.send('/Sessions/Playing', pos, false); },
-  progress(pos, paused) { return this.send('/Sessions/Playing/Progress', pos, paused); },
-  stop(pos) { return this.send('/Sessions/Playing/Stopped', pos, false); },
+  start(item, pos) { return this.send('/Sessions/Playing', item, pos, false); },
+  progress(item, pos, paused) { return this.send('/Sessions/Playing/Progress', item, pos, paused); },
+  stop(item, pos) { return this.send('/Sessions/Playing/Stopped', item, pos, false); },
 };
 const plexPlayer = {
-  async send(state, positionSeconds) {
+  async send(state, item, positionSeconds) {
     const q = new URLSearchParams({
-      ratingKey: MEDIA.itemId, key: `/library/metadata/${MEDIA.itemId}`, state,
-      time: String(Math.round(positionSeconds * 1000)), duration: String(MEDIA.durationMs),
+      ratingKey: item.id, key: `/library/metadata/${item.id}`, state,
+      time: String(Math.round(positionSeconds * 1000)), duration: String(item.durationMs),
       identifier: 'com.plexapp.plugins.library', playQueueItemID: '1',
     });
     const res = await fetch(`${MEDIA.base}/:/timeline?${q}`, {
@@ -76,24 +76,30 @@ const plexPlayer = {
     });
     if (!res.ok) throw new Error(`plex timeline ${state}: ${res.status}`);
   },
-  start(pos) { return this.send('playing', pos); },
-  progress(pos, paused) { return this.send(paused ? 'paused' : 'playing', pos); },
-  stop(pos) { return this.send('stopped', pos); },
+  start(item, pos) { return this.send('playing', item, pos); },
+  progress(item, pos, paused) { return this.send(paused ? 'paused' : 'playing', item, pos); },
+  stop(item, pos) { return this.send('stopped', item, pos); },
 };
 const player = PLEX ? plexPlayer : mediaBrowserPlayer;
 
+// The library's film, and its one TV episode (the same video, filed as
+// one): what follows an episode decides when its throttle lifts.
+const MOVIE = { id: MEDIA.itemId, durationMs: MEDIA.durationMs };
+const EPISODE = { id: MEDIA.episodeId, durationMs: MEDIA.episodeDurationMs };
+
 // A player keeps reporting progress while it plays; this does the same.
-function startPlayer() {
-  let position = 60, paused = false;
-  player.start(position);
+// from is where it starts, in seconds.
+function startPlayer(item = MOVIE, from = 60) {
+  let position = from, paused = false;
+  player.start(item, position);
   const timer = setInterval(() => {
     if (!paused) position += 2;
-    player.progress(position, paused).catch(() => {});
+    player.progress(item, position, paused).catch(() => {});
   }, 2000);
   return {
-    pause() { paused = true; return player.progress(position, true); },
-    resume() { paused = false; return player.progress(position, false); },
-    async stop() { clearInterval(timer); await player.stop(position); },
+    pause() { paused = true; return player.progress(item, position, true); },
+    resume() { paused = false; return player.progress(item, position, false); },
+    async stop() { clearInterval(timer); await player.stop(item, position); },
   };
 }
 
@@ -546,38 +552,62 @@ const deluge = {
     check(!!delugeBack, 'Deluge too', JSON.stringify(await deluge.limits()));
 
     section('Playback stops');
+    // A film: nothing follows it, so the downloads come back at once.
     await player.stop();
-    // Autoplay starts the next episode seconds later: the throttle holds.
-    // qBittorrent itself is watched all the way through.
+    const movieStopped = Date.now();
+    const released = await until('the release', async () => {
+      const d = await dashboard();
+      return d.hero === 'Nothing is throttled' ? d : null;
+    }, 30000);
+    check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
+    const movieWait = Math.round((Date.now() - movieStopped) / 1000);
+    check(movieWait <= 15, 'at once, for a film', `${movieWait}s`);
+    check((await dashboard()).pill === 'Idle', 'and the status beside the title is back to Idle', (await dashboard()).pill);
+    check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
+    check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
+    check((await deluge.limits()).down === 0, 'Deluge is unlimited again');
+
+    section('Between episodes');
+    const throttledAgain = () => until('the throttle', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
+    const releasedAgain = () => until('the release', async () => ((await dashboard()).hero === 'Nothing is throttled' ? true : null), 60000);
+    const closingStretch = Math.round(EPISODE.durationMs / 1000) - 150;
+    // An episode left midway was left by choice: it releases at once too.
+    const midway = startPlayer(EPISODE, 60);
+    check(!!(await throttledAgain()), 'an episode throttles like anything else');
+    await midway.stop();
+    const midwayStopped = Date.now();
+    check(!!(await releasedAgain()) && Date.now() - midwayStopped <= 15000, 'one stopped midway releases at once',
+      `${Math.round((Date.now() - midwayStopped) / 1000)}s`);
+    // One stopped in its closing stretch may have autoplay's next coming
+    // seconds later: the throttle holds, and qBittorrent itself is watched
+    // all the way through.
+    const ending = startPlayer(EPISODE, closingStretch);
+    await throttledAgain();
+    await sleep(3000); // its type and position reach AutoThrottle
+    await ending.stop();
     const samples = [];
     const watch = async (ms) => {
       for (const end = Date.now() + ms; Date.now() < end; await sleep(250)) samples.push((await qbittorrent.limits()).down);
     };
     // Plex can take a few seconds to drop the session.
     let hint = '';
-    for (const end = Date.now() + 20000; Date.now() < end && !/Playback ended/.test(hint);) {
+    for (const end = Date.now() + 20000; Date.now() < end && !/An episode just ended/.test(hint);) {
       await watch(1000);
       hint = await text('#dash-live .at-hero-reason');
     }
-    check(/Playback ended/.test(hint), 'the throttle holds a moment after playback ends, and the Dashboard says why', hint);
-    const nextEpisode = startPlayer();
+    check(/An episode just ended/.test(hint), 'one stopped near its end holds the throttle, and the Dashboard says why', hint);
+    const nextEpisode = startPlayer(EPISODE, closingStretch);
     await watch(4000);
     const nextShown = await until('the next episode to show', async () => ((await dashboard()).hero.includes('throttled') && !(await text('#dash-live .at-hero-reason')) ? true : null), 30000);
     check(!!nextShown, 'the next episode carries on the throttle', await text('#dash-live .at-hero-reason'));
     check(samples.length > 10 && samples.every((d) => d === 1500 * 1024), 'with qBittorrent never restored in between', JSON.stringify([...new Set(samples)]));
+    await sleep(3000);
     await nextEpisode.stop();
     const stoppedAt = Date.now();
-    const released = await until('the release', async () => {
-      const d = await dashboard();
-      return d.hero === 'Nothing is throttled' ? d : null;
-    });
-    check(!!released, 'the Dashboard returns to nothing throttled without a reload', JSON.stringify(await dashboard()));
+    check(!!(await releasedAgain()), 'the last episode releases by itself');
     const waited = Math.round((Date.now() - stoppedAt) / 1000);
-    check(waited >= 25 && waited <= 45, 'about 30 seconds after the last playback ended', `${waited}s`);
-    check((await dashboard()).pill === 'Idle', 'and the status beside the title is back to Idle', (await dashboard()).pill);
-    check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
-    check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
-    check((await deluge.limits()).down === 0, 'Deluge is unlimited again');
+    check(waited >= 25 && waited <= 45, 'about 30 seconds after it ended', `${waited}s`);
+    check((await qbittorrent.limits()).down === 0 && (await deluge.limits()).down === 0, 'and the clients are unlimited again');
 
     section('A download client restarting');
     // qBittorrent still coming up when rates are applied must not stay Unreachable.

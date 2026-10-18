@@ -107,4 +107,4 @@ disk.
 | `scenario.js` | The browser test |
 | `run.sh` | Runs everything |
 | `reset.sh` | Rebuilds the stack from nothing |
-| `fixtures/` | The test video, a 200 KB, ten-minute H.264 file |
+| `fixtures/` | The test video, a 200 KB, ten-minute H.264 file, filed once as a film (`movies/`) and once as a TV episode (`tv/`) |

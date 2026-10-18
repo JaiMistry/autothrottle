@@ -152,29 +152,39 @@ def configure_plex():
     wait_for("Plex to start and be claimed", claimed)
     (STATE / "plex-machine-id").write_text(identity["machineIdentifier"])
 
-    log("adding the test library")
-    q = urllib.parse.urlencode({"name": "Movies", "type": "movie", "agent": "tv.plex.agents.movie",
-                                "scanner": "Plex Movie", "language": "en-US", "location": "/media/movies"})
+    log("adding the test libraries")
+    libraries = [
+        {"name": "Movies", "type": "movie", "agent": "tv.plex.agents.movie", "scanner": "Plex Movie",
+         "language": "en-US", "location": "/media/movies"},
+        {"name": "Shows", "type": "show", "agent": "tv.plex.agents.series", "scanner": "Plex TV Series",
+         "language": "en-US", "location": "/media/tv"},
+    ]
+    for library in libraries:
+        q = urllib.parse.urlencode(library)
 
-    def created():
-        try:
-            plex(f"{base}/library/sections?{q}", "POST")
-            return True
-        except urllib.error.HTTPError as e:
-            if e.code in (400, 503):  # still starting its plug-ins
-                return False
-            raise
-    wait_for("Plex to accept the library", created)
+        def created():
+            try:
+                plex(f"{base}/library/sections?{q}", "POST")
+                return True
+            except urllib.error.HTTPError as e:
+                if e.code in (400, 503):  # still starting its plug-ins
+                    return False
+                raise
+        wait_for(f"Plex to accept the {library['name']} library", created)
 
-    item = {}
+    item, episode = {}, {}
 
     def scanned():
-        section = plex(f"{base}/library/sections")["MediaContainer"]["Directory"][0]["key"]
-        found = plex(f"{base}/library/sections/{section}/all")["MediaContainer"].get("Metadata", [])
-        if found:
-            item.update(found[0])
-        return bool(found)
-    wait_for("the library scan", scanned)
+        sections = {d["type"]: d["key"] for d in plex(f"{base}/library/sections")["MediaContainer"]["Directory"]}
+        films = plex(f"{base}/library/sections/{sections['movie']}/all")["MediaContainer"].get("Metadata", [])
+        # type=4: the episodes, not the show.
+        episodes = plex(f"{base}/library/sections/{sections['show']}/all?type=4")["MediaContainer"].get("Metadata", [])
+        if films:
+            item.update(films[0])
+        if episodes:
+            episode.update(episodes[0])
+        return bool(films and episodes)
+    wait_for("the library scans", scanned)
 
     # Matching and analysing the new item keeps Plex busy, and slow to
     # answer, for a while after it appears.
@@ -183,7 +193,8 @@ def configure_plex():
     wait_for("Plex to finish with the library", idle)
 
     write_env({"kind": "plex", "label": SERVER["label"], "base": base, "internal": SERVER["internal"],
-               "itemId": item["ratingKey"], "itemName": item["title"], "durationMs": int(item.get("duration", 600000))})
+               "itemId": item["ratingKey"], "itemName": item["title"], "durationMs": int(item.get("duration", 600000)),
+               "episodeId": episode["ratingKey"], "episodeDurationMs": int(episode.get("duration", 600000))})
     log(f"ready: {item['title']}, server {identity['machineIdentifier'][:8]}…")
 
 
@@ -255,29 +266,35 @@ def configure():
     session = call("/Users/AuthenticateByName", {"Username": MS_USER, "Pw": MS_PASS})
     token, user_id = session["AccessToken"], session["User"]["Id"]
 
-    log("adding the test library")
+    log("adding the test libraries")
     call("/Library/VirtualFolders?name=Movies&collectionType=movies&refreshLibrary=true",
          {"LibraryOptions": {"PathInfos": [{"Path": "/media/movies"}]}}, token=token)
+    call("/Library/VirtualFolders?name=Shows&collectionType=tvshows&refreshLibrary=true",
+         {"LibraryOptions": {"PathInfos": [{"Path": "/media/tv"}]}}, token=token)
 
-    item = {}
-    items_path = (f"/Items?Recursive=true&IncludeItemTypes=Movie&userId={user_id}" if MEDIA == "jellyfin"
-                  else f"/Users/{user_id}/Items?Recursive=true&IncludeItemTypes=Movie")
+    def items_path(kind):
+        return (f"/Items?Recursive=true&IncludeItemTypes={kind}&userId={user_id}" if MEDIA == "jellyfin"
+                else f"/Users/{user_id}/Items?Recursive=true&IncludeItemTypes={kind}")
 
+    item, episode = {}, {}
     asked = [time.time()]
 
     def scanned():
-        items = call(items_path, token=token)["Items"]
-        if items:
-            item.update(items[0])
+        for kind, found in (("Movie", item), ("Episode", episode)):
+            if not found:
+                items = call(items_path(kind), token=token)["Items"]
+                if items:
+                    found.update(items[0])
+        if item and episode:
             return True
-        # Now and then Jellyfin 12 adds the library without scanning it.
+        # Now and then Jellyfin 12 adds a library without scanning it.
         # Asking again is what a person would do.
         if time.time() - asked[0] > 30:
             asked[0] = time.time()
             log("no scan yet; asking for one")
             call("/Library/Refresh", method="POST", token=token)
         return False
-    wait_for("the library scan", scanned)
+    wait_for("the library scans", scanned)
 
     # An app key from the dashboard, as a person would make it, not the
     # user's session token.
@@ -287,7 +304,9 @@ def configure():
 
     write_env({"kind": MEDIA, "label": SERVER["label"], "base": SERVER["base"], "internal": SERVER["internal"],
                "apiKey": api_key, "userToken": token, "itemId": item["Id"], "itemName": item["Name"],
-               "runTicks": item.get("RunTimeTicks", 6_000_000_000)})
+               # Ticks are 100 ns.
+               "durationMs": item.get("RunTimeTicks", 6_000_000_000) // 10_000,
+               "episodeId": episode["Id"], "episodeDurationMs": episode.get("RunTimeTicks", 6_000_000_000) // 10_000})
     log(f"ready: {item['Name']}, API key ...{api_key[-4:]}")
 
 

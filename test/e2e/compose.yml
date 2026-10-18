@@ -29,7 +29,7 @@ services:
     container_name: e2e-jellyfin
     volumes:
       - ./.state/jellyfin:/config
-      - ./fixtures:/media/movies:ro
+      - ./fixtures:/media:ro
     ports:
       - "18196:8096"
     mem_limit: 1g
@@ -43,7 +43,7 @@ services:
       - GID=1000
     volumes:
       - ./.state/emby:/config
-      - ./fixtures:/media/movies:ro
+      - ./fixtures:/media:ro
     ports:
       - "18096:8096"
     mem_limit: 1g
@@ -61,7 +61,7 @@ services:
       - TZ=America/Los_Angeles
     volumes:
       - ./.state/plex:/config
-      - ./fixtures:/media/movies:ro
+      - ./fixtures:/media:ro
     ports:
       - "18324:32400"
     mem_limit: 1g
