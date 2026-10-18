@@ -52,4 +52,9 @@ ENV TZ=America/Los_Angeles
 COPY --from=build /out/autothrottle /autothrottle
 COPY --from=build /out/data /data
 EXPOSE 7676
+# Is the app serving? Not whether its media servers and download clients
+# are: those show on the Connections page. Every 2s while it starts, so
+# it reads healthy within seconds, then every 30s.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s --retries=3 \
+  CMD ["/autothrottle", "healthcheck"]
 ENTRYPOINT ["/autothrottle"]

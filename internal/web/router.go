@@ -124,6 +124,7 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /setup", noStoreHTML(http.HandlerFunc(s.setupPage)))
 	mux.HandleFunc("POST /setup", s.completeSetup)
 	mux.HandleFunc("POST /logout", auth.LogoutHandler(s.sessions))
+	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/logs", http.StatusMovedPermanently)
 	})

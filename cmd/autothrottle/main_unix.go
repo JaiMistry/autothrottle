@@ -19,7 +19,16 @@ const dataDirHint = "check the bind mount for /data"
 // The tray icon that reads it is Windows-only.
 const localStatusEnabled = false
 
+// Not 8080, which is qBittorrent's default.
+const listenAddr = ":7676"
+
 func main() {
+	// Docker's HEALTHCHECK, as root and beside the running app: the image
+	// has no shell or curl to ask it with.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck(listenAddr, os.Stderr))
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	if err := dropPrivileges(dataDir); err != nil {
@@ -28,8 +37,7 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// Not 8080, which is qBittorrent's default.
-	err := run(ctx, logger, dataDir, ":7676", os.Stdout)
+	err := run(ctx, logger, dataDir, listenAddr, os.Stdout)
 	stop()
 	if err != nil {
 		logger.Error("exiting", "error", err)
