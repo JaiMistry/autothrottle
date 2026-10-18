@@ -19,7 +19,7 @@ type MediaServer struct {
 type Downloader struct {
 	ID                                       int64
 	Name                                     string
-	Type                                     string // qbittorrent, transmission
+	Type                                     string // qbittorrent, transmission, deluge
 	URL                                      string
 	CredentialEncrypted                      sql.NullString
 	DefaultDownloadLimit, DefaultUploadLimit int64 // KB/s, 0 = unlimited

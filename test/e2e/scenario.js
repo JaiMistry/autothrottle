@@ -182,6 +182,12 @@ const deluge = {
     const r = body.result;
     return { down: r.max_download_speed < 0 ? 0 : r.max_download_speed, up: r.max_upload_speed < 0 ? 0 : r.max_upload_speed };
   },
+  // Changes the limits behind AutoThrottle's back.
+  async unlimit() {
+    const { cookie } = await this.call('', 'auth.login', [env.deluge.password]);
+    const { body } = await this.call(cookie, 'core.set_config', [{ max_download_speed: -1, max_upload_speed: -1 }]);
+    if (body.error) throw new Error('deluge: ' + body.error.message);
+  },
 };
 
 // --- the browser ------------------------------------------------------------
@@ -340,7 +346,14 @@ const deluge = {
       await fill('#dl-form [name=name]', name);
       await fill('#dl-form [name=url]', conf.internal);
       if (conf.username) await fill('#dl-form [name=username]', conf.username);
-      else check(await page.$eval('#dl-form [name=username]', (e) => e.disabled && !!e.closest('[hidden]')), `${name} asks for no username`);
+      else {
+        check(await page.$eval('#dl-form [name=username]', (e) => e.disabled && !!e.closest('[hidden]')), `${name} asks for no username`);
+        await fill('#dl-form [name=password]', 'wrong-password');
+        result = await testConnection('#dl-form');
+        check(result.state === 'failed' && !result.canSave && /the password was rejected/.test(result.text) && !/username/i.test(result.text),
+          `a wrong ${name} password fails, says so, and blocks saving`, JSON.stringify(result));
+        check(await page.$eval('#dl-form [name=password]', (e) => e.classList.contains('at-input--invalid')), 'and outlines the password');
+      }
       await fill('#dl-form [name=password]', conf.password);
       await fill('#dl-form [name=backup_download_limit]', String(down));
       await fill('#dl-form [name=backup_upload_limit]', String(up));
@@ -353,12 +366,14 @@ const deluge = {
     section('Mappings');
     await navigate('/configuration?tab=mappings');
     check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 3, 'new pairings start as Throttle');
-    await page.click(`.at-matrix-cell[title="Leave Transmission at its default rate when ${NAME} plays"]`);
-    await page.waitForSelector(`.at-matrix-cell[aria-pressed="false"][title="Throttle Transmission when ${NAME} plays"]`);
-    check(true, 'a pairing can be switched off');
-    await page.click(`.at-matrix-cell[title="Throttle Transmission when ${NAME} plays"]`);
-    await page.waitForSelector(`.at-matrix-cell[aria-pressed="true"][title="Leave Transmission at its default rate when ${NAME} plays"]`);
-    check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 3, 'and back on');
+    for (const name of ['Transmission', 'Deluge']) {
+      await page.click(`.at-matrix-cell[title="Leave ${name} at its default rate when ${NAME} plays"]`);
+      await page.waitForSelector(`.at-matrix-cell[aria-pressed="false"][title="Throttle ${name} when ${NAME} plays"]`);
+      check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 2, `a pairing can be switched off (${name})`);
+      await page.click(`.at-matrix-cell[title="Throttle ${name} when ${NAME} plays"]`);
+      await page.waitForSelector(`.at-matrix-cell[aria-pressed="true"][title="Leave ${name} at its default rate when ${NAME} plays"]`);
+      check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 3, 'and back on');
+    }
 
     section('Idle');
     await navigate('/');
@@ -368,6 +383,8 @@ const deluge = {
     }, 30000);
     check(!!idle, 'the Dashboard says nothing is throttled', JSON.stringify(await dashboard()));
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited');
+    check((await transmission.limits()).down === 0, 'Transmission is unlimited');
+    check((await deluge.limits()).down === 0, 'Deluge is unlimited');
 
     section('Live stream');
     const opened = await until('the stream to open', async () => (await stream()) === 'open', 15000);
@@ -429,10 +446,14 @@ const deluge = {
     section('Restart while throttled');
     await docker('stop');
     await qbittorrent.unlimit();
+    await deluge.unlimit();
     await docker('start');
     const reasserted = await until('the throttle to be re-applied', async () =>
       ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 60000);
     check(!!reasserted, 'a restart re-applies the throttle the client lost');
+    const delugeReasserted = await until('Deluge\'s throttle to be re-applied', async () =>
+      ((await deluge.limits()).down === 1200 ? true : null), 60000);
+    check(!!delugeReasserted, 'Deluge\'s too', JSON.stringify(await deluge.limits()));
     await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
     // The page that was open across the restart reconnects by itself.
     const rejoined = await until('the stream to come back', async () => (await stream()) === 'open', 30000);
@@ -474,6 +495,8 @@ const deluge = {
     await settle(() => page.click('form[action="/pause-toggle"] button'));
     const overridden = await until('the override', async () => ((await qbittorrent.limits()).down === 0 ? true : null), 30000);
     check(!!overridden, 'turning throttling off restores default rates while still playing');
+    const delugeOverridden = await until('Deluge\'s override', async () => ((await deluge.limits()).down === 0 ? true : null), 30000);
+    check(!!delugeOverridden, 'Deluge\'s too', JSON.stringify(await deluge.limits()));
     for (const p of ['/configuration', '/logs']) {
       await navigate(p);
       check(/Throttling disabled since \d{1,2}:\d{2} [AP]M/.test(await text('.at-paused')), `the banner is on ${p}`, await text('.at-paused'));
@@ -500,6 +523,8 @@ const deluge = {
     await navigate('/');
     const back = await until('throttling to come back', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
     check(!!back, 'turning it back on re-throttles immediately');
+    const delugeBack = await until('Deluge to be throttled again', async () => ((await deluge.limits()).down === 1200 ? true : null), 30000);
+    check(!!delugeBack, 'Deluge too', JSON.stringify(await deluge.limits()));
 
     section('Playback stops');
     await player.stop();
@@ -516,22 +541,38 @@ const deluge = {
     section('A download client restarting');
     // qBittorrent still coming up when rates are applied must not stay Unreachable.
     await docker('stop', 'e2e-qbittorrent');
+    await docker('stop', 'e2e-deluge');
     await docker('restart');
     await until('AutoThrottle to answer again', async () => ((await fetch(APP + '/login')).ok ? true : null), 30000);
     await navigate('/configuration?tab=connections');
-    const dlDot = () => page.evaluate(() => {
-      const row = [...document.querySelectorAll('#connections tbody tr')].find((r) => r.innerText.includes('qBittorrent'));
+    const dlDot = (name) => page.evaluate((n) => {
+      const row = [...document.querySelectorAll('#connections tbody tr')].find((r) => r.innerText.includes(n));
       return row ? row.querySelector('.at-st').dataset.label : '';
-    });
-    const red = await until('qBittorrent to read Unreachable', async () => ((await dlDot()) === 'Unreachable' ? true : null), 60000);
-    check(!!red, 'a client down at startup reads Unreachable', await dlDot());
+    }, name);
+    for (const name of ['qBittorrent', 'Deluge']) {
+      const red = await until(`${name} to read Unreachable`, async () => ((await dlDot(name)) === 'Unreachable' ? true : null), 60000);
+      check(!!red, `a client down at startup reads Unreachable (${name})`, await dlDot(name));
+    }
     await docker('start', 'e2e-qbittorrent');
+    await docker('start', 'e2e-deluge');
     const cameBack = Date.now();
-    const green = await until('qBittorrent to come back', async () => ((await dlDot()) === 'Default rates' ? true : null), 120000);
-    check(!!green, 'once it is back, its dot turns green on the open page, without a reload', `${await dlDot()} after ${Math.round((Date.now() - cameBack) / 1000)}s`);
+    for (const name of ['qBittorrent', 'Deluge']) {
+      const green = await until(`${name} to come back`, async () => ((await dlDot(name)) === 'Default rates' ? true : null), 120000);
+      check(!!green, `once it is back, its dot turns green on the open page, without a reload (${name})`, `${await dlDot(name)} after ${Math.round((Date.now() - cameBack) / 1000)}s`);
+    }
     check((await qbittorrent.limits()).down === 0, 'and its rates were applied again');
     const logText0 = await (await fetch(APP + '/logs', { headers: { Cookie: (await page.cookies()).map((c) => `${c.name}=${c.value}`).join('; ') } })).text();
-    check((logText0.match(/failed to apply rate limits to qBittorrent/g) || []).length === 1, 'the outage is logged once, not once per retry');
+    for (const name of ['qBittorrent', 'Deluge']) {
+      check((logText0.match(new RegExp(`failed to apply rate limits to ${name}`, 'g')) || []).length === 1, `the outage is logged once, not once per retry (${name})`);
+    }
+    // A restarted Deluge's Web UI comes back disconnected from its daemon:
+    // throttling it again proves AutoThrottle connects it.
+    const afterRestart = startPlayer();
+    const delugeAgain = await until('the restarted Deluge to be throttled', async () => ((await deluge.limits()).down === 1200 ? true : null), 60000);
+    check(!!delugeAgain, 'a restarted Deluge is throttled again', JSON.stringify(await deluge.limits()));
+    await afterRestart.stop();
+    const delugeFree = await until('the restarted Deluge to be released', async () => ((await deluge.limits()).down === 0 ? true : null), 60000);
+    check(!!delugeFree, 'and released again', JSON.stringify(await deluge.limits()));
 
     section('A media server going away');
     await navigate('/');
@@ -598,12 +639,32 @@ const deluge = {
     check(!(await canSave('#dl-form')), 'changing its username does');
     await page.keyboard.press('Escape');
     await sleep(300);
+    const delugeRow = await page.$$eval('button[hx-get^="/configuration/downloaders/"][hx-get$="/edit"]',
+      (bs) => bs.find((b) => b.closest('tr').innerText.includes('Deluge')).getAttribute('hx-get'));
+    await openSheet(`button[hx-get="${delugeRow}"]`);
+    check(await page.$eval('#dl-form [name=username]', (e) => e.disabled && !!e.closest('[hidden]')), 'editing Deluge shows no username');
+    check(await canSave('#dl-form'), 'and opens ready to save');
+    await fill('#dl-form [name=name]', 'Deluge renamed');
+    await fill('#dl-form [name=backup_upload_limit]', '250');
+    check(await canSave('#dl-form'), 'renaming Deluge or changing its rates needs no new test');
+    await fill('#dl-form [name=password]', 'another-password');
+    check(!(await canSave('#dl-form')), 'a new password does');
+    await fill('#dl-form [name=password]', '');
+    await page.$eval('#dl-form [name=password]', (e) => e.dispatchEvent(new Event('input', { bubbles: true })));
+    check(await canSave('#dl-form'), 'and clearing it again does not');
+    await fill('#dl-form [name=url]', 'http://192.0.2.1:8112');
+    check(!(await canSave('#dl-form')), 'changing its address does');
+    await page.keyboard.press('Escape');
+    await sleep(300);
 
     section('Logs');
-    await navigate('/logs');
+    // Every client's lines, not just the newest twenty.
+    await navigate('/logs?per=50');
     const logText = await text('#log-panel');
     check(logText.includes(`throttled qBittorrent because ${NAME} is playing`), 'the throttle is logged with its cause');
     check(/restored default rate for qBittorrent/.test(logText), 'the restore is logged');
+    check(logText.includes(`throttled Deluge because ${NAME} is playing`) && /restored default rate for Deluge/.test(logText),
+      'so are Deluge\'s');
     await page.click('#log-panel form[action="/logs/clear"] button');
     await page.waitForFunction(() => document.querySelectorAll('.at-logrow').length === 0);
     check(true, 'Clear empties the log, with no confirmation');
@@ -615,14 +676,16 @@ const deluge = {
 
     section('Delete');
     await navigate('/configuration?tab=connections');
-    const transmissionRow = await page.$$eval('button[hx-get^="/configuration/downloaders/"][hx-get$="/edit"]',
-      (bs) => bs.find((b) => b.closest('tr').innerText.includes('Transmission')).getAttribute('hx-get'));
-    await openSheet(`button[hx-get="${transmissionRow}"]`);
-    await page.click('#sheet .at-sheet-bar .at-btn--critical');
-    await page.waitForSelector('dialog[open]');
-    check((await text('dialog[open] .at-dialog-title')) === 'Delete Transmission?', 'Delete asks first, naming what goes', await text('dialog[open] .at-dialog-title'));
-    await settle(() => page.click('dialog[open] .at-btn--danger'));
-    check(!(await savedNames()).includes('Transmission') && !(await page.$('#sheet.open')), 'confirming removes it and closes the drawer', JSON.stringify(await savedNames()));
+    for (const name of ['Transmission', 'Deluge']) {
+      const row = await page.$$eval('button[hx-get^="/configuration/downloaders/"][hx-get$="/edit"]',
+        (bs, n) => bs.find((b) => b.closest('tr').innerText.includes(n)).getAttribute('hx-get'), name);
+      await openSheet(`button[hx-get="${row}"]`);
+      await page.click('#sheet .at-sheet-bar .at-btn--critical');
+      await page.waitForSelector('dialog[open]');
+      check((await text('dialog[open] .at-dialog-title')) === `Delete ${name}?`, `Delete asks first, naming what goes (${name})`, await text('dialog[open] .at-dialog-title'));
+      await settle(() => page.click('dialog[open] .at-btn--danger'));
+      check(!(await savedNames()).includes(name) && !(await page.$('#sheet.open')), 'confirming removes it and closes the drawer', JSON.stringify(await savedNames()));
+    }
 
     section('Navigation');
     await navigate('/');
