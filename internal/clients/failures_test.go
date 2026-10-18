@@ -66,7 +66,7 @@ func TestTransmissionFailures(t *testing.T) {
 	wantErr(t, "unreadable reply", TestTransmission(ctx, garbled, "", ""), "decoding response")
 	rejected := serve(t, func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"result":"no permission"}`) })
 	wantErr(t, "limits rejected", (Transmission{}).SetLimits(ctx, rejected, "", "", 1, 1), "setting speed limits")
-	wantErr(t, "unknown type", TestDownloader(ctx, "deluge", unreachable, "", ""), "unsupported downloader type")
+	wantErr(t, "unknown type", TestDownloader(ctx, "rtorrent", unreachable, "", ""), "unsupported downloader type")
 }
 
 func TestEmbyLabels(t *testing.T) {

@@ -112,7 +112,7 @@ func TestMalformedRequestsAreRefused(t *testing.T) {
 	downloader.Set("id", "99")
 	expectStatus(t, app.post("/configuration/downloaders", downloader), http.StatusInternalServerError)
 	downloader.Del("id")
-	downloader.Set("type", "deluge")
+	downloader.Set("type", "rtorrent")
 	expectStatus(t, app.post("/configuration/downloaders", downloader), http.StatusUnprocessableEntity)
 
 	for _, path := range []string{"/configuration/media-servers/x/delete", "/configuration/downloaders/x/delete"} {
@@ -177,7 +177,7 @@ func TestConnectionTestsNeedASupportedType(t *testing.T) {
 	app := newApp(t)
 	server := mediaServerForm("X", "kodi", "http://x.lan", "key")
 	expectBody(t, app.post("/configuration/media-servers/test", server), "choose a supported media server type first")
-	downloader := url.Values{"name": {"X"}, "type": {"deluge"}, "url": {"http://x.lan"}}
+	downloader := url.Values{"name": {"X"}, "type": {"rtorrent"}, "url": {"http://x.lan"}}
 	expectBody(t, app.post("/configuration/downloaders/test", downloader), "choose a supported downloader type first")
 	downloader.Del("url")
 	expectBody(t, app.post("/configuration/downloaders/test", downloader), "Nothing to test")

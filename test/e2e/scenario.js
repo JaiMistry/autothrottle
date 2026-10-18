@@ -1,5 +1,6 @@
 // The end-to-end scenario: a fresh install driven through its web UI
-// against a real Jellyfin, Emby or Plex, qBittorrent and Transmission.
+// against a real Jellyfin, Emby or Plex, qBittorrent, Transmission and
+// Deluge.
 // Checks are made on the download clients too: the page saying
 // "throttled" proves nothing if qBittorrent was never told. Run by run.sh.
 const fs = require('fs');
@@ -164,6 +165,25 @@ const transmission = {
   },
 };
 
+// Deluge's Web UI JSON-RPC, signed in with its password alone. In KiB/s,
+// as AutoThrottle counts; -1 is unlimited.
+const deluge = {
+  async call(cookie, method, params = []) {
+    const res = await fetch(env.deluge.base + '/json', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ method, params, id: 1 }),
+    });
+    return { cookie: (res.headers.get('set-cookie') || '').split(';')[0], body: await res.json() };
+  },
+  async limits() {
+    const { cookie } = await this.call('', 'auth.login', [env.deluge.password]);
+    const { body } = await this.call(cookie, 'core.get_config_values', [['max_download_speed', 'max_upload_speed']]);
+    if (body.error) throw new Error('deluge: ' + body.error.message);
+    const r = body.result;
+    return { down: r.max_download_speed < 0 ? 0 : r.max_download_speed, up: r.max_upload_speed < 0 ? 0 : r.max_upload_speed };
+  },
+};
+
 // --- the browser ------------------------------------------------------------
 
 (async () => {
@@ -313,12 +333,14 @@ const transmission = {
     for (const [name, type, conf, down, up] of [
       ['qBittorrent', 'qbittorrent', env.qbittorrent, 1500, 300],
       ['Transmission', 'transmission', env.transmission, 900, 180],
+      ['Deluge', 'deluge', env.deluge, 1200, 240],
     ]) {
       await openSheet(addDownloader);
       await page.select('#dl-form [name=type]', type);
       await fill('#dl-form [name=name]', name);
       await fill('#dl-form [name=url]', conf.internal);
-      await fill('#dl-form [name=username]', conf.username);
+      if (conf.username) await fill('#dl-form [name=username]', conf.username);
+      else check(await page.$eval('#dl-form [name=username]', (e) => e.disabled && !!e.closest('[hidden]')), `${name} asks for no username`);
       await fill('#dl-form [name=password]', conf.password);
       await fill('#dl-form [name=backup_download_limit]', String(down));
       await fill('#dl-form [name=backup_upload_limit]', String(up));
@@ -330,13 +352,13 @@ const transmission = {
 
     section('Mappings');
     await navigate('/configuration?tab=mappings');
-    check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 2, 'new pairings start as Throttle');
+    check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 3, 'new pairings start as Throttle');
     await page.click(`.at-matrix-cell[title="Leave Transmission at its default rate when ${NAME} plays"]`);
     await page.waitForSelector(`.at-matrix-cell[aria-pressed="false"][title="Throttle Transmission when ${NAME} plays"]`);
     check(true, 'a pairing can be switched off');
     await page.click(`.at-matrix-cell[title="Throttle Transmission when ${NAME} plays"]`);
     await page.waitForSelector(`.at-matrix-cell[aria-pressed="true"][title="Leave Transmission at its default rate when ${NAME} plays"]`);
-    check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 2, 'and back on');
+    check((await page.$$('.at-matrix-cell[aria-pressed="true"]')).length === 3, 'and back on');
 
     section('Idle');
     await navigate('/');
@@ -382,7 +404,7 @@ const transmission = {
       else await sleep(100);
     }
     const throttled = shownAt ? await dashboard() : null;
-    check(!!throttled, 'both clients show as throttled without a reload', JSON.stringify(await dashboard()));
+    check(!!throttled, 'every client shows as throttled without a reload', JSON.stringify(await dashboard()));
     check(shownAt && shownAt - appliedAt < 1500, 'the page shows the throttle within 1.5s of it landing', `${shownAt - appliedAt}ms`);
     console.log(`        (${shownAt - appliedAt}ms after qBittorrent was limited)`);
     console.log(`      (shown ${shownAt - appliedAt}ms after it landed)`);
@@ -392,6 +414,8 @@ const transmission = {
     check(q.down === 1500 * 1024 && q.up === 300 * 1024, 'qBittorrent really is limited to 1500/300 KB/s', JSON.stringify(q));
     const t = await transmission.limits();
     check(t.down === 900 && t.up === 180, 'Transmission really is limited to 900/180 KB/s', JSON.stringify(t));
+    const dl = await deluge.limits();
+    check(dl.down === 1200 && dl.up === 240, 'Deluge really is limited to 1200/240 KB/s', JSON.stringify(dl));
     check((await page.content()).includes(MEDIA.itemName), 'the playing title is shown');
     const clock = () => page.$eval('.at-timer-clock', (e) => e.textContent.replace(/\s+/g, '')).catch(() => '');
     const t1 = await clock(); await sleep(2100); const t2 = await clock();
@@ -487,6 +511,7 @@ const transmission = {
     check((await dashboard()).pill === 'Idle', 'and the status beside the title is back to Idle', (await dashboard()).pill);
     check((await qbittorrent.limits()).down === 0, 'qBittorrent is unlimited again');
     check((await transmission.limits()).down === 0, 'Transmission is unlimited again');
+    check((await deluge.limits()).down === 0, 'Deluge is unlimited again');
 
     section('A download client restarting');
     // qBittorrent still coming up when rates are applied must not stay Unreachable.

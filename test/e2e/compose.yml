@@ -92,3 +92,17 @@ services:
     ports:
       - "18191:9091"
     mem_limit: 256m
+
+  deluge:
+    image: ghcr.io/linuxserver/deluge:2.2.0
+    container_name: e2e-deluge
+    # Its Web UI's password stays the image's default, deluge, and the Web
+    # UI starts disconnected from its daemon: AutoThrottle connects it.
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - ./.state/deluge:/config
+    ports:
+      - "18112:8112"
+    mem_limit: 512m

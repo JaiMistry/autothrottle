@@ -605,6 +605,9 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	enabled := r.FormValue("enabled") == "on"
+	if !clients.DownloaderUsesUsername(dlType) {
+		username = ""
+	}
 
 	if name == "" || rawURL == "" || !clients.SupportedDownloaderType(dlType) {
 		s.renderConfigError(w, r, "Name, URL, and a supported type are required.")
@@ -640,7 +643,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	case r.FormValue("clear_credentials") == "on":
 		credentialEncrypted = sql.NullString{}
 	case password != "":
-		if username == "" {
+		if username == "" && clients.DownloaderUsesUsername(dlType) {
 			s.renderConfigError(w, r, "Enter the username that goes with the password.")
 			return
 		}
@@ -730,6 +733,9 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
+	if !clients.DownloaderUsesUsername(dlType) {
+		username = ""
+	}
 	password := r.FormValue("password")
 	// Editing: a blank password means the saved one, for the saved
 	// username and address only.
@@ -739,7 +745,7 @@ func (s *Server) testDownloaderForm(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.probe(w, r, probeDownloader, rawURL, "Successfully connected.", func(ctx context.Context) error {
+	s.probe(w, r, downloaderProbe(dlType), rawURL, "Successfully connected.", func(ctx context.Context) error {
 		if err := clients.TestDownloader(ctx, dlType, rawURL, username, password); err != nil {
 			return err
 		}
@@ -769,7 +775,7 @@ func (s *Server) testDownloaderByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.probe(w, r, probeDownloader, dl.URL, "Successfully connected.", func(ctx context.Context) error {
+	s.probe(w, r, downloaderProbe(dl.Type), dl.URL, "Successfully connected.", func(ctx context.Context) error {
 		if err := clients.TestDownloader(ctx, dl.Type, dl.URL, username, password); err != nil {
 			return err
 		}

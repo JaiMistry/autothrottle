@@ -578,6 +578,26 @@
     name.value = name.dataset.autoname = select.options[select.selectedIndex].text;
   });
 
+  /* Fields only some types have (data-types lists them) are hidden, and
+     switched off so they don't submit, for the others. Before the saved
+     values are read on render, and before the gate on a change: a field
+     switching off afterwards would read as an edit. */
+  function syncTypeFields(form) {
+    var type = form && form.querySelector('select[name="type"]');
+    if (!type) return;
+    form.querySelectorAll("[data-types]").forEach(function (el) {
+      var on = el.getAttribute("data-types").split(" ").indexOf(type.value) !== -1;
+      el.hidden = !on;
+      el.querySelectorAll("input, select, textarea").forEach(function (input) {
+        input.disabled = !on;
+      });
+    });
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches('select[name="type"]')) syncTypeFields(e.target.form);
+  });
+
   function retireTestResult(form) {
     var passed = form.querySelector('.at-testresult[data-state="connected"]');
     if (passed && form.__testedValues !== formValues(form)) passed.remove();
@@ -801,6 +821,7 @@
     startUptime();
     startPlaybackTick();
     syncTestFields();
+    document.querySelectorAll("form").forEach(syncTypeFields);
     gateAllSubmits();
     syncPlexPanel();
     document.querySelectorAll("form").forEach(syncCredentialUI);

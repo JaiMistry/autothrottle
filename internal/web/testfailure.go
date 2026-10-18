@@ -13,7 +13,17 @@ type probeKind int
 const (
 	probeServer probeKind = iota
 	probeDownloader
+	// A download client that signs in with a password alone (Deluge).
+	probePasswordDownloader
 )
+
+// downloaderProbe is the probe kind for a download client type.
+func downloaderProbe(dlType string) probeKind {
+	if clients.DownloaderUsesUsername(dlType) {
+		return probeDownloader
+	}
+	return probePasswordDownloader
+}
 
 // The form controls a failure can point at, for the card to outline.
 const (
@@ -31,7 +41,7 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 	}
 	msg := strings.ToLower(err.Error())
 	thing, port := "server", "port"
-	if kind == probeDownloader {
+	if kind != probeServer {
 		thing, port = "client", "WebUI port"
 	}
 
@@ -63,8 +73,11 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 	case strings.Contains(msg, "401"), strings.Contains(msg, "403"),
 		strings.Contains(msg, "unauthorized"), strings.Contains(msg, "forbidden"),
 		strings.Contains(msg, "credential"), strings.Contains(msg, "invalid token"):
-		if kind == probeDownloader {
+		switch kind {
+		case probeDownloader:
 			return []string{fieldCredential}, "Reached the WebUI, but the username or password was rejected."
+		case probePasswordDownloader:
+			return []string{fieldCredential}, "Reached the WebUI, but the password was rejected."
 		}
 		return []string{fieldCredential}, "Reached the server, but the credential was rejected. Check the token."
 

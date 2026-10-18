@@ -45,6 +45,7 @@ SERVER = SERVERS[MEDIA]
 MS_USER, MS_PASS = "e2e", "e2e-media"
 QBIT_USER, QBIT_PASS = "admin", "e2e-qbittorrent"
 TR_USER, TR_PASS = "e2e", "e2e-transmission"
+DELUGE_PASS = "deluge"  # the image's default; the Web UI has no username
 CLIENT_AUTH = 'MediaBrowser Client="AutoThrottle E2E", Device="Living Room TV", DeviceId="e2e-player", Version="1.0.0"'
 
 
@@ -53,7 +54,7 @@ def log(msg):
 
 
 def seed():
-    for sub in ("autothrottle", MEDIA, "qbittorrent/qBittorrent", "transmission"):
+    for sub in ("autothrottle", MEDIA, "qbittorrent/qBittorrent", "transmission", "deluge"):
         (STATE / sub).mkdir(parents=True, exist_ok=True)
 
     # qBittorrent stores a PBKDF2-SHA512 hash; writing it before first start
@@ -221,6 +222,8 @@ def write_env(media):
                         "username": QBIT_USER, "password": QBIT_PASS},
         "transmission": {"base": "http://127.0.0.1:18191", "internal": "http://transmission:9091",
                          "username": TR_USER, "password": TR_PASS},
+        "deluge": {"base": "http://127.0.0.1:18112", "internal": "http://deluge:8112",
+                   "username": "", "password": DELUGE_PASS},
         "autothrottle": "http://127.0.0.1:17676",
     }
     (STATE / "env.json").write_text(json.dumps(env, indent=2))

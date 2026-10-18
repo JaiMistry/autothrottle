@@ -12,3 +12,5 @@ services:
     image: ghcr.io/linuxserver/qbittorrent:latest
   transmission:
     image: ghcr.io/linuxserver/transmission:latest
+  deluge:
+    image: ghcr.io/linuxserver/deluge:latest

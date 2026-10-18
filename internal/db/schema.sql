@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS media_servers (
 CREATE TABLE IF NOT EXISTS downloaders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('qbittorrent', 'transmission')),
+    type TEXT NOT NULL CHECK (type IN ('qbittorrent', 'transmission', 'deluge')),
     url TEXT NOT NULL,
     credential_encrypted TEXT,
     default_download_limit INTEGER NOT NULL DEFAULT 0,

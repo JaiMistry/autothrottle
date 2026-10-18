@@ -86,6 +86,11 @@ type RateLimiter interface {
 // download client type.
 func SupportedDownloaderType(dlType string) bool { return RateLimiterFor(dlType) != nil }
 
+// DownloaderUsesUsername reports whether a download client type signs in
+// with a username as well as a password. Deluge's Web UI has a password
+// only.
+func DownloaderUsesUsername(dlType string) bool { return dlType != "deluge" }
+
 // TestDownloader runs the connection test for a downloader's type.
 func TestDownloader(ctx context.Context, dlType, baseURL, username, password string) error {
 	switch dlType {
@@ -93,6 +98,8 @@ func TestDownloader(ctx context.Context, dlType, baseURL, username, password str
 		return TestQBittorrent(ctx, baseURL, username, password)
 	case "transmission":
 		return TestTransmission(ctx, baseURL, username, password)
+	case "deluge":
+		return TestDeluge(ctx, baseURL, password)
 	default:
 		return fmt.Errorf("unsupported downloader type %q", dlType)
 	}
@@ -112,6 +119,14 @@ func (Transmission) SetLimits(ctx context.Context, baseURL, username, password s
 	return SetTransmissionLimits(ctx, baseURL, username, password, downloadLimitKBps, uploadLimitKBps)
 }
 
+// Deluge implements RateLimiter against the Deluge Web UI's JSON-RPC API.
+// It has no username.
+type Deluge struct{}
+
+func (Deluge) SetLimits(ctx context.Context, baseURL, _, password string, downloadLimitKBps, uploadLimitKBps int64) error {
+	return SetDelugeLimits(ctx, baseURL, password, downloadLimitKBps, uploadLimitKBps)
+}
+
 // RateLimiterFor resolves a downloader's type to its implementation,
 // or nil for an unsupported one.
 func RateLimiterFor(downloaderType string) RateLimiter {
@@ -120,6 +135,8 @@ func RateLimiterFor(downloaderType string) RateLimiter {
 		return QBittorrent{}
 	case "transmission":
 		return Transmission{}
+	case "deluge":
+		return Deluge{}
 	default:
 		return nil
 	}

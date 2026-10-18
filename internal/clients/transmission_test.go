@@ -197,7 +197,7 @@ func TestSetTransmissionLimitsEnablesAndDisables(t *testing.T) {
 }
 
 func TestDownloaderResolvers(t *testing.T) {
-	for _, dlType := range []string{"qbittorrent", "transmission"} {
+	for _, dlType := range []string{"qbittorrent", "transmission", "deluge"} {
 		if !SupportedDownloaderType(dlType) {
 			t.Errorf("SupportedDownloaderType(%q) = false", dlType)
 		}
@@ -206,13 +206,13 @@ func TestDownloaderResolvers(t *testing.T) {
 		}
 	}
 
-	if SupportedDownloaderType("deluge") {
-		t.Error(`SupportedDownloaderType("deluge") = true, want false`)
+	if SupportedDownloaderType("rtorrent") {
+		t.Error(`SupportedDownloaderType("rtorrent") = true, want false`)
 	}
-	if RateLimiterFor("deluge") != nil {
+	if RateLimiterFor("rtorrent") != nil {
 		t.Error("RateLimiterFor for an unknown type must be nil so callers can report it")
 	}
-	if err := TestDownloader(context.Background(), "deluge", "http://x", "", ""); err == nil {
+	if err := TestDownloader(context.Background(), "rtorrent", "http://x", "", ""); err == nil {
 		t.Error("TestDownloader for an unknown type should return an error")
 	}
 }
