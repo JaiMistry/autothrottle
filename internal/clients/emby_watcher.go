@@ -110,7 +110,7 @@ func (w *EmbyWatcher) connectAndListen(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	c, _, err := websocket.Dial(ctx, w.webSocketURL(), &websocket.DialOptions{HTTPHeader: w.authHeader()})
+	c, _, err := websocket.Dial(ctx, w.webSocketURL(), &websocket.DialOptions{HTTPClient: newHTTPClient(0), HTTPHeader: w.authHeader()})
 	if err != nil {
 		// Emby's key is in the URL, and so in the error.
 		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))

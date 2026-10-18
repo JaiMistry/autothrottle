@@ -40,7 +40,7 @@ func RequestPlexPin(ctx context.Context, clientID string) (PlexPin, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	plexAuthHeaders(req, clientID)
 
-	resp, err := (&http.Client{Timeout: RequestTimeout}).Do(req)
+	resp, err := newHTTPClient(RequestTimeout).Do(req)
 	if err != nil {
 		return PlexPin{}, fmt.Errorf("contacting plex.tv: %w", err)
 	}
@@ -68,7 +68,7 @@ func PollPlexPin(ctx context.Context, clientID string, pinID int) (string, error
 	}
 	plexAuthHeaders(req, clientID)
 
-	resp, err := (&http.Client{Timeout: RequestTimeout}).Do(req)
+	resp, err := newHTTPClient(RequestTimeout).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("contacting plex.tv: %w", err)
 	}

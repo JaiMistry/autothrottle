@@ -26,6 +26,8 @@ func TestClassifyProbeError(t *testing.T) {
 		{"tls points at the URL", probeServer, errors.New("x509: certificate signed by unknown authority"), fieldURL, "TLS handshake failed"},
 		{"dns points at the URL", probeServer, errors.New("dial tcp: lookup plex.example: no such host"), fieldURL, "did not resolve"},
 		{"a scheme-less URL is a URL problem", probeServer, errors.New(`Get "192.168.1.50:32400": unsupported protocol scheme ""`), fieldURL, "not a complete URL"},
+		{"a redirect elsewhere points at the URL", probeServer, errors.New(`Get "http://plex.lan:32400/": redirected to another address, https://auth.example, which was not followed`), fieldURL, "redirected to a different address"},
+		{"a redirect is not mistaken for a 401", probeDownloader, errors.New(`Post "http://qbit.lan:8080/api/v2/auth/login": redirected to another address, http://401.example, which was not followed`), fieldURL, "redirected to a different address"},
 		{"nil is not a failure", probeServer, nil, "", ""},
 		// Nothing anticipated: the raw error shows, without invented advice.
 		{"unknown errors get no advice", probeServer, errors.New("something nobody has seen before"), "", ""},

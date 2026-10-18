@@ -18,7 +18,7 @@ func TestQBittorrent(ctx context.Context, baseURL, username, password string) er
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	if username == "" && password == "" {
-		client := &http.Client{Timeout: RequestTimeout}
+		client := newHTTPClient(RequestTimeout)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v2/app/webapiVersion", nil)
 		if err != nil {
 			return fmt.Errorf("building request: %w", err)
@@ -62,7 +62,7 @@ func SetQBittorrentLimits(ctx context.Context, baseURL, username, password strin
 // credentials are set.
 func qbittorrentClient(ctx context.Context, baseURL, username, password string) (*http.Client, error) {
 	if username == "" && password == "" {
-		return &http.Client{Timeout: RequestTimeout}, nil
+		return newHTTPClient(RequestTimeout), nil
 	}
 	return qbittorrentLogin(ctx, baseURL, username, password)
 }
@@ -73,7 +73,8 @@ func qbittorrentLogin(ctx context.Context, baseURL, username, password string) (
 	if err != nil {
 		return nil, fmt.Errorf("creating cookie jar: %w", err)
 	}
-	client := &http.Client{Timeout: RequestTimeout, Jar: jar}
+	client := newHTTPClient(RequestTimeout)
+	client.Jar = jar
 
 	form := url.Values{"username": {username}, "password": {password}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/v2/auth/login", strings.NewReader(form.Encode()))

@@ -26,7 +26,7 @@ func TestPlex(ctx context.Context, baseURL, token string) error {
 	req.Header.Set("X-Plex-Token", token)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: RequestTimeout}
+	client := newHTTPClient(RequestTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", baseURL, err)
@@ -62,7 +62,7 @@ func verifyPlexToken(ctx context.Context, token string) error {
 	plexAuthHeaders(req, plexProduct)
 	req.Header.Set("X-Plex-Token", token)
 
-	resp, err := (&http.Client{Timeout: RequestTimeout}).Do(req)
+	resp, err := newHTTPClient(RequestTimeout).Do(req)
 	if err != nil {
 		// A failure, not a pass: nothing vouched for the token.
 		return fmt.Errorf("server is reachable, but the token could not be checked with plex.tv: %w", err)

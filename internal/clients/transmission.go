@@ -64,7 +64,7 @@ func transmissionCall(ctx context.Context, baseURL, username, password, method s
 		return nil, fmt.Errorf("encoding request: %w", err)
 	}
 
-	client := &http.Client{Timeout: RequestTimeout}
+	client := newHTTPClient(RequestTimeout)
 	sessionID := ""
 
 	for attempt := 0; attempt < 2; attempt++ {

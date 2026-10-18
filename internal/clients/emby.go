@@ -148,7 +148,7 @@ func testEmbyFlavor(ctx context.Context, f embyFlavor, baseURL, apiKey string) e
 	f.setAuth(req, apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: RequestTimeout}
+	client := newHTTPClient(RequestTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", baseURL, err)

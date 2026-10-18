@@ -63,7 +63,7 @@ func (w *PlexWatcher) Run(ctx context.Context) {
 func (w *PlexWatcher) connectAndListen(ctx context.Context) error {
 	wsURL := plexWebSocketURL(w.BaseURL, w.Token)
 
-	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPClient: newHTTPClient(0)})
 	if err != nil {
 		// The token is in the URL, and so in the error.
 		return fmt.Errorf("dialing %s: %w", w.BaseURL, Redact(err))

@@ -36,6 +36,10 @@ func classifyProbeError(kind probeKind, err error) (fields []string, hint string
 	}
 
 	switch {
+	// First: the address it names could contain any of the words below.
+	case strings.Contains(msg, "redirected to another address"):
+		return []string{fieldURL}, "The " + thing + " redirected to a different address, and a token or password is only sent to the one entered. If you trust where it redirects to, enter that address instead."
+
 	// Windows words both of these its own way.
 	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "actively refused"):
 		return []string{fieldURL}, "Nothing is listening on that port. Check the " + port + " and that the " + thing + " is running."
