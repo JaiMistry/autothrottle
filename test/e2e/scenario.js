@@ -228,7 +228,8 @@ const transmission = {
   const dashboard = async () => page.evaluate(() => ({
     hero: document.querySelector('#dash-live p')?.innerText.trim() || '',
     // Outside the live block: it rides along with each refresh, out of band.
-    pill: document.querySelector('#dash-pill')?.innerText.trim() || '',
+    // textContent: CSS shows the label in capitals.
+    pill: document.querySelector('#dash-pill')?.textContent.trim() || '',
     downloaders: [...document.querySelectorAll('.at-dlrow-wrap')].map((r) => r.dataset.state),
     sessionTime: document.querySelector('.at-session-time')?.textContent.trim() || '',
     paused: document.querySelector('.at-session-progress')?.dataset.paused === '1',
