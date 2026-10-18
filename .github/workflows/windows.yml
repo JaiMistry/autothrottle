@@ -1,9 +1,10 @@
 name: Windows
 
-# The Windows installer: built from the same code and CSS as the image,
-# then installed, upgraded and uninstalled on real Windows, x64 and Arm,
-# with the Go tests and linters run there too. On every change to what
-# ships, and called by the release workflow for the installer it attaches.
+# The Windows installer: built from the same code as the image, with its
+# CSS built the same way, then installed, upgraded and uninstalled on real
+# Windows, x64 and Arm, with the Go tests and linters run there too. On
+# every change to what ships, and called by the release workflow for the
+# installer it attaches.
 on:
   push:
     branches: [main]
@@ -12,7 +13,6 @@ on:
       - "internal/**"
       - "go.mod"
       - "go.sum"
-      - "Dockerfile"
       - "package.json"
       - "package-lock.json"
       - "packaging/windows/**"
@@ -23,7 +23,6 @@ on:
       - "internal/**"
       - "go.mod"
       - "go.sum"
-      - "Dockerfile"
       - "package.json"
       - "package-lock.json"
       - "packaging/windows/**"
@@ -94,22 +93,27 @@ jobs:
             echo "commit=${COMMIT:-$GITHUB_SHA}"
             echo "date=${DATE:-$(git log -1 --format=%cI)}"
           } >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - name: Build the binaries
-        uses: docker/build-push-action@v6
+      # Built here rather than in Docker, where Go's build cache started
+      # empty every run: setup-go keeps it between runs.
+      - uses: actions/setup-node@v4
         with:
-          context: .
-          target: windows
-          outputs: type=local,dest=bin
-          # The CSS and module layers are the image's own.
-          cache-from: |
-            type=gha,scope=release
-            type=gha,scope=windows
-          cache-to: type=gha,mode=max,scope=windows
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ steps.version.outputs.commit }}
-            BUILD_DATE=${{ steps.version.outputs.date }}
+          node-version: "22"
+          cache: npm
+      # As the Dockerfile's tailwind stage builds it for the image.
+      - name: Build the CSS
+        run: |
+          npm ci
+          npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o ./internal/web/static/css/tailwind.css --minify
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.2"
+          cache: true
+      - name: Build the binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          BUILD_DATE: ${{ steps.version.outputs.date }}
+        run: packaging/windows/build.sh bin
       - uses: actions/upload-artifact@v4
         with:
           name: windows-binaries

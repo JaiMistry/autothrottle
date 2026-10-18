@@ -42,41 +42,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpat
 RUN go version -m /out/autothrottle | grep -qw "GOARCH=${TARGETARCH:-$(go env GOARCH)}"
 RUN mkdir -p /out/data
 
-# The Windows build, for the installer: the same code and CSS as the
-# image, as .exe files with the icon and version stamped in. Built only
-# when asked for (--target windows); the image never includes it.
-FROM source AS windows-build
-ARG VERSION=dev
-ARG COMMIT=""
-ARG BUILD_DATE=""
-RUN go install github.com/tc-hib/go-winres@v0.3.3
-# Windows wants four numbers: v1.4.2 is 1.4.2.0, anything else 0.0.0.0.
-RUN set -e; \
-    v="${VERSION#v}"; v="${v%%-*}"; \
-    case "$v" in [0-9]*.[0-9]*.[0-9]*) number="$v.0" ;; *) number=0.0.0.0 ;; esac; \
-    for cmd in autothrottle autothrottle-tray; do \
-      manifest=cli; description="AutoThrottle"; \
-      if [ "$cmd" = autothrottle-tray ]; then manifest=gui; description="AutoThrottle tray icon"; fi; \
-      go-winres simply --arch amd64,arm64 --out "cmd/$cmd/rsrc" --manifest "$manifest" \
-        --icon cmd/autothrottle-tray/autothrottle.ico \
-        --product-name AutoThrottle --product-version "$number" --file-version "$number" \
-        --file-description "$description" --original-filename "$cmd.exe" \
-        --copyright "JaiMistry, GPL-3.0"; \
-    done; \
-    stamp="-s -w \
-      -X github.com/JaiMistry/autothrottle/internal/version.Version=${VERSION} \
-      -X github.com/JaiMistry/autothrottle/internal/version.Commit=${COMMIT} \
-      -X github.com/JaiMistry/autothrottle/internal/version.BuildDate=${BUILD_DATE}"; \
-    for arch in amd64 arm64; do \
-      CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags="$stamp" \
-        -o /out/$arch/autothrottle.exe ./cmd/autothrottle; \
-      CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags="$stamp -H=windowsgui" \
-        -o /out/$arch/autothrottle-tray.exe ./cmd/autothrottle-tray; \
-    done
-
-FROM scratch AS windows
-COPY --from=windows-build /out /
-
 # Starts as root on purpose: the binary hands /data to PUID:PGID and
 # then drops to that user before it opens the database or a socket.
 FROM gcr.io/distroless/static-debian12

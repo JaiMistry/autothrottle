@@ -15,6 +15,9 @@ handoff/
 /scripts/
 /data/
 
+# Resources go-winres writes for the Windows build
+*.syso
+
 # End-to-end test scratch: generated media, server state, keys
 /test/e2e/.state/
 __pycache__/
