@@ -539,6 +539,33 @@ const transmission = {
     await local.stop();
     await setExempt(false);
 
+    section('Editing');
+    // Only the connection's own fields need a new test; nothing is saved here.
+    await navigate('/configuration?tab=connections');
+    await openSheet('button[hx-get^="/configuration/media-servers/"][hx-get$="/edit"]');
+    const canSave = (form) => page.$eval(`${form} [data-submit]`, (b) => !b.disabled);
+    const savedUrl = await page.$eval('#ms-form [name=url]', (e) => e.value);
+    await fill('#ms-form [name=name]', `${NAME} renamed`);
+    check(await canSave('#ms-form'), 'renaming a server needs no new test');
+    await page.click('#ms-form [name=skip_local_playback]');
+    check(await canSave('#ms-form'), 'nor does the local playback switch');
+    await fill('#ms-form [name=url]', 'http://192.0.2.1:8096');
+    check(!(await canSave('#ms-form')), 'changing its address does');
+    await fill('#ms-form [name=url]', savedUrl);
+    check(await canSave('#ms-form'), 'and changing it back does not');
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    const qbRow = await page.$$eval('button[hx-get^="/configuration/downloaders/"][hx-get$="/edit"]',
+      (bs) => bs.find((b) => b.closest('tr').innerText.includes('qBittorrent')).getAttribute('hx-get'));
+    await openSheet(`button[hx-get="${qbRow}"]`);
+    await fill('#dl-form [name=name]', 'qBittorrent renamed');
+    await fill('#dl-form [name=backup_download_limit]', '1234');
+    check(await canSave('#dl-form'), 'renaming a downloader or changing its rates needs no new test');
+    await fill('#dl-form [name=username]', 'someone-else');
+    check(!(await canSave('#dl-form')), 'changing its username does');
+    await page.keyboard.press('Escape');
+    await sleep(300);
+
     section('Logs');
     await navigate('/logs');
     const logText = await text('#log-panel');

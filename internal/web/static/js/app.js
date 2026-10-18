@@ -555,10 +555,16 @@
      stays, to explain the outlined field). "Changed" compares values, not
      events. Name, rates and checkboxes aren't tested, so don't count. */
   var TESTED_FIELDS = ["type", "url", "token", "api_token", "plex_token", "username", "password"];
+  /* A blank credential keeps the saved one, so it reads the same as one
+     that is switched off: the drawer switches off the other type's field
+     after the saved values are read, and a rename looked like a change. */
+  var CREDENTIAL_FIELDS = ["token", "api_token", "plex_token", "password"];
   function formValues(form) {
     var pairs = [];
     new FormData(form).forEach(function (value, name) {
-      if (TESTED_FIELDS.indexOf(name) !== -1) pairs.push(name + "=" + value);
+      if (TESTED_FIELDS.indexOf(name) === -1) return;
+      if (value === "" && CREDENTIAL_FIELDS.indexOf(name) !== -1) return;
+      pairs.push(name + "=" + value);
     });
     return pairs.join("&");
   }
