@@ -52,8 +52,9 @@ services:
     image: plexinc/pms-docker:1.43.4.10903-e5521bd8c
     profiles: [plex]
     container_name: e2e-plex
-    # The server's name on the account, which cleanup looks for.
-    hostname: e2e-plex
+    # The server's name on the account. run.sh gives each run its own, so
+    # two runs sharing the account can tell their servers apart.
+    hostname: ${PLEX_SERVER_NAME:-e2e-plex}
     environment:
       # One-time code from plex.tv that claims the server for the test account.
       - PLEX_CLAIM=${PLEX_CLAIM:-}

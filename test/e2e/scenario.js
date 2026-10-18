@@ -267,7 +267,15 @@ const transmission = {
       await page.click('#ms-form [data-credtab="signin"]');
       await page.click('#ms-form [data-plexstart]');
       const authUrl = await page.waitForSelector('.at-plexsignin[data-authurl]').then((el) => el.evaluate((e) => e.dataset.authurl));
-      await approvePlexPin(new URLSearchParams(authUrl.split('#?')[1]).get('code'));
+      const pin = new URLSearchParams(authUrl.split('#?')[1]);
+      // For cleanup, which removes only this run's sign-ins while another
+      // run may share the account. Without it they go once an hour old.
+      try {
+        fs.appendFileSync(path.join(__dirname, '.state/plex-signins'), pin.get('clientID') + '\n');
+      } catch (err) {
+        console.log(`      (could not note the sign-in for cleanup: ${err.message})`);
+      }
+      await approvePlexPin(pin.get('code'));
       const signedIn = await page.waitForSelector('.at-plexsignin[data-state="done"]', { timeout: 30000 }).catch(() => null);
       check(!!signedIn, 'Sign in with Plex picks up the approval by itself');
       // Plex closes its window once approved; the sign-in must survive that.

@@ -117,9 +117,6 @@ def wait_for(what, check, timeout=180):
 
 # --- Plex ---------------------------------------------------------------------
 
-PLEX_SERVER_NAME = "e2e-plex"  # compose.yml's hostname for the service
-
-
 def plex_headers():
     return {
         "Accept": "application/json",
@@ -190,18 +187,28 @@ def configure_plex():
 
 
 def cleanup():
-    """Removes this run's server, and any a crashed run left behind, from
-    the test account — along with the AutoThrottle instances that signed
-    in to it. Only things E2E makes: the account is the tests' own."""
-    machine = STATE / "plex-machine-id"
-    ours = machine.read_text().strip() if machine.exists() else ""
+    """Removes this run's server, and the AutoThrottle sign-ins it made,
+    from the test account. Another run can be using the account at the
+    same time (the newest round runs beside the pinned one), so what a
+    crashed run left behind goes only once it is older than any run can
+    be. Only things E2E makes: the account is the tests' own."""
+    ours = set()
+    for name in ("plex-machine-id", "plex-signins"):
+        f = STATE / name
+        if f.exists():
+            ours.update(f.read_text().split())
+    # plex.tv barely updates lastSeenAt, so age is counted from creation;
+    # a job is stopped after 30 minutes.
+    stale = time.time() - 3600
     root = ET.fromstring(plex("https://plex.tv/devices.xml", raw=True))
     removed = 0
     for d in root.findall("Device"):
         if d.get("clientIdentifier") == os.environ["PLEX_E2E_CLIENT_ID"]:
             continue
-        mine = d.get("clientIdentifier") == ours or d.get("name") == PLEX_SERVER_NAME or d.get("product") == "AutoThrottle"
-        if mine:
+        # Servers are named e2e-plex-<run> (compose.yml's hostname).
+        made_here = (d.get("name") or "").startswith("e2e-plex") or d.get("product") == "AutoThrottle"
+        left_behind = made_here and int(d.get("createdAt") or 0) < stale
+        if d.get("clientIdentifier") in ours or left_behind:
             plex(f"https://plex.tv/devices/{d.get('id')}.xml", "DELETE", raw=True)
             removed += 1
     log(f"removed {removed} test device(s) from the Plex account")

@@ -32,6 +32,11 @@ if [ "${E2E_BROWSER:-}" != host ] && ! docker image inspect "$PUPPETEER" >/dev/n
   pull=$!
 fi
 
+# Plex's name on the shared test account, unique to this run: cleanup
+# removes only its own server while another run may be using the account.
+PLEX_SERVER_NAME="e2e-plex-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+export PLEX_SERVER_NAME
+
 status=0
 for media in ${MEDIA:-$default}; do
   echo "=== $media ==="
@@ -57,7 +62,7 @@ for media in ${MEDIA:-$default}; do
       docker logs e2e-autothrottle 2>&1 | tail -40
     }
   # Plex comes off the account even on failure; a kept stack's server is
-  # found by name by the next run's cleanup.
+  # removed by the first cleanup after it is an hour old.
   if [ "$media" = plex ] && [ "${KEEP:-}" != 1 ]; then
     MEDIA=plex python3 provision.py cleanup || true
   fi

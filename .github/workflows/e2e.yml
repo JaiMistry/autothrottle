@@ -6,11 +6,17 @@ name: E2E
 # change what it tests: dependency updates, chiefly, where it proves the
 # new versions work before they merge.
 #
-# Nightly and on demand it runs a second time against each server's newest
-# release, and keeps one issue open while that fails: an upstream release
-# that breaks AutoThrottle is found before users find it.
+# Nightly it also runs against each server's newest release, alongside,
+# and keeps one issue open while that fails: an upstream release that
+# breaks AutoThrottle is found before users find it. On demand that round
+# is optional, since checking a change only needs the pinned versions.
 on:
   workflow_dispatch:
+    inputs:
+      newest:
+        description: Also run against each server's newest release
+        type: boolean
+        default: false
   schedule:
     - cron: "17 9 * * *"
   pull_request:
@@ -27,8 +33,9 @@ on:
 permissions:
   contents: read
 
-# Plex runs against one real plex.tv account, and each run cleans its
-# test servers off it by name; two runs at once would remove each other's.
+# Plex runs against one real plex.tv account. Each job removes only its
+# own server and sign-ins from it, so the two rounds can share it, but one
+# workflow run at a time keeps it to two test servers.
 concurrency:
   group: e2e
   cancel-in-progress: false
@@ -45,11 +52,8 @@ jobs:
       media: ${{ matrix.media }}
     secrets: inherit
 
-  # After the pinned runs, which share the Plex account, whatever they
-  # found.
   newest:
-    needs: pinned
-    if: always() && github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || inputs.newest
     strategy:
       fail-fast: false
       matrix:
