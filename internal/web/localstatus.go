@@ -20,9 +20,12 @@ func (s *Server) EnableLocalStatus() { s.localStatus = true }
 type localStatus struct {
 	Setup     bool   `json:"setup"` // no account yet
 	Statement string `json:"statement"`
-	Paused    bool   `json:"paused"`
-	Sessions  int    `json:"sessions"`
-	Throttled int    `json:"throttled"`
+	// Ready is when the Dashboard offers Disable throttling: there is a
+	// media server and a download client to act on.
+	Ready     bool `json:"ready"`
+	Paused    bool `json:"paused"`
+	Sessions  int  `json:"sessions"`
+	Throttled int  `json:"throttled"`
 }
 
 func (s *Server) localStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +44,7 @@ func (s *Server) localStatusHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status.Statement = data.Hero.Statement
+		status.Ready = data.Ready
 		status.Paused = data.Paused
 		status.Sessions = data.ActiveSessions
 		status.Throttled = data.ThrottledCount
@@ -52,7 +56,8 @@ func (s *Server) localStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 // localThrottlingHandler turns throttling off (paused=true) or back on
 // (paused=false). It sets rather than toggles, so a menu showing a stale
-// state can't do the opposite of what it says. Browsers never get it:
+// state can't do the opposite of what it says. Off needs something to
+// throttle, as the Dashboard's button does; back on is always allowed. Browsers never get it:
 // they send Origin or Sec-Fetch-Site with every POST and the tray sends
 // neither, so no web page can switch throttling by posting a form here.
 func (s *Server) localThrottlingHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,8 +74,34 @@ func (s *Server) localThrottlingHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "paused must be true or false", http.StatusBadRequest)
 		return
 	}
+	if paused {
+		ready, err := s.readyToThrottle()
+		if err != nil {
+			slog.Error("checking for something to throttle", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if !ready {
+			http.Error(w, "nothing to throttle yet", http.StatusConflict)
+			return
+		}
+	}
 	s.scheduler.SetPaused(r.Context(), paused)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// readyToThrottle is the Dashboard's Ready: a media server and a download
+// client to act on.
+func (s *Server) readyToThrottle() (bool, error) {
+	mediaServers, err := s.db.ListMediaServers()
+	if err != nil {
+		return false, err
+	}
+	downloaders, err := s.db.ListDownloaders()
+	if err != nil {
+		return false, err
+	}
+	return len(mediaServers) > 0 && len(downloaders) > 0, nil
 }
 
 // fromThisMachine is a loopback connection, addressed to this machine,

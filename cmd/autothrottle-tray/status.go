@@ -13,6 +13,7 @@ import (
 type status struct {
 	Setup     bool   `json:"setup"`
 	Statement string `json:"statement"`
+	Ready     bool   `json:"ready"`
 	Paused    bool   `json:"paused"`
 	Sessions  int    `json:"sessions"`
 	Throttled int    `json:"throttled"`

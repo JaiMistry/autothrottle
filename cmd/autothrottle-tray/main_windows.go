@@ -66,8 +66,9 @@ func onReady() {
 	systray.SetTooltip("AutoThrottle")
 	// A click opens the page; a right-click shows the menu.
 	systray.SetOnTapped(func() { go open(pageURL) })
-	// Named for what a click does, as the page's button is; greyed while
-	// AutoThrottle isn't answering or isn't set up.
+	// Named for what a click does, as the page's button is. Greyed when
+	// the page wouldn't offer it either: AutoThrottle isn't answering, or
+	// has nothing to throttle yet and isn't already off.
 	toggle := systray.AddMenuItem("Disable throttling", "")
 	toggle.Disable()
 	systray.AddSeparator()
@@ -129,7 +130,7 @@ func watch(toggle *systray.MenuItem, paused *atomic.Bool, refresh <-chan struct{
 			toggle.SetTitle(label)
 			lastLabel = label
 		}
-		if can := up && !st.Setup; first || can != lastCan {
+		if can := up && !st.Setup && (st.Ready || st.Paused); first || can != lastCan {
 			if can {
 				toggle.Enable()
 			} else {

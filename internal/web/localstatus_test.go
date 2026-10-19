@@ -148,9 +148,37 @@ func (a *testApp) localPost(paused string, header map[string]string) *httptest.R
 	return rec
 }
 
+// Off only once there is something to throttle, as on the Dashboard;
+// back on whenever it is off.
+func TestTheTrayTurnsThrottlingOffOnlyWhenReady(t *testing.T) {
+	app := newApp(t)
+	app.enableLocalStatus()
+	if status := decodeLocalStatus(t, app.localGet("127.0.0.1:50000", nil)); status.Ready {
+		t.Errorf("ready with nothing set up: %+v", status)
+	}
+	if rec := app.localPost("true", nil); rec.Code != http.StatusConflict || app.sched.Paused() {
+		t.Errorf("turned off with nothing to throttle: %d, paused %v", rec.Code, app.sched.Paused())
+	}
+	app.sched.SetPaused(context.Background(), true)
+	if rec := app.localPost("false", nil); rec.Code != http.StatusNoContent || app.sched.Paused() {
+		t.Errorf("turning it back on with nothing to throttle: %d, paused %v", rec.Code, app.sched.Paused())
+	}
+
+	app.mediaServer("Plex", "plex", "http://plex.lan:32400")
+	if rec := app.localPost("true", nil); rec.Code != http.StatusConflict {
+		t.Errorf("turned off with a media server alone: %d", rec.Code)
+	}
+	app.downloader("qBittorrent")
+	if status := decodeLocalStatus(t, app.localGet("127.0.0.1:50000", nil)); !status.Ready {
+		t.Errorf("not ready with both: %+v", status)
+	}
+}
+
 func TestTheTrayTurnsThrottlingOffAndOn(t *testing.T) {
 	app := newApp(t)
 	app.enableLocalStatus()
+	app.mediaServer("Plex", "plex", "http://plex.lan:32400")
+	app.downloader("qBittorrent")
 
 	if rec := app.localPost("true", nil); rec.Code != http.StatusNoContent || !app.sched.Paused() {
 		t.Fatalf("turning it off: %d, paused %v", rec.Code, app.sched.Paused())
@@ -171,6 +199,8 @@ func TestTheTrayTurnsThrottlingOffAndOn(t *testing.T) {
 func TestOnlyTheTrayCanSwitchThrottling(t *testing.T) {
 	app := newApp(t)
 	app.enableLocalStatus()
+	app.mediaServer("Plex", "plex", "http://plex.lan:32400")
+	app.downloader("qBittorrent")
 	for name, header := range map[string]map[string]string{
 		"a cross-site form":         {"Origin": "https://evil.example"},
 		"a page on this machine":    {"Origin": "http://localhost:7676"},
