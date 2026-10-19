@@ -120,7 +120,7 @@ func TestEmbySilentSubscriptionAndKeepAlive(t *testing.T) {
 // A session without an id is not a session.
 func TestEmbySessionWithoutIDIsIgnored(t *testing.T) {
 	w := NewEmbyWatcher(unreachable, "k", false)
-	if got := w.activeSet([]embySession{{ID: ""}}); len(got) != 0 {
+	if got := w.activeSet(context.Background(), []embySession{{ID: ""}}); len(got) != 0 {
 		t.Errorf("active %+v", got)
 	}
 }

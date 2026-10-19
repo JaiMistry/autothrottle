@@ -76,6 +76,13 @@ type Session struct {
 	Local bool
 	// Episode is a TV episode, which autoplay may follow with the next.
 	Episode bool
+	// Finale is an episode with nothing after it in its show, so autoplay
+	// has nothing to start.
+	Finale bool
+	// ItemID is what is playing, by the server's own id. These servers can
+	// keep one session across autoplay's episodes, so details read for
+	// one item must not be carried onto the next.
+	ItemID string
 }
 
 // RateLimiter applies a download client's global speed limits, in KB/s;

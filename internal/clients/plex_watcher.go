@@ -34,6 +34,8 @@ type PlexWatcher struct {
 	// lastPos is each announced session's last position; a session not
 	// in it has not been announced yet.
 	lastPos map[string]time.Duration
+
+	finales finaleCache
 }
 
 func NewPlexWatcher(baseURL, token string, skipLocalPlayback bool) *PlexWatcher {
@@ -85,6 +87,7 @@ type plexNotificationEnvelope struct {
 		Type                         string `json:"type"`
 		PlaySessionStateNotification []struct {
 			SessionKey string `json:"sessionKey"`
+			RatingKey  string `json:"ratingKey"`
 			State      string `json:"state"`
 			ViewOffset int64  `json:"viewOffset"` // ms
 		} `json:"PlaySessionStateNotification"`
@@ -148,6 +151,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 		// detail, so a moving timecode costs no downloader API calls.
 		update := Session{
 			Key:        n.SessionKey,
+			ItemID:     n.RatingKey,
 			Position:   time.Duration(n.ViewOffset) * time.Millisecond,
 			PositionAt: time.Now(),
 			Paused:     n.State == "paused",
@@ -186,6 +190,7 @@ func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
 		}
 		emitDetail(ctx, w.events, Session{
 			Key:        s.SessionKey,
+			ItemID:     s.RatingKey,
 			Title:      s.label(),
 			Device:     s.device(),
 			Position:   time.Duration(s.ViewOffset) * time.Millisecond,
@@ -194,6 +199,7 @@ func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
 			Paused:     s.Player.State == "paused",
 			Local:      s.Player.Local,
 			Episode:    s.Type == "episode",
+			Finale:     w.finale(ctx, s),
 		})
 		return
 	}
@@ -234,13 +240,14 @@ func (w *PlexWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 			continue
 		}
 		active = append(active, Session{
-			Key: s.SessionKey, Title: s.label(), Device: s.device(),
+			Key: s.SessionKey, ItemID: s.RatingKey, Title: s.label(), Device: s.device(),
 			Position:   time.Duration(s.ViewOffset) * time.Millisecond,
 			PositionAt: time.Now(),
 			Duration:   time.Duration(s.Duration) * time.Millisecond,
 			Paused:     s.Player.State == "paused",
 			Local:      s.Player.Local,
 			Episode:    s.Type == "episode",
+			Finale:     w.finale(ctx, s),
 		})
 	}
 	w.paused.retain(present)
@@ -274,9 +281,12 @@ type plexSession struct {
 	// "Andor S1E4".
 	Title            string `json:"title"`
 	GrandparentTitle string `json:"grandparentTitle"`
-	Index            int    `json:"index"`
-	ParentIndex      int    `json:"parentIndex"`
-	Type             string `json:"type"`
+	// RatingKey is the item; GrandparentRatingKey its show.
+	RatingKey            string `json:"ratingKey"`
+	GrandparentRatingKey string `json:"grandparentRatingKey"`
+	Index                int    `json:"index"`
+	ParentIndex          int    `json:"parentIndex"`
+	Type                 string `json:"type"`
 	// Both in milliseconds.
 	ViewOffset int64 `json:"viewOffset"`
 	Duration   int64 `json:"duration"`
@@ -354,3 +364,34 @@ func plexWebSocketURL(baseURL, token string) string {
 
 // Connection reports this watcher's live connection health.
 func (w *PlexWatcher) Connection() ConnectionState { return w.conn.Connection() }
+
+// finale reports whether an episode is its show's last in the library,
+// which is all autoplay can play next.
+func (w *PlexWatcher) finale(ctx context.Context, s plexSession) bool {
+	if s.Type != "episode" || s.RatingKey == "" || s.GrandparentRatingKey == "" {
+		return false
+	}
+	return w.finales.lookup(s.RatingKey, func() (bool, error) {
+		ctx, cancel := context.WithTimeout(ctx, detailTimeout)
+		defer cancel()
+		var out struct {
+			MediaContainer struct {
+				Metadata []struct {
+					Index       int `json:"index"`
+					ParentIndex int `json:"parentIndex"`
+				} `json:"Metadata"`
+			} `json:"MediaContainer"`
+		}
+		err := getJSON(ctx, w.BaseURL+"/library/metadata/"+url.PathEscape(s.GrandparentRatingKey)+"/allLeaves", func(r *http.Request) {
+			r.Header.Set("X-Plex-Token", w.Token)
+		}, &out)
+		if err != nil {
+			return false, err
+		}
+		show := make([]episodeNumber, 0, len(out.MediaContainer.Metadata))
+		for _, e := range out.MediaContainer.Metadata {
+			show = append(show, episodeNumber{e.ParentIndex, e.Index})
+		}
+		return isFinale(episodeNumber{s.ParentIndex, s.Index}, show), nil
+	})
+}

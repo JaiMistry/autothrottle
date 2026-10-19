@@ -169,24 +169,32 @@ func (s *Scheduler) UpdateSessionDetail(mediaServerID int64, session clients.Ses
 	// state but no title, device or duration.
 	prev, known := s.live[mediaServerID][session.Key]
 	if known {
-		if session.Title == "" {
-			session.Title = prev.Title
+		// What the item is carries over only while it is the same item: a
+		// session can move on to autoplay's next episode, or a film.
+		if session.ItemID == "" || session.ItemID == prev.ItemID {
+			session.ItemID = prev.ItemID
+			if session.Title == "" {
+				session.Title = prev.Title
+			}
+			if session.Duration == 0 {
+				session.Duration = prev.Duration
+			}
+			// Plex's notifications don't say what kind of item it is.
+			if !session.Episode {
+				session.Episode = prev.Episode
+			}
+			if !session.Finale {
+				session.Finale = prev.Finale
+			}
 		}
 		if session.Device == "" {
 			session.Device = prev.Device
-		}
-		if session.Duration == 0 {
-			session.Duration = prev.Duration
 		}
 		if session.PositionAt.IsZero() {
 			session.PositionAt = prev.PositionAt
 		}
 		if !session.Local {
 			session.Local = prev.Local
-		}
-		// Plex's notifications don't say what kind of item it is.
-		if !session.Episode {
-			session.Episode = prev.Episode
 		}
 	}
 	s.live[mediaServerID][session.Key] = session
@@ -312,6 +320,9 @@ func (s *Scheduler) ReplaceSessions(mediaServerID int64, sessions []clients.Sess
 	current := s.active[mediaServerID]
 	started, ended := changedSessionKeys(current, next)
 	now := time.Now()
+	if len(started) > 0 {
+		s.nextEpisodeArrived(mediaServerID)
+	}
 	for _, key := range ended {
 		s.noteEnded(mediaServerID, previous[key], now)
 	}
@@ -382,6 +393,9 @@ func (s *Scheduler) HandleSessionEvent(mediaServerID int64, session clients.Sess
 		s.active[mediaServerID] = set
 	}
 	if active {
+		if !set[session.Key] {
+			s.nextEpisodeArrived(mediaServerID)
+		}
 		set[session.Key] = true
 		// A sparse event must not erase detail a snapshot supplied.
 		if session.Title != "" || session.Device != "" || session.Duration > 0 {
@@ -432,12 +446,20 @@ func (s *Scheduler) noteEnded(mediaServerID int64, session clients.Session, now 
 	}
 }
 
-// nextEpisodeLikely: a TV episode, playing (not paused, which an
-// abandoned pause ends as) until it stopped within its closing stretch,
-// where the credits and autoplay's countdown are. Its last reported
-// position is carried forward to now.
+// nextEpisodeArrived spends a server's hold on a session starting there:
+// what the hold waited for has come, and whatever it is now decides when
+// the throttle lifts. Called with s.mu held.
+func (s *Scheduler) nextEpisodeArrived(mediaServerID int64) {
+	delete(s.nextEpisodeBy, mediaServerID)
+}
+
+// nextEpisodeLikely: a TV episode with another after it (a finale has
+// nothing for autoplay to start), playing (not paused, which an abandoned
+// pause ends as) until it stopped within its closing stretch, where the
+// credits and autoplay's countdown are. Its last reported position is
+// carried forward to now.
 func nextEpisodeLikely(session clients.Session, now time.Time) bool {
-	if !session.Episode || session.Paused || session.Duration <= 0 {
+	if !session.Episode || session.Finale || session.Paused || session.Duration <= 0 {
 		return false
 	}
 	position := session.Position

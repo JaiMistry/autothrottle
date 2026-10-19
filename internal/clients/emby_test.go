@@ -71,7 +71,7 @@ func TestEmbyActiveSetAppliesExemption(t *testing.T) {
 	}
 
 	off := newEmbyWatcher(flavorJellyfin, "http://x", "k", false)
-	got := off.activeSet(sessions)
+	got := off.activeSet(context.Background(), sessions)
 	_, hasLAN := got["lan"]
 	_, hasRemote := got["remote"]
 	if len(got) != 2 || !hasLAN || !hasRemote {
@@ -79,7 +79,7 @@ func TestEmbyActiveSetAppliesExemption(t *testing.T) {
 	}
 
 	on := newEmbyWatcher(flavorJellyfin, "http://x", "k", true)
-	got = on.activeSet(sessions)
+	got = on.activeSet(context.Background(), sessions)
 	_, hasRemote = got["remote"]
 	if len(got) != 1 || !hasRemote {
 		t.Errorf("exemption on: got %v, want only the remote session", got)

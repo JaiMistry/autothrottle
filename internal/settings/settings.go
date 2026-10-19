@@ -29,7 +29,7 @@ const (
 	// RestoreDelay holds a throttle this long after a TV episode ends in
 	// its closing stretch (EpisodeEnd) before restoring default rates, so
 	// autoplay's next episode doesn't flip the downloaders off and back on.
-	// Anything else restores at once.
+	// Anything else restores at once, a show's last episode included.
 	RestoreDelay = 30 * time.Second
 
 	// EpisodeEnd is an episode's closing stretch, where the credits and

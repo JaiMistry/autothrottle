@@ -46,6 +46,8 @@ const embyDeviceID = "autothrottle"
 
 // embyNowPlaying is what a session has loaded.
 type embyNowPlaying struct {
+	ID           string `json:"Id"`
+	SeriesID     string `json:"SeriesId"`
 	Name         string `json:"Name"`
 	SeriesName   string `json:"SeriesName"`
 	SeasonNumber *int   `json:"ParentIndexNumber"`
@@ -56,7 +58,8 @@ type embyNowPlaying struct {
 
 // embySession is the subset of /Sessions this app reads.
 type embySession struct {
-	ID string `json:"Id"`
+	ID     string `json:"Id"`
+	UserID string `json:"UserId"`
 	// RemoteEndPoint is "IP" or "IP:port"; see embySessionIsLocal.
 	RemoteEndPoint string `json:"RemoteEndPoint"`
 	// NowPlayingItem is null for an idle client.

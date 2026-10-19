@@ -94,6 +94,8 @@ const player = PLEX ? plexPlayer : mediaBrowserPlayer;
 // one): what follows an episode decides when its throttle lifts.
 const MOVIE = { id: MEDIA.itemId, durationMs: MEDIA.durationMs };
 const EPISODE = { id: MEDIA.episodeId, durationMs: MEDIA.episodeDurationMs };
+// The show's last episode: nothing comes after it for autoplay to play.
+const FINALE = { id: MEDIA.finaleId, durationMs: MEDIA.finaleDurationMs };
 
 // A player keeps reporting progress while it plays; this does the same.
 // from is where it starts, in seconds.
@@ -595,6 +597,7 @@ const deluge = {
     const throttledAgain = () => until('the throttle', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
     const releasedAgain = () => until('the release', async () => ((await dashboard()).hero === 'Nothing is throttled' ? true : null), 60000);
     const closingStretch = Math.round(EPISODE.durationMs / 1000) - 150;
+    const finaleClosing = Math.round(FINALE.durationMs / 1000) - 150;
     // An episode left midway was left by choice: it releases at once too.
     const midway = startPlayer(EPISODE, 60);
     check(!!(await throttledAgain()), 'an episode throttles like anything else');
@@ -622,15 +625,25 @@ const deluge = {
     check(/An episode just ended/.test(hint), 'one stopped near its end holds the throttle, and the Dashboard says why', hint);
     const rowReason = await text('.at-dlrow-wrap[data-state="throttled"] .at-dlrow-reason');
     check(rowReason === `waiting on ${NAME}'s next episode`, 'and each client says it is waiting on the next episode, not that it is playing', rowReason);
-    const nextEpisode = startPlayer(EPISODE, closingStretch);
+    // Autoplay's next is the show's last episode.
+    const finale = startPlayer(FINALE, finaleClosing);
     await watch(4000);
     const nextShown = await until('the next episode to show', async () => ((await dashboard()).hero.includes('throttled') && !(await text('#dash-live .at-hero-reason')) ? true : null), 30000);
     check(!!nextShown, 'the next episode carries on the throttle', await text('#dash-live .at-hero-reason'));
     check(samples.length > 10 && samples.every((d) => d === 1500 * 1024), 'with qBittorrent never restored in between', JSON.stringify([...new Set(samples)]));
+    // Nothing follows a finale, so even stopped in its credits it releases at once.
     await sleep(3000);
-    await nextEpisode.stop();
+    await finale.stop();
+    const finaleStopped = Date.now();
+    check(!!(await releasedAgain()) && Date.now() - finaleStopped <= 15000, "the show's last episode releases at once, with nothing to autoplay",
+      `${Math.round((Date.now() - finaleStopped) / 1000)}s`);
+    // An episode with a next one, when the next never starts.
+    const unfollowed = startPlayer(EPISODE, closingStretch);
+    await throttledAgain();
+    await sleep(3000);
+    await unfollowed.stop();
     const stoppedAt = Date.now();
-    check(!!(await releasedAgain()), 'the last episode releases by itself');
+    check(!!(await releasedAgain()), 'an episode whose next never starts releases by itself');
     const waited = Math.round((Date.now() - stoppedAt) / 1000);
     check(waited >= 25 && waited <= 45, 'about 30 seconds after it ended', `${waited}s`);
     check((await qbittorrent.limits()).down === 0 && (await deluge.limits()).down === 0, 'and the clients are unlimited again');

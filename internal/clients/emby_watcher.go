@@ -36,6 +36,8 @@ type EmbyWatcher struct {
 	// survives a reconnect, so sessions that ended meanwhile are reported
 	// stopped by the first list after.
 	active map[string]Session
+
+	finales finaleCache
 }
 
 // NewEmbyWatcher builds a watcher for an Emby server. apiKey is a key
@@ -211,7 +213,7 @@ func (w *EmbyWatcher) startKeepAlive(ctx context.Context, conn *embyConn, timeou
 
 // handleSessions turns a pushed list into changes since the previous.
 func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession) {
-	next := w.activeSet(sessions)
+	next := w.activeSet(ctx, sessions)
 
 	w.mu.Lock()
 	previous := w.active
@@ -236,7 +238,7 @@ func (w *EmbyWatcher) handleSessions(ctx context.Context, sessions []embySession
 
 // activeSet filters a raw list by playback state and the local
 // exemption, for both the socket and snapshot paths.
-func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
+func (w *EmbyWatcher) activeSet(ctx context.Context, sessions []embySession) map[string]Session {
 	active := make(map[string]Session, len(sessions))
 	present := make(map[string]bool, len(sessions))
 	now := time.Now()
@@ -260,6 +262,8 @@ func (w *EmbyWatcher) activeSet(sessions []embySession) map[string]Session {
 			Paused:  s.PlayState.IsPaused,
 			Local:   embySessionIsLocal(s.RemoteEndPoint),
 			Episode: s.NowPlayingItem.Type == "Episode",
+			Finale:  w.finale(ctx, s),
+			ItemID:  s.NowPlayingItem.ID,
 		}
 	}
 	w.paused.retain(present)
@@ -275,7 +279,7 @@ func (w *EmbyWatcher) Snapshot(ctx context.Context) ([]Session, error) {
 		return nil, err
 	}
 
-	set := w.activeSet(sessions)
+	set := w.activeSet(ctx, sessions)
 
 	w.mu.Lock()
 	w.active = set
@@ -306,3 +310,41 @@ func (w *EmbyWatcher) authHeader() http.Header {
 
 // Connection reports this watcher's live connection health.
 func (w *EmbyWatcher) Connection() ConnectionState { return w.conn.Connection() }
+
+// finale reports whether an episode is its show's last in the library,
+// which is all autoplay can play next. Episodes a server lists only from
+// its metadata, not on disk, don't count.
+func (w *EmbyWatcher) finale(ctx context.Context, s embySession) bool {
+	item := s.NowPlayingItem
+	if item.Type != "Episode" || item.ID == "" || item.SeriesID == "" || item.SeasonNumber == nil || item.Episode == nil {
+		return false
+	}
+	return w.finales.lookup(item.ID, func() (bool, error) {
+		ctx, cancel := context.WithTimeout(ctx, detailTimeout)
+		defer cancel()
+		q := url.Values{"IsMissing": {"false"}, "Fields": {"LocationType"}}
+		if s.UserID != "" {
+			q.Set("UserId", s.UserID)
+		}
+		var out struct {
+			Items []struct {
+				Season       int    `json:"ParentIndexNumber"`
+				Episode      int    `json:"IndexNumber"`
+				LocationType string `json:"LocationType"`
+			} `json:"Items"`
+		}
+		err := getJSON(ctx, w.BaseURL+"/Shows/"+url.PathEscape(item.SeriesID)+"/Episodes?"+q.Encode(), func(r *http.Request) {
+			w.flavor.setAuth(r, w.APIKey)
+		}, &out)
+		if err != nil {
+			return false, err
+		}
+		show := make([]episodeNumber, 0, len(out.Items))
+		for _, e := range out.Items {
+			if e.LocationType != "Virtual" {
+				show = append(show, episodeNumber{e.Season, e.Episode})
+			}
+		}
+		return isFinale(episodeNumber{*item.SeasonNumber, *item.Episode}, show), nil
+	})
+}

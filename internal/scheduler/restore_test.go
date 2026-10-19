@@ -77,8 +77,8 @@ func TestEpisodeEndingHoldsTheThrottleBriefly(t *testing.T) {
 }
 
 // Anything else restores the moment it ends: a movie, an episode left
-// midway, one paused at the end (as an abandoned pause ends), or an item
-// of unknown length.
+// midway, one paused at the end (as an abandoned pause ends), an item of
+// unknown length, or a show's last episode, with nothing to autoplay.
 func TestOnlyAnEpisodeNearItsEndHolds(t *testing.T) {
 	midway := endingEpisode("e")
 	midway.Position = 20 * time.Minute
@@ -88,8 +88,11 @@ func TestOnlyAnEpisodeNearItsEndHolds(t *testing.T) {
 	movie.Episode = false
 	unknown := endingEpisode("e")
 	unknown.Duration = 0
+	finale := endingEpisode("e")
+	finale.Finale = true
 	for name, session := range map[string]clients.Session{
 		"a movie": movie, "an episode left midway": midway, "a paused episode": paused, "an unknown length": unknown,
+		"a show's last episode": finale,
 	} {
 		s, _, limiter, _, _ := throttledThenEnded(t, session)
 		if last(limiter).download != 0 || s.ReleasePending() {
@@ -181,6 +184,7 @@ func TestNextEpisodeLikely(t *testing.T) {
 		{"before the last tenth of a long one", ep(90*time.Minute, 75*time.Minute, 0), false},
 		{"past its reported end", ep(10*time.Minute, 11*time.Minute, 0), true},
 		{"a movie at its credits", clients.Session{Duration: time.Hour, Position: 59 * time.Minute, PositionAt: now}, false},
+		{"the credits of a show's last episode", clients.Session{Episode: true, Finale: true, Duration: 22 * time.Minute, Position: 20 * time.Minute, PositionAt: now}, false},
 	}
 	for _, c := range cases {
 		if got := nextEpisodeLikely(c.session, now); got != c.want {
@@ -220,5 +224,48 @@ func TestReleaseRestoresForGood(t *testing.T) {
 	}
 	if s.Paused() {
 		t.Error("an exit was saved as a pause")
+	}
+}
+
+// A report about a new item in the same session (autoplay's next episode,
+// or a film after an episode) doesn't inherit what the last item was.
+func TestDetailsCarryOverOnlyForTheSameItem(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	msID, _ := addServerAndDownloader(t, database)
+	ep := endingEpisode("sess")
+	ep.ItemID, ep.Title, ep.Finale = "finale", "Show S1E9", true
+	s.HandleSessionEvent(msID, ep, true)
+
+	// Plex's notifications: position only, the same item.
+	s.UpdateSessionDetail(msID, clients.Session{Key: "sess", ItemID: "finale", Position: 44 * time.Minute, PositionAt: time.Now()})
+	if got := s.liveSession(msID, "sess"); !got.Episode || !got.Finale || got.Title != "Show S1E9" || got.Duration != ep.Duration {
+		t.Errorf("the same item lost its details: %+v", got)
+	}
+
+	// A film in the same session.
+	s.UpdateSessionDetail(msID, clients.Session{Key: "sess", ItemID: "film", Position: time.Minute, PositionAt: time.Now()})
+	if got := s.liveSession(msID, "sess"); got.Episode || got.Finale || got.Title != "" || got.Duration != 0 {
+		t.Errorf("a new item inherited the last one's details: %+v", got)
+	}
+}
+
+func (s *Scheduler) liveSession(mediaServerID int64, key string) clients.Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.live[mediaServerID][key]
+}
+
+// Autoplay's next being a show's last episode: stopped in its credits, it
+// releases at once, and the hold the episode before it set is spent.
+func TestAFinaleAfterAHoldReleasesAtOnce(t *testing.T) {
+	s, _, limiter, msID, _ := throttledThenEnded(t, endingEpisode("episode-1"))
+	finale := endingEpisode("episode-2")
+	finale.Finale = true
+	s.HandleSessionEvent(msID, finale, true)
+	s.resolve(context.Background())
+	s.HandleSessionEvent(msID, clients.Session{Key: "episode-2"}, false)
+	s.resolve(context.Background())
+	if last(limiter).download != 0 || s.ReleasePending() {
+		t.Errorf("the finale held the throttle: %+v", limiter.snapshot())
 	}
 }

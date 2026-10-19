@@ -172,18 +172,18 @@ def configure_plex():
                 raise
         wait_for(f"Plex to accept the {library['name']} library", created)
 
-    item, episode = {}, {}
+    item, episode, finale = {}, {}, {}
 
     def scanned():
         sections = {d["type"]: d["key"] for d in plex(f"{base}/library/sections")["MediaContainer"]["Directory"]}
         films = plex(f"{base}/library/sections/{sections['movie']}/all")["MediaContainer"].get("Metadata", [])
-        # type=4: the episodes, not the show.
+        # type=4: the episodes, not the show. Episode 2 is the show's last.
         episodes = plex(f"{base}/library/sections/{sections['show']}/all?type=4")["MediaContainer"].get("Metadata", [])
         if films:
             item.update(films[0])
-        if episodes:
-            episode.update(episodes[0])
-        return bool(films and episodes)
+        for e in episodes:
+            {1: episode, 2: finale}.get(e.get("index"), {}).update(e)
+        return bool(films and episode and finale)
     wait_for("the library scans", scanned)
 
     # Matching and analysing the new item keeps Plex busy, and slow to
@@ -194,7 +194,8 @@ def configure_plex():
 
     write_env({"kind": "plex", "label": SERVER["label"], "base": base, "internal": SERVER["internal"],
                "itemId": item["ratingKey"], "itemName": item["title"], "durationMs": int(item.get("duration", 600000)),
-               "episodeId": episode["ratingKey"], "episodeDurationMs": int(episode.get("duration", 600000))})
+               "episodeId": episode["ratingKey"], "episodeDurationMs": int(episode.get("duration", 600000)),
+               "finaleId": finale["ratingKey"], "finaleDurationMs": int(finale.get("duration", 600000))})
     log(f"ready: {item['title']}, server {identity['machineIdentifier'][:8]}…")
 
 
@@ -276,16 +277,18 @@ def configure():
         return (f"/Items?Recursive=true&IncludeItemTypes={kind}&userId={user_id}" if MEDIA == "jellyfin"
                 else f"/Users/{user_id}/Items?Recursive=true&IncludeItemTypes={kind}")
 
-    item, episode = {}, {}
+    item, episode, finale = {}, {}, {}
     asked = [time.time()]
 
     def scanned():
-        for kind, found in (("Movie", item), ("Episode", episode)):
-            if not found:
-                items = call(items_path(kind), token=token)["Items"]
-                if items:
-                    found.update(items[0])
-        if item and episode:
+        if not item:
+            items = call(items_path("Movie"), token=token)["Items"]
+            if items:
+                item.update(items[0])
+        # Episode 2 is the show's last.
+        for e in call(items_path("Episode"), token=token)["Items"]:
+            {1: episode, 2: finale}.get(e.get("IndexNumber"), {}).update(e)
+        if item and episode and finale:
             return True
         # Now and then Jellyfin 12 adds a library without scanning it.
         # Asking again is what a person would do.
@@ -306,7 +309,8 @@ def configure():
                "apiKey": api_key, "userToken": token, "itemId": item["Id"], "itemName": item["Name"],
                # Ticks are 100 ns.
                "durationMs": item.get("RunTimeTicks", 6_000_000_000) // 10_000,
-               "episodeId": episode["Id"], "episodeDurationMs": episode.get("RunTimeTicks", 6_000_000_000) // 10_000})
+               "episodeId": episode["Id"], "episodeDurationMs": episode.get("RunTimeTicks", 6_000_000_000) // 10_000,
+               "finaleId": finale["Id"], "finaleDurationMs": finale.get("RunTimeTicks", 6_000_000_000) // 10_000})
     log(f"ready: {item['Name']}, API key ...{api_key[-4:]}")
 
 
