@@ -3,21 +3,14 @@ services:
     image: jaimistry/autothrottle:latest
     container_name: autothrottle
     environment:
-      # The user and group that own the data folder on the host: `id -u`
-      # and `id -g`. AutoThrottle runs as them and fixes ownership itself.
       - PUID=1000
       - PGID=1000
-      # Time zone for the timestamps on the Dashboard and in the logs.
-      - TZ=America/Los_Angeles
-      # Optional. Sign in with these instead of creating an account in the
-      # browser on first run. Set both, or neither.
-      # - AUTH_USERNAME=admin
-      # - AUTH_PASSWORD=change-me
-      # Optional. Turns sign-in off. Only behind a proxy that handles it.
-      # - AUTH_DISABLED=true
+      - TZ=America/Los_Angeles # Reference: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      # Optional. Env username and password take precedence over the web UI
+      # - AUTH_USERNAME=
+      # - AUTH_PASSWORD=
+      - AUTH_DISABLED=false # Optional. Set to true to turn sign-in off
     volumes:
-      # Settings, history and the encryption key. The left side is where
-      # they live on the host.
       - /data:/data
     ports:
       - "7676:7676"
