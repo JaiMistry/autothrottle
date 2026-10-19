@@ -98,8 +98,11 @@ jobs:
             exit 0
           fi
 
-          failed=$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
-            --jq '.jobs[] | select(.conclusion == "failure" and (.name | startswith("newest"))) | "- " + .name')
+          # Printed so that an empty list below can be explained from the log.
+          gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+            --jq '.jobs[] | [.name, .status, .conclusion // "-"] | @tsv' | tee jobs.tsv
+          failed=$(awk -F'\t' '$1 ~ /^newest/ && $3 == "failure" { print "- " $1 }' jobs.tsv)
+          [ -n "$failed" ] || failed="- Couldn't tell which; see the run."
           {
             echo "The end-to-end run against each server's newest release failed. An upstream release may have changed something AutoThrottle relies on."
             echo
