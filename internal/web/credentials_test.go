@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/JaiMistry/autothrottle/internal/clients"
 )
 
 // listener records everything sent to it: someone else's machine.
@@ -143,4 +146,18 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s: %v", path, rec.Header())
 		}
 	}
+}
+
+// A test that passed with a caveat reads Connected, with the caveat
+// under it, and allows saving.
+func TestACaveatIsAPassWithANote(t *testing.T) {
+	app := newApp(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/configuration/media-servers/test", nil)
+	app.srv.probe(rec, req, probeServer, "http://plex.lan:32400", "Successfully connected.", func(context.Context) error {
+		return &clients.Caveat{Note: "plex.tv couldn't be reached"}
+	})
+	expectBody(t, rec, `data-state="connected"`)
+	expectBody(t, rec, "Successfully connected.")
+	expectBody(t, rec, "plex.tv couldn&#39;t be reached")
 }

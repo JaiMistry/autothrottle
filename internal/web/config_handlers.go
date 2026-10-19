@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -534,7 +535,12 @@ func (s *Server) probe(w http.ResponseWriter, r *http.Request, kind probeKind, t
 	ctx, cancel := context.WithTimeout(r.Context(), testConnectionTimeout)
 	defer cancel()
 	started := time.Now()
-	if err := test(ctx); err != nil {
+	err := test(ctx)
+	if caveat := (*clients.Caveat)(nil); errors.As(err, &caveat) {
+		s.writeTestResult(w, testResult{OK: true, Target: target, Message: okMessage, Hint: caveat.Note, Elapsed: time.Since(started)})
+		return
+	}
+	if err != nil {
 		field, hint := classifyProbeError(kind, err)
 		s.writeTestResult(w, testResult{Target: target, Message: clients.Redact(err).Error(), Fields: field, Hint: hint, Elapsed: time.Since(started)})
 		return

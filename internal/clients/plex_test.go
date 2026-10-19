@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -23,8 +24,11 @@ type fakePlex struct {
 	sessions     []map[string]any
 	sessionsCode int
 	lookups      int
-	wsQuery      chan string
-	push         chan string
+	// tokenlessStatus answers a request with no token; zero answers it as
+	// one with a token, as a server letting its own network in does.
+	tokenlessStatus int
+	wsQuery         chan string
+	push            chan string
 }
 
 func newFakePlex(t *testing.T) *fakePlex {
@@ -35,6 +39,10 @@ func newFakePlex(t *testing.T) *fakePlex {
 		defer f.mu.Unlock()
 		switch r.URL.Path {
 		case "/":
+			if r.Header.Get("X-Plex-Token") == "" && f.tokenlessStatus != 0 {
+				w.WriteHeader(f.tokenlessStatus)
+				return
+			}
 			w.WriteHeader(f.rootStatus)
 		case "/status/sessions":
 			f.lookups++
@@ -131,29 +139,40 @@ func noEvent(t *testing.T, w *PlexWatcher) {
 	}
 }
 
-// The server answering proves only that it is up: Plex accepts any token
-// on the LAN, so the token is checked with plex.tv.
+// A server that refuses a request without a token has checked the token
+// itself. One that lets anyone in from here accepts any token, so plex.tv
+// checks it, and without plex.tv the test passes with a caveat.
 func TestPlexConnectionTest(t *testing.T) {
 	cases := []struct {
 		name         string
 		root, plexTV int
+		enforces     bool
 		closed       bool
 		want         string
+		caveat       bool
+		askedPlexTV  bool
 	}{
-		{name: "both accept", root: 200, plexTV: 200},
+		{name: "an open server, plex.tv accepts", root: 200, plexTV: 200, askedPlexTV: true},
 		{name: "server refuses the token", root: 401, plexTV: 200, want: "token was rejected"},
 		{name: "server errors", root: 500, plexTV: 200, want: "unexpected status 500"},
-		{name: "plex.tv refuses the token", root: 200, plexTV: 401, want: "plex.tv rejected this token"},
-		{name: "plex.tv forbids it", root: 200, plexTV: 403, want: "plex.tv rejected this token"},
-		{name: "plex.tv errors", root: 200, plexTV: 502, want: "plex.tv answered 502"},
-		{name: "plex.tv unreachable", root: 200, closed: true, want: "could not be checked with plex.tv"},
+		{name: "plex.tv refuses the token", root: 200, plexTV: 401, want: "plex.tv rejected this token", askedPlexTV: true},
+		{name: "plex.tv forbids it", root: 200, plexTV: 403, want: "plex.tv rejected this token", askedPlexTV: true},
+		{name: "plex.tv errors", root: 200, plexTV: 502, want: "plex.tv answered 502", askedPlexTV: true},
+		{name: "an open server, plex.tv unreachable", root: 200, closed: true, caveat: true},
+		{name: "a server enforcing tokens needs no plex.tv", root: 200, enforces: true, closed: true},
+		{name: "a server enforcing tokens isn't second-guessed by plex.tv", root: 200, enforces: true, plexTV: 401},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			server := newFakePlex(t)
 			server.rootStatus = c.root
+			if c.enforces {
+				server.tokenlessStatus = http.StatusUnauthorized
+			}
 			var token string
+			asked := false
 			fakePlexTV(t, func(w http.ResponseWriter, r *http.Request) {
+				asked = true
 				token = r.Header.Get("X-Plex-Token")
 				w.WriteHeader(c.plexTV)
 			})
@@ -161,14 +180,23 @@ func TestPlexConnectionTest(t *testing.T) {
 				plexAccountURL = "http://127.0.0.1:1/api/v2/user"
 			}
 			err := TestMediaServer(context.Background(), "plex", server.URL+"/", "tok")
-			if c.want == "" {
-				if err != nil || token != "tok" {
-					t.Fatalf("err %v, plex.tv saw token %q", err, token)
-				}
-				return
+			if asked != c.askedPlexTV || (asked && token != "tok") {
+				t.Errorf("plex.tv asked %v with token %q, want asked %v", asked, token, c.askedPlexTV)
 			}
-			if err == nil || !strings.Contains(err.Error(), c.want) {
-				t.Fatalf("err %v, want %q", err, c.want)
+			var caveat *Caveat
+			switch {
+			case c.caveat:
+				if !errors.As(err, &caveat) || !strings.Contains(caveat.Note, "plex.tv couldn't be reached") {
+					t.Fatalf("err %v, want a caveat", err)
+				}
+			case c.want == "":
+				if err != nil {
+					t.Fatalf("err %v", err)
+				}
+			default:
+				if err == nil || errors.As(err, &caveat) || !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("err %v, want %q", err, c.want)
+				}
 			}
 		})
 	}
