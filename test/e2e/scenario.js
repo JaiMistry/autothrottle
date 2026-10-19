@@ -620,6 +620,8 @@ const deluge = {
       hint = await text('#dash-live .at-hero-reason');
     }
     check(/An episode just ended/.test(hint), 'one stopped near its end holds the throttle, and the Dashboard says why', hint);
+    const rowReason = await text('.at-dlrow-wrap[data-state="throttled"] .at-dlrow-reason');
+    check(rowReason === `waiting on ${NAME}'s next episode`, 'and each client says it is waiting on the next episode, not that it is playing', rowReason);
     const nextEpisode = startPlayer(EPISODE, closingStretch);
     await watch(4000);
     const nextShown = await until('the next episode to show', async () => ((await dashboard()).hero.includes('throttled') && !(await text('#dash-live .at-hero-reason')) ? true : null), 30000);

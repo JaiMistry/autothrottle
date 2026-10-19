@@ -68,7 +68,10 @@ type appliedState struct {
 
 // DownloaderState is one downloader's live state, for the Dashboard.
 type DownloaderState struct {
-	Throttled    bool
+	Throttled bool
+	// Holding: still throttled only for autoplay's next episode, since
+	// what was playing ended in its closing stretch.
+	Holding      bool
 	Cause        string
 	DownloadKBps int64
 	UploadKBps   int64
@@ -234,8 +237,10 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state, known := s.applied[downloaderID]
+	_, holding := s.releaseAt[downloaderID]
 	return DownloaderState{
 		Throttled:    state.throttled,
+		Holding:      holding,
 		Cause:        state.cause,
 		DownloadKBps: state.downloadLimit,
 		UploadKBps:   state.uploadLimit,

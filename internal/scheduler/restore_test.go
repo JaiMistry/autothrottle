@@ -67,12 +67,12 @@ func TestEpisodeEndingHoldsTheThrottleBriefly(t *testing.T) {
 	if restoredAny(limiter) {
 		t.Fatalf("restored the moment the episode ended: %+v", limiter.snapshot())
 	}
-	if !s.ReleasePending() || !s.State(dlID).Throttled {
-		t.Error("the hold isn't reported while it lasts")
+	if st := s.State(dlID); !s.ReleasePending() || !st.Throttled || !st.Holding {
+		t.Errorf("the hold isn't reported while it lasts: %+v", st)
 	}
 	eventually(t, "the release", func() bool { return last(limiter).download == 0 })
-	if s.ReleasePending() || s.State(dlID).Throttled {
-		t.Error("still reported as releasing after the release")
+	if st := s.State(dlID); s.ReleasePending() || st.Throttled || st.Holding {
+		t.Errorf("still reported as releasing after the release: %+v", st)
 	}
 }
 
@@ -119,10 +119,10 @@ func TestASnapshotFindingTheEpisodeGoneHolds(t *testing.T) {
 // Autoplay's next episode, within the delay, keeps the throttle on: the
 // downloader is never restored in between.
 func TestNextEpisodeKeepsTheThrottle(t *testing.T) {
-	s, _, limiter, msID, _ := throttledThenEnded(t, endingEpisode("episode-1"))
+	s, _, limiter, msID, dlID := throttledThenEnded(t, endingEpisode("episode-1"))
 	s.HandleSessionEvent(msID, clients.Session{Key: "episode-2", Episode: true}, true)
 	s.resolve(context.Background())
-	if s.ReleasePending() {
+	if s.ReleasePending() || s.State(dlID).Holding {
 		t.Error("the next episode didn't cancel the release")
 	}
 	time.Sleep(3 * testRestoreDelay)

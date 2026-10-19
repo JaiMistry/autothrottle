@@ -209,6 +209,9 @@ func (s *Server) buildDashboardData(r *http.Request) (dashboardData, error) {
 		case state.Throttled:
 			row.State = "throttled"
 			row.Cause = fmt.Sprintf("because %s is playing", state.Cause)
+			if state.Holding {
+				row.Cause = fmt.Sprintf("waiting on %s's next episode", state.Cause)
+			}
 			row.Down, row.Up = state.DownloadKBps, state.UploadKBps
 			throttledNames = append(throttledNames, dl.Name)
 		default:
