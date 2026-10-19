@@ -223,11 +223,36 @@ const deluge = {
 
 // --- the browser ------------------------------------------------------------
 
+const CHROME_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'];
+
+// Puppeteer only says Chrome timed out, so run the same Chrome by itself
+// for a few seconds and print what it says.
+function explainChromeFailure() {
+  let chrome = process.env.PUPPETEER_EXECUTABLE_PATH;
+  try { chrome ||= puppeteer.executablePath(); } catch (e) { /* none to try */ }
+  if (!chrome) return;
+  const { spawnSync } = require('child_process');
+  const version = spawnSync(chrome, ['--version'], { encoding: 'utf8', timeout: 10000 });
+  console.log(`\nChrome didn't start: ${chrome}, ${(version.stdout || '').trim() || 'version unknown'}`);
+  const profile = fs.mkdtempSync(path.join(require('os').tmpdir(), 'chrome-'));
+  const run = spawnSync(chrome, [...CHROME_ARGS, '--headless=new', '--remote-debugging-port=0',
+    `--user-data-dir=${profile}`, 'about:blank'], { encoding: 'utf8', timeout: 20000 });
+  const said = `${run.stdout || ''}${run.stderr || ''}`.trim().split('\n').slice(-40).join('\n');
+  console.log(`--- Chrome run alone (${run.error ? 'still running after 20s' : `exited ${run.status ?? run.signal}`}) ---\n${said || '(no output)'}\n`);
+}
+
 (async () => {
-  const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-  });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      args: CHROME_ARGS,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    });
+  } catch (e) {
+    explainChromeFailure();
+    throw e;
+  }
+  console.log(`  browser: ${await browser.version()}`);
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 1000 });
   page.setDefaultTimeout(30000);
