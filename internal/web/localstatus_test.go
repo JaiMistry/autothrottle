@@ -129,3 +129,68 @@ func TestPlatformWords(t *testing.T) {
 		t.Errorf("linux log hint: %q", got)
 	}
 }
+
+// localPost switches throttling as the tray's menu does, from this
+// machine with no browser headers unless header adds some.
+func (a *testApp) localPost(paused string, header map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "http://127.0.0.1:7676/local/throttling", strings.NewReader("paused="+paused))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "127.0.0.1:50000"
+	for k, v := range header {
+		if k == "Host" {
+			req.Host = v
+			continue
+		}
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	a.handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestTheTrayTurnsThrottlingOffAndOn(t *testing.T) {
+	app := newApp(t)
+	app.enableLocalStatus()
+
+	if rec := app.localPost("true", nil); rec.Code != http.StatusNoContent || !app.sched.Paused() {
+		t.Fatalf("turning it off: %d, paused %v", rec.Code, app.sched.Paused())
+	}
+	// Setting, not toggling: the same request twice leaves it off.
+	if rec := app.localPost("true", nil); rec.Code != http.StatusNoContent || !app.sched.Paused() {
+		t.Errorf("asking again: %d, paused %v", rec.Code, app.sched.Paused())
+	}
+	if rec := app.localPost("false", nil); rec.Code != http.StatusNoContent || app.sched.Paused() {
+		t.Errorf("turning it back on: %d, paused %v", rec.Code, app.sched.Paused())
+	}
+	if rec := app.localPost("maybe", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("a muddled request got %d", rec.Code)
+	}
+}
+
+// Only the tray: never a browser, another machine, or a rebound hostname.
+func TestOnlyTheTrayCanSwitchThrottling(t *testing.T) {
+	app := newApp(t)
+	app.enableLocalStatus()
+	for name, header := range map[string]map[string]string{
+		"a cross-site form":         {"Origin": "https://evil.example"},
+		"a page on this machine":    {"Origin": "http://localhost:7676"},
+		"a browser without Origin":  {"Sec-Fetch-Site": "cross-site"},
+		"a rebound hostname":        {"Host": "evil.example:7676"},
+		"a request through a proxy": {"X-Forwarded-For": "203.0.113.9"},
+	} {
+		if rec := app.localPost("true", header); rec.Code == http.StatusNoContent || app.sched.Paused() {
+			t.Errorf("%s got %d, paused %v", name, rec.Code, app.sched.Paused())
+		}
+	}
+
+	off := newApp(t)
+	if rec := off.localPost("true", nil); rec.Code == http.StatusNoContent || off.sched.Paused() {
+		t.Errorf("answered %d without being enabled", rec.Code)
+	}
+
+	fresh := newAppWith(t, nil)
+	fresh.enableLocalStatus()
+	if rec := fresh.localPost("true", nil); rec.Code != http.StatusConflict {
+		t.Errorf("before setup: %d", rec.Code)
+	}
+}

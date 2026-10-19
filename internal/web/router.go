@@ -130,6 +130,7 @@ func (s *Server) Router() http.Handler {
 	})
 	if s.localStatus {
 		mux.HandleFunc("GET /local/status", s.localStatusHandler)
+		mux.HandleFunc("POST /local/throttling", s.localThrottlingHandler)
 	}
 
 	protected := http.NewServeMux()

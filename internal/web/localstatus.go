@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
-// EnableLocalStatus serves GET /local/status, without a sign-in, to
-// requests from this machine only. The Windows tray icon reads it to show
-// what AutoThrottle is doing; nothing else turns it on.
+// EnableLocalStatus serves GET /local/status and POST /local/throttling,
+// without a sign-in, to requests from this machine only. The Windows tray
+// icon reads the one to show what AutoThrottle is doing, and its menu
+// turns throttling off and on with the other; nothing else turns them on.
 func (s *Server) EnableLocalStatus() { s.localStatus = true }
 
 // localStatus is the Dashboard's headline and little more: whether
@@ -46,6 +48,29 @@ func (s *Server) localStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(status)
+}
+
+// localThrottlingHandler turns throttling off (paused=true) or back on
+// (paused=false). It sets rather than toggles, so a menu showing a stale
+// state can't do the opposite of what it says. Browsers never get it:
+// they send Origin or Sec-Fetch-Site with every POST and the tray sends
+// neither, so no web page can switch throttling by posting a form here.
+func (s *Server) localThrottlingHandler(w http.ResponseWriter, r *http.Request) {
+	if !fromThisMachine(r) || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+		s.notFound(w, r)
+		return
+	}
+	if s.auth.NeedsSetup() {
+		http.Error(w, "not set up yet", http.StatusConflict)
+		return
+	}
+	paused, err := strconv.ParseBool(r.PostFormValue("paused"))
+	if err != nil {
+		http.Error(w, "paused must be true or false", http.StatusBadRequest)
+		return
+	}
+	s.scheduler.SetPaused(r.Context(), paused)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // fromThisMachine is a loopback connection, addressed to this machine,

@@ -3,9 +3,13 @@ package main
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/systray"
@@ -25,9 +29,10 @@ var iconRunning []byte
 var iconStopped []byte
 
 const (
-	pageURL   = "http://localhost:7676/"
-	aboutURL  = "http://localhost:7676/configuration?tab=about"
-	statusURL = "http://127.0.0.1:7676/local/status"
+	pageURL       = "http://localhost:7676/"
+	aboutURL      = "http://localhost:7676/configuration?tab=about"
+	statusURL     = "http://127.0.0.1:7676/local/status"
+	throttlingURL = "http://127.0.0.1:7676/local/throttling"
 
 	serviceName = "AutoThrottle"
 )
@@ -61,11 +66,26 @@ func onReady() {
 	systray.SetTooltip("AutoThrottle")
 	// A click opens the page; a right-click shows the menu.
 	systray.SetOnTapped(func() { go open(pageURL) })
+	// Named for what a click does, as the page's button is; greyed while
+	// AutoThrottle isn't answering or isn't set up.
+	toggle := systray.AddMenuItem("Disable throttling", "")
+	toggle.Disable()
+	systray.AddSeparator()
 	update := systray.AddMenuItem("Check for updates", "Open About, where you can check for a newer release")
 	exit := systray.AddMenuItem("Exit", "Stop AutoThrottle, restoring download speeds, and close this icon")
+	var paused atomic.Bool
+	refresh := make(chan struct{}, 1)
 	go func() {
 		for {
 			select {
+			case <-toggle.ClickedCh:
+				go func() {
+					_ = setPaused(!paused.Load())
+					select {
+					case refresh <- struct{}{}:
+					default:
+					}
+				}()
 			case <-update.ClickedCh:
 				go open(aboutURL)
 			case <-exit.ClickedCh:
@@ -77,15 +97,17 @@ func onReady() {
 		}
 	}()
 	go startService()
-	go watch()
+	go watch(toggle, &paused, refresh)
 }
 
-// watch keeps the icon and its tooltip current.
-func watch() {
+// watch keeps the icon, its tooltip and the throttling item current,
+// every few seconds or as soon as refresh says something changed.
+func watch(toggle *systray.MenuItem, paused *atomic.Bool, refresh <-chan struct{}) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	lastText, lastUp, first := "", false, true
+	lastText, lastLabel, lastUp, lastCan, first := "", "", false, false, true
 	for {
-		text, up := describe(fetch(client, statusURL))
+		st, err := fetch(client, statusURL)
+		text, up := describe(st, err)
 		if first || text != lastText {
 			systray.SetTooltip("AutoThrottle: " + text)
 			lastText = text
@@ -98,9 +120,43 @@ func watch() {
 			}
 			lastUp = up
 		}
+		paused.Store(st.Paused)
+		label := "Disable throttling"
+		if st.Paused {
+			label = "Resume throttling"
+		}
+		if label != lastLabel {
+			toggle.SetTitle(label)
+			lastLabel = label
+		}
+		if can := up && !st.Setup; first || can != lastCan {
+			if can {
+				toggle.Enable()
+			} else {
+				toggle.Disable()
+			}
+			lastCan = can
+		}
 		first = false
-		time.Sleep(5 * time.Second)
+		select {
+		case <-refresh:
+		case <-time.After(5 * time.Second):
+		}
 	}
+}
+
+// setPaused turns throttling off, or back on, as the page's button does.
+func setPaused(paused bool) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.PostForm(throttlingURL, url.Values{"paused": {strconv.FormatBool(paused)}})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("answered %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // open starts AutoThrottle if it was exited, then opens url.
