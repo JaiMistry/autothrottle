@@ -12,6 +12,11 @@ name: Release
 #
 # Every release also carries the Windows installer (windows.yml).
 #
+# A release started from the Actions tab by the repository's owner is
+# created with their RELEASE_TOKEN, so it shows as theirs rather than the
+# bot's; automatic ones stay the bot's. Without the secret, the bot's
+# token is used.
+#
 # A pull request that changes how releases are built gets a dry run:
 # everything up to publishing, so a broken release is caught before it
 # merges rather than on release day.
@@ -72,6 +77,8 @@ jobs:
         id: version
         env:
           BUMP: ${{ inputs.bump || 'patch' }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           stable_tags() { git tag -l 'v*' --sort=-v:refname | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; }; }
           last=$(stable_tags | head -n1)
@@ -79,6 +86,12 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             push)
               last=$(stable_tags | { grep -vx "$GITHUB_REF_NAME" || true; } | head -n1)
+              # A release made with RELEASE_TOKEN creates its tag as a
+              # push, which starts this again: that release is done.
+              if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+                echo "$GITHUB_REF_NAME is already released."
+                release=false
+              fi
               ;;
             schedule)
               if [ "$(date -u +%-d)" -gt 7 ]; then
@@ -267,7 +280,7 @@ jobs:
       - name: Create the GitHub release
         if: env.DRY_RUN != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.triggering_actor == github.repository_owner && secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           STABLE: ${{ needs.plan.outputs.stable }}
         run: |
