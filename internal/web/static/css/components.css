@@ -682,11 +682,13 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
   font-size: var(--text-caption);
   font-family: var(--font-mono);
   color: var(--text-dim);
-  word-break: break-all;
 }
 .at-testresult[data-state="failed"] .at-testresult-detail { color: var(--text); }
 /* The plain-language line under the raw error: what to do about it. */
 .at-testresult-hint { font-size: var(--text-caption); color: var(--text-dim); text-wrap: pretty; }
+/* Error text quotes addresses and paths: lines break between words, and
+   only a single address too long for a whole line is split. */
+.at-testresult-detail, .at-testresult-hint, .at-alert, .at-dlrow-reason, .at-serverrow-detail, .at-logrow-msg { overflow-wrap: anywhere; }
 
 /* htmx marks the requesting element, so this needs no script. */
 .at-btn-busy { display: none; }
