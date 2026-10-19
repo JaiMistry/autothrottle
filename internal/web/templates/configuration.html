@@ -344,12 +344,12 @@
         <input class="at-input" type="text" name="name" value="{{.EditMediaServer.Name}}"{{if not .EditMediaServerID}} data-autoname="{{.EditMediaServer.Name}}"{{end}} required></label>
       <label class="at-field"><span class="at-field-label">Type</span>
         <select class="at-select" name="type">
-          <option value="plex" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
-          <option value="emby" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
-          <option value="jellyfin" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
+          <option value="plex" data-placeholder="http://192.168.1.50:32400" {{if or (eq .EditMediaServer.Type "plex") (not .EditMediaServerID)}}selected{{end}}>Plex</option>
+          <option value="emby" data-placeholder="http://192.168.1.50:8096" {{if eq .EditMediaServer.Type "emby"}}selected{{end}}>Emby</option>
+          <option value="jellyfin" data-placeholder="http://192.168.1.50:8096" {{if eq .EditMediaServer.Type "jellyfin"}}selected{{end}}>Jellyfin</option>
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
-        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:32400" required>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditMediaServer.URL}}" placeholder="http://192.168.1.50:{{if or (eq .EditMediaServer.Type "emby") (eq .EditMediaServer.Type "jellyfin")}}8096{{else}}32400{{end}}" required>
         <span class="at-field-hint">As reachable from {{host}}</span></label>
       {{/* Each credential has its own input name and the server picks by type,
            so a hidden blank field can't win over the one filled in. */}}
@@ -404,12 +404,12 @@
         <input class="at-input" type="text" name="name" value="{{.EditDownloader.Name}}"{{if not .EditDownloaderID}} data-autoname="{{.EditDownloader.Name}}"{{end}} required></label>
       <label class="at-field"><span class="at-field-label">Type</span>
         <select class="at-select" name="type">
-          <option value="qbittorrent" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
-          <option value="transmission" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
-          <option value="deluge" {{if eq .EditDownloader.Type "deluge"}}selected{{end}}>Deluge</option>
+          <option value="qbittorrent" data-placeholder="http://192.168.1.20:8080" {{if or (eq .EditDownloader.Type "qbittorrent") (not .EditDownloaderID)}}selected{{end}}>qBittorrent</option>
+          <option value="transmission" data-placeholder="http://192.168.1.20:9091" {{if eq .EditDownloader.Type "transmission"}}selected{{end}}>Transmission</option>
+          <option value="deluge" data-placeholder="http://192.168.1.20:8112" {{if eq .EditDownloader.Type "deluge"}}selected{{end}}>Deluge</option>
         </select></label>
       <label class="at-field"><span class="at-field-label">URL</span>
-        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:8080" required>
+        <input class="at-input at-input--mono" type="text" name="url" value="{{.EditDownloader.URL}}" placeholder="http://192.168.1.20:{{if eq .EditDownloader.Type "transmission"}}9091{{else if eq .EditDownloader.Type "deluge"}}8112{{else}}8080{{end}}" required>
         <span class="at-field-hint">As reachable from {{host}}</span></label>
       <div style="display:grid;gap:var(--space-6);grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
         {{/* Deluge's Web UI has a password and no username. */}}

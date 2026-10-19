@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/JaiMistry/autothrottle/internal/credential"
+	"github.com/JaiMistry/autothrottle/internal/db"
 )
 
 // fakeDelugeWebUI is a Deluge Web UI already connected to its daemon,
@@ -87,4 +88,25 @@ func TestDownloaderFormOffersDeluge(t *testing.T) {
 	rec := app.get("/configuration/downloaders/new")
 	expectBody(t, rec, `<option value="deluge"`)
 	expectBody(t, rec, `data-types="qbittorrent transmission"`)
+}
+
+// The address example is each type's usual port, rendered for the saved
+// type and carried by every option for when the type changes.
+func TestAddressExampleFollowsTheType(t *testing.T) {
+	app := newApp(t)
+	rec := app.get("/configuration/downloaders/new")
+	expectBody(t, rec, `placeholder="http://192.168.1.20:8080"`)
+	for _, port := range []string{"8080", "9091", "8112"} {
+		expectBody(t, rec, `data-placeholder="http://192.168.1.20:`+port+`"`)
+	}
+
+	id, err := app.db.CreateDownloader(db.Downloader{Name: "Transmission", Type: "transmission", URL: "http://tr.lan:9091", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectBody(t, app.get(fmt.Sprintf("/configuration/downloaders/%d/edit", id)), `placeholder="http://192.168.1.20:9091"`)
+
+	jf := app.mediaServer("Jellyfin", "jellyfin", "http://jf.lan:8096")
+	expectBody(t, app.get(fmt.Sprintf("/configuration/media-servers/%d/edit", jf)), `placeholder="http://192.168.1.50:8096"`)
+	expectBody(t, app.get("/configuration/media-servers/new"), `placeholder="http://192.168.1.50:32400"`)
 }

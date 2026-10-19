@@ -585,6 +585,10 @@
   function syncTypeFields(form) {
     var type = form && form.querySelector('select[name="type"]');
     if (!type) return;
+    // The URL's example is that type's usual address and port.
+    var chosen = type.options[type.selectedIndex];
+    var url = form.querySelector('input[name="url"]');
+    if (url && chosen && chosen.getAttribute("data-placeholder")) url.placeholder = chosen.getAttribute("data-placeholder");
     form.querySelectorAll("[data-types]").forEach(function (el) {
       var on = el.getAttribute("data-types").split(" ").indexOf(type.value) !== -1;
       el.hidden = !on;

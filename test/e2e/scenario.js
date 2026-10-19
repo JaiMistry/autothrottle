@@ -379,13 +379,15 @@ const deluge = {
     check((await savedNames()).filter((n) => n.startsWith(NAME)).length === 1, 'and nothing was added');
 
     section('Download clients');
-    for (const [name, type, conf, down, up] of [
-      ['qBittorrent', 'qbittorrent', env.qbittorrent, 1500, 300],
-      ['Transmission', 'transmission', env.transmission, 900, 180],
-      ['Deluge', 'deluge', env.deluge, 1200, 240],
+    for (const [name, type, conf, down, up, port] of [
+      ['qBittorrent', 'qbittorrent', env.qbittorrent, 1500, 300, 8080],
+      ['Transmission', 'transmission', env.transmission, 900, 180, 9091],
+      ['Deluge', 'deluge', env.deluge, 1200, 240, 8112],
     ]) {
       await openSheet(addDownloader);
       await page.select('#dl-form [name=type]', type);
+      const example = await page.$eval('#dl-form [name=url]', (e) => e.placeholder);
+      check(example.endsWith(`:${port}`), `the address example uses ${name}'s port`, example);
       await fill('#dl-form [name=name]', name);
       await fill('#dl-form [name=url]', conf.internal);
       if (conf.username) await fill('#dl-form [name=username]', conf.username);
