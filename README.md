@@ -102,7 +102,7 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles
     volumes:
-      - /data:/data
+      - ./data:/data
     ports:
       - "7676:7676"
     restart: unless-stopped
@@ -116,7 +116,7 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/Los_Angeles \
-  -v /data:/data \
+  -v ./data:/data \
   -p 7676:7676 \
   --restart unless-stopped \
   jaimistry/autothrottle:latest

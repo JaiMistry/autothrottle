@@ -11,7 +11,7 @@ services:
       # - AUTH_PASSWORD=
       - AUTH_DISABLED=false # Optional. Set to true to turn sign-in off
     volumes:
-      - /data:/data
+      - ./data:/data
     ports:
       - "7676:7676"
     restart: unless-stopped
