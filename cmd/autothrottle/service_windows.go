@@ -201,7 +201,8 @@ func setRecovery(s *mgr.Service) error {
 	return nil
 }
 
-// uninstallService stops and removes the service; not installed is done.
+// uninstallService stops and removes the service, and its data folder if
+// nothing was ever set up; not installed is done.
 func uninstallService() error {
 	m, s, err := openService()
 	if err != nil || s == nil {
@@ -214,6 +215,13 @@ func uninstallService() error {
 	}
 	if err := s.Delete(); err != nil {
 		return fmt.Errorf("removing the service: %w", err)
+	}
+	// Nothing anyone set up: the folder goes too, so the uninstaller has
+	// nothing to ask about keeping.
+	if dir, err := dataDir(); err == nil && !holdsSettings(dir) {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("removing the unused data folder: %w", err)
+		}
 	}
 	return nil
 }

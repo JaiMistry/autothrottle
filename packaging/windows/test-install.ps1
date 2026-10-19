@@ -161,4 +161,10 @@ Check $true 'the kept account is still there'
 Uninstall 'purge' @('/PURGE')
 Check (-not (Test-Path $data)) '/PURGE deletes the data too'
 
+Write-Host "== An install nobody set up leaves nothing to ask about"
+Install 'unused'
+Check (Test-Path (Join-Path $data 'autothrottle.db')) 'the service makes its data folder on its first start'
+Uninstall 'unused-uninstall'
+Check (-not (Test-Path $data)) 'with nothing set up, uninstalling removes it without /PURGE'
+
 Write-Host "All checks passed."

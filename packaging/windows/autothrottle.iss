@@ -11,7 +11,7 @@
 ; domain networks, and starts the service. Running it again upgrades in
 ; place: settings and history live in ProgramData, which it never touches.
 ; Silent installs: /VERYSILENT. Silent uninstalls keep the data unless
-; given /PURGE.
+; given /PURGE. Data nobody set up anything in goes without asking.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -178,6 +178,7 @@ begin
   end;
   if CurUninstallStep = usPostUninstall then begin
     DataDir := ExpandConstant('{commonappdata}\AutoThrottle');
+    // Gone already if nothing was ever set up: service uninstall removes it.
     if not DirExists(DataDir) then
       exit;
     // Asked only when someone is there to answer: a silent uninstall

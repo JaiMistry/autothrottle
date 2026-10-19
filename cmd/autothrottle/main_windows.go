@@ -29,7 +29,7 @@ const listenAddr = ":7676"
 const usage = `Usage:
   autothrottle                     run in this window (Ctrl+C stops it)
   autothrottle service install     register the Windows service
-  autothrottle service uninstall   stop and remove it
+  autothrottle service uninstall   stop and remove it, and its data if nothing was set up
   autothrottle service start       start it and wait until it is running
   autothrottle service stop        stop it and wait until it has stopped
 
