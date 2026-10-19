@@ -1181,8 +1181,9 @@ html[data-theme-mode="dark"] .at-themetoggle-label[data-mode="dark"] { display: 
 
 /* ── Plex sign-in ────────────────────────────────────────────────── */
 
-/* Bounded, so switching method or signing in never shifts the form. */
-.at-plexsignin { min-height: 96px; }
+/* Bounded, so switching method or signing in never shifts the form.
+   Packed at the top: the spare height goes below, not between rows. */
+.at-plexsignin { min-height: 96px; align-content: start; }
 
 /* ── Dashboard hero ──────────────────────────────────────────────── */
 

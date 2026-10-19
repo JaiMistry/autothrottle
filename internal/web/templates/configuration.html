@@ -202,7 +202,7 @@
   </div>
   <span class="at-plexsignin-note">
     {{- if eq .State "waiting"}}A Plex window is open. Approve the request there and this page will pick it up.
-    {{- else if eq .State "done"}}
+    {{- else if eq .State "done"}}Plex approved the request. Test the connection, then save.
     {{- else if eq .State "error"}}Plex did not confirm the request. Try again, or paste an X-Plex-Token instead.
     {{- else}}Opens a Plex window to approve this server. Nothing is stored until you save.
     {{- end}}</span>
