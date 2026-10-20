@@ -20,7 +20,10 @@ on:
   schedule:
     - cron: "17 9 * * *"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - "cmd/**"
+      - "internal/**"
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
@@ -41,7 +44,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A draft pull request gets CI only; this runs once it's marked ready.
   pinned:
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:

@@ -18,6 +18,7 @@ on:
       - "packaging/windows/**"
       - ".github/workflows/windows.yml"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "cmd/**"
       - "internal/**"
@@ -55,8 +56,9 @@ jobs:
   # The Windows-only code (the service, the tray icon) is only compiled,
   # linted and tested on Windows. Not part of a release, which already
   # passed it on main: a new linter rule shouldn't hold one back.
+  # A draft pull request gets CI only; these run once it's marked ready.
   test:
-    if: inputs.version == ''
+    if: inputs.version == '' && !github.event.pull_request.draft
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +78,7 @@ jobs:
         run: go test ./...
 
   build:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
