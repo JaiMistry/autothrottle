@@ -1,0 +1,63 @@
+name: Failure hook
+
+# Hands a failed run that nobody is watching to the fixer: a scheduled
+# run, a run one of those started, or a check on one of Renovate's pull
+# requests. A person's own pushes and pull requests are left to them.
+# Setting the repository variable AUTOFIX to "off" pauses it.
+on:
+  workflow_run:
+    workflows: [CI, E2E, Release, Scan, Windows]
+    types: [completed]
+  # Sends the given text instead of a failed run, to check the hand-off.
+  workflow_dispatch:
+    inputs:
+      text:
+        description: Text to send
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  hand-off:
+    if: >-
+      vars.AUTOFIX != 'off' && (
+        github.event_name == 'workflow_dispatch' || (
+          github.event.workflow_run.conclusion == 'failure' &&
+          github.event.workflow_run.head_repository.full_name == github.repository && (
+            github.event.workflow_run.event == 'schedule' ||
+            (github.event.workflow_run.event == 'workflow_dispatch' &&
+              github.event.workflow_run.triggering_actor.login == 'github-actions[bot]') ||
+            (github.event.workflow_run.event == 'pull_request' &&
+              startsWith(github.event.workflow_run.head_branch, 'renovate/'))
+          )
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hand it off
+        env:
+          URL: ${{ secrets.AUTOFIX_URL }}
+          TOKEN: ${{ secrets.AUTOFIX_TOKEN }}
+          TEXT: ${{ inputs.text }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          EVENT: ${{ github.event.workflow_run.event }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$TEXT" ]; then
+            TEXT=$(printf 'Failed run: %s\nWorkflow: %s (run %s, %s)\nBranch: %s\nCommit: %s' \
+              "$RUN_URL" "$WORKFLOW" "$RUN_ID" "$EVENT" "$BRANCH" "$SHA")
+          fi
+          # Only the status is printed: the reply links a private session.
+          status=$(jq -n --arg text "$TEXT" '{text: $text}' | curl -sS -o /dev/null -w '%{http_code}' -X POST "$URL" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "Content-Type: application/json" \
+            --data-binary @-)
+          echo "Handed off: HTTP $status"
+          [ "$status" -lt 300 ]
