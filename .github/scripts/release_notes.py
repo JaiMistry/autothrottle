@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
-"""Release notes from what changed since the last release.
+"""The changelog's entry for a release, and whether anything shipped.
 
-    release_notes.py notes PREV TAG [SUMMARY]   prints the notes for TAG
-    release_notes.py shipped PREV               exits 0 if anything that
-                                                ships changed since PREV
+    release_notes.py changelog PREV TAG DATE [SUMMARY]
+        moves CHANGELOG.md's Unreleased entries under TAG, released on DATE
+    release_notes.py section TAG
+        prints TAG's entry, as the release's notes
+    release_notes.py shipped PREV
+        exits 0 if anything that ships changed since PREV
+
+CHANGELOG.md follows Keep a Changelog: each change that people would
+notice adds its line under Unreleased as it lands. A release moves those
+lines under its version, with a summary above them if one is given.
 
 What ships is the code, its modules, the Dockerfile and the CSS build.
-Commits that only touch tests, CI or docs are left out of the notes, and
-on their own never make a release.
+Commits that only touch tests, CI or docs never make a release on their
+own. If nothing was written under Unreleased, the release lists the
+commits that shipped instead, sorted by their first word: Add under
+Added, Fix under Fixed, the rest under Changed.
 
-Commits are sorted by their first word: Add under Added, Fix under Fixed,
-the rest under Changed. Dependencies get a line per package a commit
-updated, read from the versions before and after it, with who updated it
-and in which pull request (or commit), since Renovate groups a week's
-updates into one. A section with nothing in it is left out.
+Dependencies are always listed from the versions before and after each
+commit, with who updated them and in which pull request (or commit),
+since Renovate groups a week's updates into one and writes no entries.
+A section with nothing in it is left out.
 """
 import json
 import os
@@ -22,6 +30,7 @@ import subprocess
 import sys
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "JaiMistry/autothrottle")
+CHANGELOG = "CHANGELOG.md"
 DEP_FILES = {"go.mod", "go.sum", "package.json", "package-lock.json", "Dockerfile"}
 IMAGE_NAMES = {"golang": "Go", "node": "Node.js (CSS build only)"}
 
@@ -119,11 +128,12 @@ def credit(sha, author, subject):
     return f"by @{author} in " + (f"#{pr.group(1)}" if pr else sha[:7])
 
 
-def notes(prev, tag, summary=""):
-    out = [summary.strip(), ""] if summary.strip() else []
-    if not prev:
-        return "\n".join(out or ["Initial release."]).strip() + "\n"
+def compare(prev, tag):
+    return f"https://github.com/{REPO}/compare/{prev}...{tag}" if prev else f"https://github.com/{REPO}/releases/tag/{tag}"
 
+
+def generated(prev):
+    """Added, Changed, Fixed from the commits, and Dependencies, as {title: [lines]}."""
     sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": []}
     for sha, author, subject, files in commits(prev):
         word = subject.split()[0]
@@ -138,20 +148,68 @@ def notes(prev, tag, summary=""):
         if update:
             continue
         sections["Added" if word == "Add" else "Fixed" if word == "Fix" else "Changed"].append(subject)
+    return sections
 
-    if any(sections.values()):
-        out += ["## What's changed", ""]
-        for title, items in sections.items():
-            if items:
-                out += [f"### {title}", *[f"- {i}" for i in items], ""]
-    out.append(f"**Full Changelog**: https://github.com/{REPO}/compare/{prev}...{tag}")
-    return "\n".join(out) + "\n"
+
+def split(text):
+    """The changelog as (head, unreleased body, the rest), the rest starting at the first release."""
+    m = re.search(r"^## \[Unreleased\][^\n]*\n", text, re.M)
+    if not m:
+        sys.exit(f"{CHANGELOG} has no ## [Unreleased] heading")
+    nxt = re.search(r"^## \[|^\[[^\]]+\]: ", text[m.end():], re.M)
+    end = m.end() + (nxt.start() if nxt else len(text) - m.end())
+    return text[:m.end()], text[m.end():end].strip(), text[end:]
+
+
+def changelog(prev, tag, date, summary=""):
+    with open(CHANGELOG) as f:
+        head, unreleased, rest = split(f.read())
+    version = tag.removeprefix("v")
+    if re.search(rf"^## \[{re.escape(version)}\]", rest, re.M):
+        sys.exit(f"{CHANGELOG} already has {version}")
+
+    found = generated(prev) if prev else {}
+    body = [summary.strip(), ""] if summary.strip() else []
+    if unreleased:
+        body += [unreleased, ""]
+    elif not prev:
+        body += ["Initial release.", ""]
+    else:
+        print(f"Nothing was written under Unreleased; listing the commits that shipped since {prev}.", file=sys.stderr)
+        for title in ("Added", "Changed", "Fixed"):
+            if found[title]:
+                body += [f"### {title}", "", *[f"- {i}" for i in found[title]], ""]
+    if found.get("Dependencies"):
+        body += ["### Dependencies", "", *[f"- {i}" for i in found["Dependencies"]], ""]
+
+    entry = f"## [{version}] - {date}\n\n" + "\n".join(body).strip() + "\n\n"
+    links = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: {compare(tag, 'HEAD')}", rest, count=1, flags=re.M)
+    links = re.sub(r"^(\[Unreleased\]: .*\n)", rf"\g<1>[{version}]: {compare(prev, tag)}\n", links, count=1, flags=re.M)
+    with open(CHANGELOG, "w") as f:
+        f.write(head + "\n" + entry + links.lstrip("\n"))
+
+
+def section(tag):
+    """TAG's entry without its heading, and the comparison with the release before."""
+    with open(CHANGELOG) as f:
+        text = f.read()
+    version = tag.removeprefix("v")
+    m = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)", text, re.M | re.S)
+    if not m:
+        sys.exit(f"{CHANGELOG} has no entry for {version}")
+    link = re.search(rf"^\[{re.escape(version)}\]: (\S+)", text, re.M)
+    out = m.group(1).strip() + "\n"
+    if link and "/compare/" in link.group(1):
+        out += f"\n**Full Changelog**: {link.group(1)}\n"
+    return out
 
 
 if __name__ == "__main__":
     cmd, args = sys.argv[1], sys.argv[2:]
-    if cmd == "notes":
-        sys.stdout.write(notes(args[0], args[1], args[2] if len(args) > 2 else ""))
+    if cmd == "changelog":
+        changelog(args[0], args[1], args[2], args[3] if len(args) > 3 else "")
+    elif cmd == "section":
+        sys.stdout.write(section(args[0]))
     elif cmd == "shipped":
         sys.exit(0 if next(commits(args[0]), None) else 1)
     else:
