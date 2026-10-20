@@ -122,10 +122,24 @@ def version_changes(old_ref, new_ref):
     return lines
 
 
+def person(name):
+    """@name as a link: GitHub links mentions on a release page, but not in a file."""
+    url = f"https://github.com/apps/{name.removesuffix('[bot]')}" if name.endswith("[bot]") else f"https://github.com/{name}"
+    return f"[@{name}]({url})"
+
+
 def credit(sha, author, subject):
     """by @author in #12, or in the commit when it didn't come from a pull request."""
     pr = re.search(r"\(#(\d+)\)$", subject)
-    return f"by @{author} in " + (f"#{pr.group(1)}" if pr else sha[:7])
+    where = (f"[#{pr.group(1)}](https://github.com/{REPO}/pull/{pr.group(1)})" if pr
+             else f"[{sha[:7]}](https://github.com/{REPO}/commit/{sha})")
+    return f"by {person(author)} in {where}"
+
+
+def linkify(text):
+    """A bare #12 or @name written in an entry, as a link. Ones already linked are left alone."""
+    text = re.sub(r"(?<![\w\[/#])#(\d+)\b", rf"[#\1](https://github.com/{REPO}/issues/\1)", text)
+    return re.sub(r"(?<![\w\[/.@])@([A-Za-z0-9-]+(?:\[bot\])?)(?![\w\]])", lambda m: person(m.group(1)), text)
 
 
 def compare(prev, tag):
@@ -169,9 +183,9 @@ def changelog(prev, tag, date, summary=""):
         sys.exit(f"{CHANGELOG} already has {version}")
 
     found = generated(prev) if prev else {}
-    body = [summary.strip(), ""] if summary.strip() else []
+    body = [linkify(summary.strip()), ""] if summary.strip() else []
     if unreleased:
-        body += [unreleased, ""]
+        body += [linkify(unreleased), ""]
     elif not prev:
         body += ["Initial release.", ""]
     else:

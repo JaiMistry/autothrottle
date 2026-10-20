@@ -15,7 +15,7 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Deluge integration**: Deluge 2.1+ is now supported alongside qBittorrent and Transmission. #6
+- **Deluge integration**: Deluge 2.1+ is now supported alongside qBittorrent and Transmission. [#6](https://github.com/JaiMistry/autothrottle/issues/6)
 - **Windows installer**: AutoThrottle now runs natively on Windows 10 and 11 (x64 and Arm) as a background service.
 - **Unraid Community Apps**: Now available to [install](https://ca.unraid.net/apps/autothrottle-0xufrs017fz9b0) on Unraid as a community app.
 - **Autoplay-aware throttling**: Back-to-back episodes being played will hold throttling, preventing unnecessary rate changes.
@@ -34,8 +34,8 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
-- Add fyne.io/systray v1.12.2 by @JaiMistry in dd1e5ca
-- Add golang.org/x/sys v0.48.0 by @JaiMistry in dd1e5ca
+- Add fyne.io/systray v1.12.2 by [@JaiMistry](https://github.com/JaiMistry) in [dd1e5ca](https://github.com/JaiMistry/autothrottle/commit/dd1e5ca04c73f7b36edfbe009d32f92683d0917e)
+- Add golang.org/x/sys v0.48.0 by [@JaiMistry](https://github.com/JaiMistry) in [dd1e5ca](https://github.com/JaiMistry/autothrottle/commit/dd1e5ca04c73f7b36edfbe009d32f92683d0917e)
 
 ## [1.0.1] - 2026-10-14
 
@@ -46,9 +46,9 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
-- Update Go to 1.27.2 by @renovate[bot] in #3
-- Update modernc.org/sqlite to v1.60.1 by @renovate[bot] in #3
-- Update source-map-js to 1.2.2 by @JaiMistry in 4633477
+- Update Go to 1.27.2 by [@renovate[bot]](https://github.com/apps/renovate) in [#3](https://github.com/JaiMistry/autothrottle/pull/3)
+- Update modernc.org/sqlite to v1.60.1 by [@renovate[bot]](https://github.com/apps/renovate) in [#3](https://github.com/JaiMistry/autothrottle/pull/3)
+- Update source-map-js to 1.2.2 by [@JaiMistry](https://github.com/JaiMistry) in [4633477](https://github.com/JaiMistry/autothrottle/commit/46334777035c276029e70d7496fa6d3c1675089f)
 
 ## [1.0.0] - 2026-10-10
 
