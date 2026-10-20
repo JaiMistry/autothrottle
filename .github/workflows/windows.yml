@@ -83,6 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0 # the commit's date, for a build that isn't a release
       - name: Version
         id: version

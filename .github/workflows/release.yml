@@ -4,11 +4,14 @@ name: Release
 #   - from the Actions tab, raising whichever part of the version you choose;
 #   - on the first Tuesday of each month, as a patch release, if anything
 #     that ships has changed since the last release (tests, CI and docs on
-#     their own never make one). Tuesday follows Renovate's Monday, so a
-#     month of dependency updates goes out together;
+#     their own never make one) and CI passed on main. Tuesday follows
+#     Renovate's Monday, so a month of dependency updates goes out together;
 #   - by pushing a version tag by hand (v1.2.0-rc.1, say).
-# The notes are generated from the commits since the last release
-# (.github/scripts/release_notes.py), under a summary if one is given.
+# The notes are CHANGELOG.md's Unreleased entries, under a summary if one
+# is given, with the dependency updates listed from the commits
+# (.github/scripts/release_notes.py). A release first commits them to
+# CHANGELOG.md under its version, and that commit is what's built and
+# tagged. A hand-pushed tag's notes are made the same way but not committed.
 #
 # Every release also carries the Windows installer (windows.yml).
 #
@@ -37,6 +40,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "Dockerfile"
       - ".github/workflows/release.yml"
@@ -56,14 +60,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A draft pull request gets no dry run; it runs once it's marked ready.
   plan:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.version.outputs.release }}
       tag: ${{ steps.version.outputs.tag }}
       prev: ${{ steps.version.outputs.prev }}
       stable: ${{ steps.version.outputs.stable }}
-      date: ${{ steps.version.outputs.date }}
+      sha: ${{ steps.changelog.outputs.sha }}
+      date: ${{ steps.changelog.outputs.date }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,6 +107,19 @@ jobs:
               elif [ -z "$last" ] || ! python3 .github/scripts/release_notes.py shipped "$last"; then
                 echo "Nothing that ships has changed since ${last:-the start}; no release this month."
                 release=false
+              else
+                # Only what CI passed goes out. A run still going is waited for.
+                ci=""
+                for _ in $(seq 60); do
+                  ci=$(gh run list --workflow ci.yml --branch main --event push --commit "$GITHUB_SHA" \
+                    --limit 1 --json status,conclusion --jq '.[0] // empty | .status + " " + (.conclusion // "")')
+                  case "$ci" in "completed "*|"") break ;; esac
+                  sleep 30
+                done
+                if [ "$ci" != "completed success" ]; then
+                  echo "::warning::CI hasn't passed on main's latest commit (${ci:-not run}); no release this month."
+                  release=false
+                fi
               fi
               ;;
             workflow_dispatch)
@@ -127,14 +147,59 @@ jobs:
           case "$tag" in *-*) stable=false ;; esac
           [ "$release" = true ] && echo "Releasing $tag"
           [ "$GITHUB_EVENT_NAME" = pull_request ] && echo "(a dry run: nothing is published)"
-          # The date is the released commit's own, so rebuilding a release
-          # stamps it the same.
           {
             echo "release=$release"
             echo "tag=$tag"
             echo "prev=$last"
             echo "stable=$stable"
-            echo "date=$(git log -1 --format=%cI)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The Unreleased entries move under the version in a commit on main,
+      # and that commit is the release. A second attempt at the same
+      # release finds the commit the first one made. A dry run or a pushed
+      # tag builds the commit it was given. Made with the workflow's own
+      # token, which GitHub signs for; a personal token's commit isn't.
+      - name: Changelog
+        id: changelog
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PREV: ${{ steps.version.outputs.prev }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SUMMARY: ${{ inputs.notes }}
+        run: |
+          sha="$GITHUB_SHA"
+          case "$GITHUB_EVENT_NAME" in schedule|workflow_dispatch)
+            head=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
+            if [ "$head" = "$GITHUB_SHA" ]; then
+              python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY"
+              blob=$(jq -n --rawfile c CHANGELOG.md '{content: $c, encoding: "utf-8"}' \
+                | gh api "repos/$GH_REPO/git/blobs" --input - --jq .sha)
+              tree=$(jq -n --arg base "$(git rev-parse 'HEAD^{tree}')" --arg blob "$blob" \
+                '{base_tree: $base, tree: [{path: "CHANGELOG.md", mode: "100644", type: "blob", sha: $blob}]}' \
+                | gh api "repos/$GH_REPO/git/trees" --input - --jq .sha)
+              sha=$(jq -n --arg msg "Release $TAG" --arg tree "$tree" --arg parent "$GITHUB_SHA" \
+                '{message: $msg, tree: $tree, parents: [$parent]}' \
+                | gh api "repos/$GH_REPO/git/commits" --input - --jq .sha)
+              # Not forced: if main moved meanwhile, this fails rather than
+              # dropping what landed.
+              gh api -X PATCH "repos/$GH_REPO/git/refs/heads/main" -f sha="$sha" -F force=false --silent
+              echo "Committed the changelog for $TAG as $sha."
+            elif [ "$(gh api "repos/$GH_REPO/commits/$head" --jq '.commit.message + " " + .parents[0].sha')" = "Release $TAG $GITHUB_SHA" ]; then
+              sha="$head"
+              echo "Using $sha, the changelog commit an earlier attempt made."
+            else
+              echo "::error::main has moved since this run started. Start the release again."
+              exit 1
+            fi
+            ;;
+          esac
+          # The date is the released commit's own, so rebuilding a release
+          # stamps it the same.
+          {
+            echo "sha=$sha"
+            echo "date=$(gh api "repos/$GH_REPO/commits/$sha" --jq .commit.committer.date)"
           } >> "$GITHUB_OUTPUT"
 
   # The Windows installer, built and tested on real Windows before the
@@ -145,7 +210,7 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       version: ${{ needs.plan.outputs.tag }}
-      commit: ${{ github.sha }}
+      commit: ${{ needs.plan.outputs.sha }}
       date: ${{ needs.plan.outputs.date }}
 
   publish:
@@ -160,6 +225,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0 # the history, for the notes
 
       - uses: docker/setup-buildx-action@v3
@@ -176,7 +242,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=release
           build-args: |
             VERSION=${{ needs.plan.outputs.tag }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ needs.plan.outputs.sha }}
             BUILD_DATE=${{ needs.plan.outputs.date }}
 
       # Started once before anything is published: it must come up, as a
@@ -238,7 +304,7 @@ jobs:
           cache-from: type=gha,scope=release
           build-args: |
             VERSION=${{ needs.plan.outputs.tag }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ needs.plan.outputs.sha }}
             BUILD_DATE=${{ needs.plan.outputs.date }}
 
       # Shown on the run's summary page too, which is where a dry run's
@@ -249,7 +315,11 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
           SUMMARY: ${{ inputs.notes }}
         run: |
-          python3 .github/scripts/release_notes.py notes "$PREV" "$TAG" "$SUMMARY" > notes.md
+          if ! python3 .github/scripts/release_notes.py section "$TAG" > notes.md 2>/dev/null; then
+            # A dry run or a pushed tag: nothing was committed for it.
+            python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY"
+            python3 .github/scripts/release_notes.py section "$TAG" > notes.md
+          fi
           cat notes.md
           { echo "## $TAG"; echo; cat notes.md; } >> "$GITHUB_STEP_SUMMARY"
 
@@ -282,6 +352,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.triggering_actor == github.repository_owner && secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ needs.plan.outputs.sha }}
           STABLE: ${{ needs.plan.outputs.stable }}
         run: |
           flags=()
@@ -289,7 +360,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             flags+=(--verify-tag)
           else
-            flags+=(--target "$GITHUB_SHA")
+            flags+=(--target "$SHA")
           fi
           gh release create "$TAG" "${flags[@]}" --title "$TAG" --notes-file notes.md autothrottle-*.tar.gz AutoThrottle-Setup-*.exe
 
