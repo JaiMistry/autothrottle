@@ -39,7 +39,7 @@ AutoThrottle slows your download clients while playback is detected on your medi
 - **Throttle history:** A 7- and 30-day heatmap of when your downloads were held back.
 - **Secure:** All sensitive credentials are securely encrypted and never leaked.
 - **Lightweight:** A single distroless image with a minimal footprint.
-- **Runs anywhere:** Docker on amd64 and arm64, Unraid Community Apps, and as a native Windows service.
+- **Multiple platforms:** [Docker](#docker-compose), [Unraid](https://ca.unraid.net/apps/autothrottle-0xufrs017fz9b0) Community Apps, and as a native [Windows](#windows) service.
 
 <details>
 <summary><strong>How AutoThrottle decides when to throttle</strong></summary>
