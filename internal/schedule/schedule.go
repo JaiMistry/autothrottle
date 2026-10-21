@@ -191,3 +191,17 @@ func Overlap(windows []Window) (first, second int, ok bool) {
 	}
 	return 0, 0, false
 }
+
+// Check reports why a downloader's windows can't be saved together: one
+// that's invalid, or two in force at once.
+func Check(windows []Window) error {
+	for _, w := range windows {
+		if err := w.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", w.Label(), err)
+		}
+	}
+	if a, b, overlap := Overlap(windows); overlap {
+		return fmt.Errorf("%s and %s overlap; a time can only be in one window", windows[a].Label(), windows[b].Label())
+	}
+	return nil
+}

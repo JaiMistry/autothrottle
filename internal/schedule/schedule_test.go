@@ -207,3 +207,17 @@ func TestLabel(t *testing.T) {
 		t.Errorf("named: got %q", got)
 	}
 }
+
+func TestCheck(t *testing.T) {
+	night := Window{Name: "Night", Days: EveryDay, Start: hm(23, 0), End: hm(7, 0)}
+	early := Window{Days: Weekdays, Start: hm(6, 0), End: hm(9, 0)}
+	if err := Check([]Window{night, {Days: Weekdays, Start: hm(7, 0), End: hm(9, 0)}}); err != nil {
+		t.Errorf("apart: %v", err)
+	}
+	if err := Check([]Window{night, early}); err == nil || err.Error() != "Night and 06:00–09:00 overlap; a time can only be in one window" {
+		t.Errorf("overlapping: %v", err)
+	}
+	if err := Check([]Window{{Name: "Empty", Start: 0, End: 60}}); err == nil || err.Error() != "Empty: choose at least one day" {
+		t.Errorf("invalid: %v", err)
+	}
+}

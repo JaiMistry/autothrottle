@@ -406,3 +406,24 @@ func TestLowerLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestReady(t *testing.T) {
+	s, database, _ := newTestScheduler(t)
+	controller := withController(s)
+	_, dlID := addServerAndDownloader(t, database)
+	dl, _ := database.GetDownloader(dlID)
+
+	controller.set(func(st *clients.ClientState) { st.AlternativeOn = true })
+	if err := s.Ready(context.Background(), dl); err != nil {
+		t.Fatalf("alternative speed on: %v", err)
+	}
+	controller.set(func(st *clients.ClientState) { st.Scheduler = "alternative speed schedule" })
+	err := s.Ready(context.Background(), dl)
+	if !errors.Is(err, ErrNotReady) || !strings.Contains(err.Error(), "qbit's own alternative speed schedule is on") {
+		t.Fatalf("scheduler on: %v", err)
+	}
+	s.controllerFor = func(string) clients.Controller { return nil }
+	if err := s.Ready(context.Background(), dl); err == nil || errors.Is(err, ErrNotReady) {
+		t.Fatalf("no controller: %v", err)
+	}
+}

@@ -288,3 +288,27 @@ func (s *Scheduler) ClearConflicts(ctx context.Context, downloaderID int64) erro
 	s.inspectOne(ctx, dl, managed)
 	return nil
 }
+
+// ErrNotReady is a downloader whose own speed scheduler would fight a
+// time window or alternative speed: it must be turned off first.
+var ErrNotReady = errors.New("the downloader's own scheduler is on")
+
+// Ready checks a downloader can be fully managed before its first time
+// window is saved or alternative speed is switched on: reachable, and
+// its own speed scheduler off. The error says what's in the way; an
+// ErrNotReady one can be cleared with ClearConflicts.
+func (s *Scheduler) Ready(ctx context.Context, dl db.Downloader) error {
+	if s.controllerFor(dl.Type) == nil {
+		return fmt.Errorf("%s can't have time windows", dl.Name)
+	}
+	state, err := s.Inspect(ctx, dl)
+	if err != nil {
+		return fmt.Errorf("couldn't check %s: %w", dl.Name, clients.Redact(err))
+	}
+	// Alternative speed being on is fine: managing it, AutoThrottle
+	// switches it.
+	if found := conflictFor(dl, state, true); found != "" {
+		return fmt.Errorf("%w: %s", ErrNotReady, found)
+	}
+	return nil
+}
