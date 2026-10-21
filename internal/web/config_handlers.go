@@ -636,6 +636,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 	}
 
 	credentialEncrypted := sql.NullString{}
+	alternativeSpeed := false
 	if id != 0 {
 		existing, err := s.db.GetDownloader(id)
 		if err != nil {
@@ -644,6 +645,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		credentialEncrypted = existing.CredentialEncrypted
+		alternativeSpeed = existing.AlternativeSpeed && clients.HasAlternativeSpeed(dlType)
 	}
 	switch {
 	case r.FormValue("clear_credentials") == "on":
@@ -682,6 +684,7 @@ func (s *Server) saveDownloader(w http.ResponseWriter, r *http.Request) {
 		DefaultUploadLimit:   parseInt64Form(r, "default_upload_limit"),
 		BackupDownloadLimit:  parseInt64Form(r, "backup_download_limit"),
 		BackupUploadLimit:    parseInt64Form(r, "backup_upload_limit"),
+		AlternativeSpeed:     alternativeSpeed,
 		Enabled:              enabled,
 	}
 

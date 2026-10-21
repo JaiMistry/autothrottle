@@ -150,3 +150,9 @@ func RateLimiterFor(downloaderType string) RateLimiter {
 		return nil
 	}
 }
+
+// HasAlternativeSpeed reports whether a download client type has a
+// second set of limits it can switch to, shown in its own UI.
+func HasAlternativeSpeed(dlType string) bool {
+	return dlType == "qbittorrent" || dlType == "transmission"
+}
