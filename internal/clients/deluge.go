@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
@@ -50,18 +51,117 @@ func TestDeluge(ctx context.Context, baseURL, password string) error {
 // as AutoThrottle does, and -1 is unlimited: a literal 0 would stop all
 // traffic.
 func SetDelugeLimits(ctx context.Context, baseURL, password string, downloadLimitKBps, uploadLimitKBps int64) error {
+	return Deluge{}.Apply(ctx, baseURL, "", password, Desired{
+		Normal: Limits{DownloadKBps: downloadLimitKBps, UploadKBps: uploadLimitKBps},
+	})
+}
+
+// delugeScheduler is the bundled plugin that slows or pauses Deluge by
+// the hour. Its reduced hours apply their own limits straight to the
+// session, and re-apply them whenever the global limits change.
+const delugeScheduler = "Scheduler"
+
+// Inspect reads Deluge's limits and whether the Scheduler plugin is set
+// to slow or pause it at any hour. Deluge has no alternative speed.
+func (Deluge) Inspect(ctx context.Context, baseURL, _, password string) (ClientState, error) {
+	s, err := delugeConnect(ctx, baseURL, password)
+	if err != nil {
+		return ClientState{}, err
+	}
+	var config map[string]float64
+	if err := s.decode(ctx, &config, "core.get_config_values", []string{"max_download_speed", "max_upload_speed"}); err != nil {
+		return ClientState{}, err
+	}
+	down, okDown := config["max_download_speed"]
+	up, okUp := config["max_upload_speed"]
+	if !okDown || !okUp {
+		return ClientState{}, fmt.Errorf("reading speed limits: Deluge didn't report them")
+	}
+	state := ClientState{Normal: Limits{DownloadKBps: delugeKBps(down), UploadKBps: delugeKBps(up)}}
+
+	on, err := delugeSchedulerEnabled(ctx, s)
+	if err != nil || !on {
+		return state, err
+	}
+	var scheduler struct {
+		ButtonState [][]int `json:"button_state"`
+	}
+	if err := s.decode(ctx, &scheduler, "scheduler.get_config"); err != nil {
+		return ClientState{}, err
+	}
+	for _, hour := range scheduler.ButtonState {
+		for _, slot := range hour {
+			if slot != 0 { // 0 is green: Deluge's own limits
+				state.Scheduler = "Scheduler plugin"
+				return state, nil
+			}
+		}
+	}
+	return state, nil
+}
+
+// Apply sets the global limits.
+func (Deluge) Apply(ctx context.Context, baseURL, _, password string, want Desired) error {
 	s, err := delugeConnect(ctx, baseURL, password)
 	if err != nil {
 		return err
 	}
 	limits := map[string]any{
-		"max_download_speed": delugeRate(downloadLimitKBps),
-		"max_upload_speed":   delugeRate(uploadLimitKBps),
+		"max_download_speed": delugeRate(want.Normal.DownloadKBps),
+		"max_upload_speed":   delugeRate(want.Normal.UploadKBps),
 	}
 	if _, err := s.call(ctx, "core.set_config", limits); err != nil {
 		return fmt.Errorf("setting speed limits: %w", err)
 	}
 	return nil
+}
+
+// ClearConflicts disables the Scheduler plugin, its grid kept. Disabling
+// it re-applies Deluge's own limits but leaves a session it paused for a
+// red hour paused, so that is resumed too.
+func (Deluge) ClearConflicts(ctx context.Context, baseURL, _, password string) error {
+	s, err := delugeConnect(ctx, baseURL, password)
+	if err != nil {
+		return err
+	}
+	on, err := delugeSchedulerEnabled(ctx, s)
+	if err != nil || !on {
+		return err
+	}
+	var colour string
+	if err := s.decode(ctx, &colour, "scheduler.get_state"); err != nil {
+		return err
+	}
+	if _, err := s.call(ctx, "core.disable_plugin", delugeScheduler); err != nil {
+		return fmt.Errorf("disabling the Scheduler plugin: %w", err)
+	}
+	if colour == "Red" {
+		if _, err := s.call(ctx, "core.resume_session"); err != nil {
+			return fmt.Errorf("resuming Deluge after its Scheduler paused it: %w", err)
+		}
+	}
+	return nil
+}
+
+func delugeSchedulerEnabled(ctx context.Context, s *delugeSession) (bool, error) {
+	var plugins []string
+	if err := s.decode(ctx, &plugins, "core.get_enabled_plugins"); err != nil {
+		return false, err
+	}
+	for _, name := range plugins {
+		if name == delugeScheduler {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// delugeKBps reads a Deluge limit, -1 (or any negative) being unlimited.
+func delugeKBps(rate float64) int64 {
+	if rate <= 0 {
+		return 0
+	}
+	return int64(math.Round(rate))
 }
 
 func delugeRate(kbps int64) int64 {
