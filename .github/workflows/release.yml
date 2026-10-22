@@ -35,6 +35,10 @@ on:
         description: Summary to put above the generated notes (optional)
         type: string
         required: false
+      security:
+        description: IDs of the vulnerabilities this release fixes, for its Security notes (the weekly scan sets them)
+        type: string
+        required: false
   schedule:
     - cron: "0 17 * * 2"
   push:
@@ -168,12 +172,13 @@ jobs:
           PREV: ${{ steps.version.outputs.prev }}
           TAG: ${{ steps.version.outputs.tag }}
           SUMMARY: ${{ inputs.notes }}
+          SECURITY: ${{ inputs.security }}
         run: |
           sha="$GITHUB_SHA"
           case "$GITHUB_EVENT_NAME" in schedule|workflow_dispatch)
             head=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
             if [ "$head" = "$GITHUB_SHA" ]; then
-              python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY"
+              python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY" "$SECURITY"
               blob=$(jq -n --rawfile c CHANGELOG.md '{content: $c, encoding: "utf-8"}' \
                 | gh api "repos/$GH_REPO/git/blobs" --input - --jq .sha)
               tree=$(jq -n --arg base "$(git rev-parse 'HEAD^{tree}')" --arg blob "$blob" \
@@ -314,10 +319,11 @@ jobs:
           PREV: ${{ needs.plan.outputs.prev }}
           TAG: ${{ needs.plan.outputs.tag }}
           SUMMARY: ${{ inputs.notes }}
+          SECURITY: ${{ inputs.security }}
         run: |
           if ! python3 .github/scripts/release_notes.py section "$TAG" > notes.md 2>/dev/null; then
             # A dry run or a pushed tag: nothing was committed for it.
-            python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY"
+            python3 .github/scripts/release_notes.py changelog "$PREV" "$TAG" "$(date -u +%F)" "$SUMMARY" "$SECURITY"
             python3 .github/scripts/release_notes.py section "$TAG" > notes.md
           fi
           cat notes.md

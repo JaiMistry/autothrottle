@@ -188,7 +188,8 @@ jobs:
                 count=$(wc -l <<< "$fixed")
                 [ "$count" = 1 ] && what="a known vulnerability" || what="$count known vulnerabilities"
                 gh workflow run release.yml --ref main -f bump=patch \
-                  -f notes="Released early: fixes $what found in $TAG by the weekly scan."
+                  -f notes="Released early: fixes $what found in $TAG by the weekly scan." \
+                  -f security="$(paste -sd' ' - <<< "$fixed")"
                 next="Main fixes $(paste -sd, - <<< "$fixed" | sed 's/,/, /g'), so a patch release has been started: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml. The new release is scanned as soon as it is out, and this issue closes itself if that scan is clean."
               else
                 next="Main has changed since $TAG, but a scan of it finds the same vulnerabilities, so there is no fix to release yet. Once one is in (Renovate's, or one made by hand), the next scan releases it."

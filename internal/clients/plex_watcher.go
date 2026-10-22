@@ -116,6 +116,14 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			emit(ctx, w.events, Session{Key: n.SessionKey}, false)
 			continue
 		}
+		// A player left paused across a Plex restart keeps reporting a
+		// session Plex no longer lists, so only a listed one starts.
+		w.mu.Lock()
+		_, announced := w.lastPos[n.SessionKey]
+		w.mu.Unlock()
+		if !announced && !w.listed(ctx, n.SessionKey) {
+			continue
+		}
 		// A pause counts, but not forever (pausedTracker), which reads a
 		// moving position as still playing.
 		if !w.paused.counts(n.SessionKey, n.State == "paused", time.Duration(n.ViewOffset)*time.Millisecond, time.Now()) {
@@ -157,7 +165,7 @@ func (w *PlexWatcher) handleMessage(ctx context.Context, data []byte) {
 			Paused:     n.State == "paused",
 		}
 		w.mu.Lock()
-		_, announced := w.lastPos[n.SessionKey]
+		_, announced = w.lastPos[n.SessionKey]
 		w.lastPos[n.SessionKey] = update.Position
 		w.mu.Unlock()
 
@@ -203,6 +211,34 @@ func (w *PlexWatcher) fillDetail(ctx context.Context, sessionKey string) {
 		})
 		return
 	}
+}
+
+// listed reports whether Plex lists a session, recording the locality of
+// each one it lists. A cached locality means it was listed at the last
+// look: the snapshot forgets those Plex stops listing. A failed lookup
+// counts as listed: being unsure must not stop throttling.
+func (w *PlexWatcher) listed(ctx context.Context, sessionKey string) bool {
+	if _, ok := w.cachedLocal(sessionKey); ok {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(ctx, detailTimeout)
+	defer cancel()
+	sessions, err := w.fetchSessions(ctx)
+	if err != nil {
+		slog.Warn("checking a new session", "session", sessionKey, "error", err)
+		return true
+	}
+	found := false
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, s := range sessions {
+		if s.SessionKey == "" {
+			continue
+		}
+		w.localCache[s.SessionKey] = s.Player.Local
+		found = found || s.SessionKey == sessionKey
+	}
+	return found
 }
 
 func (w *PlexWatcher) cachedLocal(sessionKey string) (bool, bool) {
