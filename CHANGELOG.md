@@ -11,6 +11,7 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Signing in with Plex no longer leaves an empty gap under the button once it has signed in.
 - A Plex app that keeps reporting a paused stream Plex has already dropped no longer switches throttling on and off every minute while nothing is playing.
+- A media server already added under another address, such as its IP and its hostname, is now refused instead of having its streams counted twice.
 
 ## [1.1.0] - 2026-10-19
 

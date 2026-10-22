@@ -69,6 +69,51 @@ func TestDuplicateMediaServersAreRefused(t *testing.T) {
 	}
 }
 
+// fakeIdentity is a media server that answers only with its own ID, as
+// Plex and Emby/Jellyfin each report it.
+func fakeIdentity(t *testing.T, id string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/identity":
+			fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, id)
+		case "/System/Info/Public":
+			fmt.Fprintf(w, `{"Id":%q}`, id)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// One server under two addresses is refused by the ID it reports; two
+// servers are not, even behind one address, as a reverse proxy puts them.
+func TestOneServerUnderTwoAddressesIsRefused(t *testing.T) {
+	for _, msType := range []string{"plex", "jellyfin", "emby"} {
+		app := newApp(t)
+		app.mediaServer("Main", msType, fakeIdentity(t, "machine-1"))
+
+		rec := app.post("/configuration/media-servers", mediaServerForm("Again", msType, fakeIdentity(t, "machine-1"), "k"))
+		expectStatus(t, rec, http.StatusUnprocessableEntity)
+		expectBody(t, rec, "same server as &#34;Main&#34;")
+
+		other := mediaServerForm("Other", msType, fakeIdentity(t, "machine-2"), "k")
+		other.Set("token", "k") // Plex's field
+		expectRedirect(t, app.post("/configuration/media-servers", other), "/configuration?tab=connections")
+	}
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, r.Host[:strings.Index(r.Host, ":")])
+	}))
+	t.Cleanup(proxy.Close)
+	app := newApp(t)
+	app.mediaServer("Plex", "plex", proxy.URL)
+	form := mediaServerForm("Plex 2", "plex", strings.Replace(proxy.URL, "127.0.0.1", "localhost", 1), "k")
+	form.Set("token", "k")
+	expectRedirect(t, app.post("/configuration/media-servers", form), "/configuration?tab=connections")
+}
+
 func TestEditingKeepsTheStoredCredential(t *testing.T) {
 	app := newApp(t)
 	app.post("/configuration/media-servers", mediaServerForm("JF", "jellyfin", "http://jf.lan", "original-key"))

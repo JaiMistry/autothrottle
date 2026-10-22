@@ -3,6 +3,8 @@ package clients
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -27,6 +29,31 @@ func TestMediaServer(ctx context.Context, msType, baseURL, token string) error {
 		return TestJellyfin(ctx, baseURL, token)
 	default:
 		return fmt.Errorf("unsupported media server type %q", msType)
+	}
+}
+
+// MediaServerID reads the ID a media server reports for itself, the same
+// at whatever address it is reached. It needs no credential.
+func MediaServerID(ctx context.Context, msType, baseURL string) (string, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+	noAuth := func(*http.Request) {}
+	switch msType {
+	case "plex":
+		var out struct {
+			MediaContainer struct {
+				MachineIdentifier string `json:"machineIdentifier"`
+			} `json:"MediaContainer"`
+		}
+		err := getJSON(ctx, baseURL+"/identity", noAuth, &out)
+		return out.MediaContainer.MachineIdentifier, err
+	case "emby", "jellyfin":
+		var out struct {
+			ID string `json:"Id"`
+		}
+		err := getJSON(ctx, baseURL+"/System/Info/Public", noAuth, &out)
+		return out.ID, err
+	default:
+		return "", fmt.Errorf("unsupported media server type %q", msType)
 	}
 }
 

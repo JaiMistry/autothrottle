@@ -405,6 +405,20 @@ function explainChromeFailure() {
     check(!(await sheetOpen()), 'Esc closes the drawer');
     check((await savedNames()).filter((n) => n.startsWith(NAME)).length === 1, 'and nothing was added');
 
+    // The container's own name reaches the same server by another address.
+    await openSheet(addServer);
+    await page.select('#ms-form [name=type]', MEDIA.kind);
+    await fill('#ms-form [name=name]', `${NAME} elsewhere`);
+    await fill('#ms-form [name=url]', MEDIA.internal.replace('//', '//e2e-'));
+    await fill(keyField, goodKey);
+    await testConnection('#ms-form');
+    await submit('#ms-form');
+    check((await text('#sheet-error .at-alert')).includes(`same server as "${NAME}"`),
+      'the same server under another address is refused, by the ID it reports', await text('#sheet-error .at-alert'));
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    check((await savedNames()).filter((n) => n.startsWith(NAME)).length === 1, 'and nothing was added');
+
     section('Download clients');
     for (const [name, type, conf, down, up, port] of [
       ['qBittorrent', 'qbittorrent', env.qbittorrent, 1500, 300, 8080],

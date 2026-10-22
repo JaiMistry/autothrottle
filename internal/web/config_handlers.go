@@ -386,7 +386,7 @@ func (s *Server) saveMediaServer(w http.ResponseWriter, r *http.Request) {
 		id = parsed
 	}
 
-	if clash := s.duplicateMediaServer(id, name, rawURL); clash != "" {
+	if clash := s.duplicateMediaServer(r.Context(), id, msType, name, rawURL); clash != "" {
 		s.renderConfigError(w, r, clash)
 		return
 	}
