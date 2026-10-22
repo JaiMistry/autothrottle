@@ -128,17 +128,22 @@ def person(name):
     return f"[@{name}]({url})"
 
 
-def credit(sha, author, subject):
-    """by @author in #12, or in the commit when it didn't come from a pull request."""
+def credit(sha, author, subject, refs):
+    """by @author (#12), or (the commit) when it didn't come from a pull
+    request. Either is a reference, its link added to refs."""
     pr = re.search(r"\(#(\d+)\)$", subject)
-    where = (f"[#{pr.group(1)}](https://github.com/{REPO}/pull/{pr.group(1)})" if pr
-             else f"[{sha[:7]}](https://github.com/{REPO}/commit/{sha})")
-    return f"by {person(author)} in {where}"
+    if pr:
+        label, url = f"#{pr.group(1)}", f"https://github.com/{REPO}/pull/{pr.group(1)}"
+    else:
+        label, url = sha[:7], f"https://github.com/{REPO}/commit/{sha}"
+    refs[label] = url
+    return f"by {person(author)} ([{label}])"
 
 
 def linkify(text):
-    """A bare #12 or @name written in an entry, as a link. Ones already linked are left alone."""
-    text = re.sub(r"(?<![\w\[/#])#(\d+)\b", rf"[#\1](https://github.com/{REPO}/issues/\1)", text)
+    """A bare #12 or @name written in an entry, as a link: #12 as a reference,
+    defined at the bottom of the file. Ones already linked are left alone."""
+    text = re.sub(r"(?<![\w\[/#])#(\d+)\b", r"[#\1]", text)
     return re.sub(r"(?<![\w\[/.@])@([A-Za-z0-9-]+(?:\[bot\])?)(?![\w\]])", lambda m: person(m.group(1)), text)
 
 
@@ -146,7 +151,7 @@ def compare(prev, tag):
     return f"https://github.com/{REPO}/compare/{prev}...{tag}" if prev else f"https://github.com/{REPO}/releases/tag/{tag}"
 
 
-def generated(prev):
+def generated(prev, refs):
     """Added, Changed, Fixed from the commits, and Dependencies, as {title: [lines]}."""
     sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": []}
     for sha, author, subject, files in commits(prev):
@@ -158,7 +163,7 @@ def generated(prev):
                 # Something the comparison doesn't read, such as a package
                 # only the CSS build's tools use.
                 changes = [re.sub(r"\s*\(#\d+\)$", "", subject)]
-            sections["Dependencies"] += [f"{c} {credit(sha, author, subject)}" for c in changes]
+            sections["Dependencies"] += [f"{c} {credit(sha, author, subject, refs)}" for c in changes]
         if update:
             continue
         sections["Added" if word == "Add" else "Fixed" if word == "Fix" else "Changed"].append(subject)
@@ -182,7 +187,8 @@ def changelog(prev, tag, date, summary=""):
     if re.search(rf"^## \[{re.escape(version)}\]", rest, re.M):
         sys.exit(f"{CHANGELOG} already has {version}")
 
-    found = generated(prev) if prev else {}
+    refs = {}
+    found = generated(prev, refs) if prev else {}
     body = [linkify(summary.strip()), ""] if summary.strip() else []
     if unreleased:
         body += [linkify(unreleased), ""]
@@ -199,6 +205,12 @@ def changelog(prev, tag, date, summary=""):
     entry = f"## [{version}] - {date}\n\n" + "\n".join(body).strip() + "\n\n"
     links = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: {compare(tag, 'HEAD')}", rest, count=1, flags=re.M)
     links = re.sub(r"^(\[Unreleased\]: .*\n)", rf"\g<1>[{version}]: {compare(prev, tag)}\n", links, count=1, flags=re.M)
+    # Each #12 in the entry links to its issue, unless already defined.
+    for n in re.findall(r"\[#(\d+)\](?![(:])", entry):
+        refs.setdefault(f"#{n}", f"https://github.com/{REPO}/issues/{n}")
+    missing = [f"[{k}]: {v}\n" for k, v in refs.items() if not re.search(rf"^\[{re.escape(k)}\]: ", links, re.M)]
+    if missing:
+        links = links.rstrip("\n") + "\n" + "".join(missing)
     with open(CHANGELOG, "w") as f:
         f.write(head + "\n" + entry + links.lstrip("\n"))
 
@@ -212,9 +224,15 @@ def section(tag):
     if not m:
         sys.exit(f"{CHANGELOG} has no entry for {version}")
     link = re.search(rf"^\[{re.escape(version)}\]: (\S+)", text, re.M)
-    out = m.group(1).strip() + "\n"
+    body = m.group(1).strip()
+    out = body + "\n"
     if link and "/compare/" in link.group(1):
         out += f"\n**Full Changelog**: {link.group(1)}\n"
+    # The references it uses, defined at the bottom of the file, come along.
+    used = dict.fromkeys(re.findall(r"\[([^\[\]]+)\](?![(:\[])", body))
+    defs = [d.group(0) for label in used if (d := re.search(rf"^\[{re.escape(label)}\]: \S+$", text, re.M))]
+    if defs:
+        out += "\n" + "\n".join(defs) + "\n"
     return out
 
 
