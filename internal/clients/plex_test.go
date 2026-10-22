@@ -373,15 +373,44 @@ func TestPlexWatcherSkipsLocalPlayback(t *testing.T) {
 	}
 
 	w.handleMessage(ctx, []byte(playing("gone", "playing", 1000)))
-	if e := nextEvent(t, w); !e.Active || e.Key != "gone" {
-		t.Errorf("unknown locality: %+v", e)
-	}
+	noEvent(t, w)
 	server.mu.Lock()
 	server.sessionsCode = http.StatusBadGateway
 	server.mu.Unlock()
 	w.handleMessage(ctx, []byte(playing("broken", "playing", 1000)))
 	if e := nextEvent(t, w); !e.Active || e.Key != "broken" {
 		t.Errorf("failed lookup: %+v", e)
+	}
+}
+
+// A player left paused across a Plex restart reports its session every
+// 10 seconds, but Plex no longer lists it: nothing is streaming. Once
+// the snapshot ends it, those reports must not start it again each time.
+func TestPlexWatcherIgnoresSessionsPlexDoesNotList(t *testing.T) {
+	server := newFakePlex(t)
+	server.set(episode("1", "paused", false))
+	w := NewPlexWatcher(server.URL, "tok", false)
+	ctx := context.Background()
+
+	w.handleMessage(ctx, []byte(playing("1", "paused", 5000)))
+	if e := nextEvent(t, w); !e.Active || e.DetailOnly {
+		t.Fatalf("start %+v", e)
+	}
+	nextEvent(t, w) // its detail
+
+	server.set()
+	if got, _ := w.Snapshot(ctx); len(got) != 0 {
+		t.Fatalf("snapshot %+v", got)
+	}
+	for range 3 {
+		w.handleMessage(ctx, []byte(playing("1", "paused", 5000)))
+	}
+	noEvent(t, w)
+
+	server.set(episode("1", "playing", false))
+	w.handleMessage(ctx, []byte(playing("1", "playing", 7000)))
+	if e := nextEvent(t, w); !e.Active || e.DetailOnly {
+		t.Fatalf("listed again: %+v", e)
 	}
 }
 
