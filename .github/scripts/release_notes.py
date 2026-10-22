@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """The changelog's entry for a release, and whether anything shipped.
 
-    release_notes.py changelog PREV TAG DATE [SUMMARY]
-        moves CHANGELOG.md's Unreleased entries under TAG, released on DATE
+    release_notes.py changelog PREV TAG DATE [SUMMARY [SECURITY]]
+        moves CHANGELOG.md's Unreleased entries under TAG, released on DATE;
+        SECURITY lists the IDs of the vulnerabilities it fixes
     release_notes.py section TAG
         prints TAG's entry, as the release's notes
     release_notes.py shipped PREV
@@ -18,9 +19,12 @@ own. If nothing was written under Unreleased, the release lists the
 commits that shipped instead, sorted by their first word: Add under
 Added, Fix under Fixed, the rest under Changed.
 
-Dependencies are always listed from the versions before and after each
-commit, with who updated them and in which pull request (or commit),
-since Renovate groups a week's updates into one and writes no entries.
+Dependencies are not a type of change: an update that matters to users
+is written under its type like anything else. A release that only
+updates dependencies lists them under Changed, with who updated each and
+in which pull request (or commit). A security release from the weekly
+scan lists what it fixes under Security, each by its ID, linked to its
+advisory.
 A section with nothing in it is left out.
 """
 import json
@@ -122,6 +126,20 @@ def version_changes(old_ref, new_ref):
     return lines
 
 
+ADVISORIES = {"GO": "https://pkg.go.dev/vuln/{}", "CVE": "https://nvd.nist.gov/vuln/detail/{}",
+              "GHSA": "https://github.com/advisories/{}"}
+
+
+def advisories(ids, refs):
+    """Security lines for the vulnerabilities a release fixes, each led by
+    its ID as a reference to its advisory, added to refs."""
+    lines = []
+    for vuln in re.findall(r"(?:GO|CVE|GHSA)-[\w-]+", ids):
+        refs[vuln] = ADVISORIES[vuln.split("-")[0]].format(vuln)
+        lines.append(f"- [{vuln}] is fixed.")
+    return lines
+
+
 def person(name):
     """@name as a link: GitHub links mentions on a release page, but not in a file."""
     url = f"https://github.com/apps/{name.removesuffix('[bot]')}" if name.endswith("[bot]") else f"https://github.com/{name}"
@@ -152,11 +170,12 @@ def compare(prev, tag):
 
 
 def generated(prev, refs):
-    """Added, Changed, Fixed from the commits, and Dependencies, as {title: [lines]}."""
+    """Added, Changed, Fixed from the commits, and the dependency updates,
+    as {title: [lines]}."""
     sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": []}
     for sha, author, subject, files in commits(prev):
         word = subject.split()[0]
-        update = author.startswith("renovate") or (word in ("Update", "Bump") and all(f in DEP_FILES for f in files))
+        update = author.startswith("renovate") or (word in ("Update", "Bump") and all(f in DEP_FILES for f in files if ships(f)))
         if any(f in DEP_FILES for f in files):
             changes = version_changes(f"{sha}^", sha)
             if not changes and update:
@@ -180,7 +199,7 @@ def split(text):
     return text[:m.end()], text[m.end():end].strip(), text[end:]
 
 
-def changelog(prev, tag, date, summary=""):
+def changelog(prev, tag, date, summary="", security=""):
     with open(CHANGELOG) as f:
         head, unreleased, rest = split(f.read())
     version = tag.removeprefix("v")
@@ -196,11 +215,22 @@ def changelog(prev, tag, date, summary=""):
         body += ["Initial release.", ""]
     else:
         print(f"Nothing was written under Unreleased; listing the commits that shipped since {prev}.", file=sys.stderr)
+        # Dependency updates are listed only in a release that has nothing
+        # else: then they are what changed.
+        if not any(found[t] for t in ("Added", "Changed", "Fixed")):
+            found["Changed"] = found["Dependencies"]
         for title in ("Added", "Changed", "Fixed"):
             if found[title]:
                 body += [f"### {title}", "", *[f"- {i}" for i in found[title]], ""]
-    if found.get("Dependencies"):
-        body += ["### Dependencies", "", *[f"- {i}" for i in found["Dependencies"]], ""]
+    fixes = advisories(security, refs)
+    if fixes:
+        # Security is the last type, so fixes join a Security section
+        # written by hand when it ends the entry.
+        headings = re.findall(r"^### (.+?)\s*$", unreleased, re.M)
+        if headings and headings[-1] == "Security":
+            body[-2] = body[-2].rstrip() + "\n" + "\n".join(fixes)
+        else:
+            body += ["### Security", "", *fixes, ""]
 
     entry = f"## [{version}] - {date}\n\n" + "\n".join(body).strip() + "\n\n"
     links = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: {compare(tag, 'HEAD')}", rest, count=1, flags=re.M)
@@ -239,7 +269,7 @@ def section(tag):
 if __name__ == "__main__":
     cmd, args = sys.argv[1], sys.argv[2:]
     if cmd == "changelog":
-        changelog(args[0], args[1], args[2], args[3] if len(args) > 3 else "")
+        changelog(args[0], args[1], args[2], *args[3:5])
     elif cmd == "section":
         sys.stdout.write(section(args[0]))
     elif cmd == "shipped":
