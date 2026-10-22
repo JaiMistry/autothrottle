@@ -76,9 +76,9 @@ func fakeIdentity(t *testing.T, id string) string {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/identity":
-			fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, id)
+			_, _ = fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, id)
 		case "/System/Info/Public":
-			fmt.Fprintf(w, `{"Id":%q}`, id)
+			_, _ = fmt.Fprintf(w, `{"Id":%q}`, id)
 		default:
 			http.NotFound(w, r)
 		}
@@ -104,7 +104,7 @@ func TestOneServerUnderTwoAddressesIsRefused(t *testing.T) {
 	}
 
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, r.Host[:strings.Index(r.Host, ":")])
+		_, _ = fmt.Fprintf(w, `{"MediaContainer":{"machineIdentifier":%q}}`, r.Host[:strings.Index(r.Host, ":")])
 	}))
 	t.Cleanup(proxy.Close)
 	app := newApp(t)
