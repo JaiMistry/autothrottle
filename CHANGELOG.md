@@ -7,6 +7,8 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-22
+
 ### Fixed
 
 - Signing in with Plex no longer leaves an empty gap under the button once it has signed in.
@@ -45,8 +47,11 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial release.
 
-[Unreleased]: https://github.com/JaiMistry/autothrottle/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/JaiMistry/autothrottle/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/JaiMistry/autothrottle/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/JaiMistry/autothrottle/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/JaiMistry/autothrottle/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/JaiMistry/autothrottle/releases/tag/v1.0.0
 [#6]: https://github.com/JaiMistry/autothrottle/issues/6
+[#9]: https://github.com/JaiMistry/autothrottle/pull/9
+[eaec13a]: https://github.com/JaiMistry/autothrottle/commit/eaec13afb043ea4907ccd11572c6a1147b77fb22
