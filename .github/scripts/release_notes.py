@@ -21,11 +21,13 @@ Added, Fix under Fixed, the rest under Changed.
 
 Dependencies are not a type of change: an update that matters to users
 is written under its type like anything else. A release that only
-updates dependencies says so in a sentence, naming what it ships. A
-security release from the weekly scan lists what it fixes under Security,
-each by its ID, linked to its advisory.
+updates dependencies lists them under Changed, with who updated each and
+in which pull request (or commit). A security release from the weekly
+scan lists what it fixes under Security, each by its ID, linked to its
+advisory.
 A section with nothing in it is left out.
 """
+import json
 import os
 import re
 import subprocess
@@ -97,18 +99,31 @@ def images(ref):
     return found
 
 
-def updated(prev):
-    """What a release that only updates dependencies says: what it ships,
-    the Go version and modules, or that only the build's tools changed."""
-    shipped = []
-    for read in (images, go_requires):
-        old, new = read(prev), read("HEAD")
-        shipped += [f"{name} {version}" for name, version in sorted(new.items(), key=lambda i: (i[0] != "Go", i[0]))
-                    if version != old.get(name) and "build" not in name]
-    if not shipped:
-        return "Updates to the tools AutoThrottle is built with only. Nothing else changes."
-    listed = shipped[0] if len(shipped) == 1 else ", ".join(shipped[:-1]) + " and " + shipped[-1]
-    return f"Dependency updates only: {listed}. Nothing else changes."
+def npm_direct(ref):
+    try:
+        pkg = json.loads(show(ref, "package.json") or "{}")
+        lock = json.loads(show(ref, "package-lock.json") or "{}")
+    except json.JSONDecodeError:
+        return {}
+    names = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    return {n: lock.get("packages", {}).get(f"node_modules/{n}", {}).get("version", "") for n in names}
+
+
+def version_changes(old_ref, new_ref):
+    lines = []
+    for read in (images, go_requires, npm_direct):
+        old, new = read(old_ref), read(new_ref)
+        for name in sorted(old.keys() | new.keys(), key=lambda n: (n not in IMAGE_NAMES.values(), n)):
+            a, b = old.get(name), new.get(name)
+            if a == b:
+                continue
+            if not a:
+                lines.append(f"Add {name} {b}")
+            elif not b:
+                lines.append(f"Remove {name}")
+            else:
+                lines.append(f"Update {name} to {b}")
+    return lines
 
 
 ADVISORIES = {"GO": "https://pkg.go.dev/vuln/{}", "CVE": "https://nvd.nist.gov/vuln/detail/{}",
@@ -131,6 +146,18 @@ def person(name):
     return f"[@{name}]({url})"
 
 
+def credit(sha, author, subject, refs):
+    """by @author (#12), or (the commit) when it didn't come from a pull
+    request. Either is a reference, its link added to refs."""
+    pr = re.search(r"\(#(\d+)\)$", subject)
+    if pr:
+        label, url = f"#{pr.group(1)}", f"https://github.com/{REPO}/pull/{pr.group(1)}"
+    else:
+        label, url = sha[:7], f"https://github.com/{REPO}/commit/{sha}"
+    refs[label] = url
+    return f"by {person(author)} ([{label}])"
+
+
 def linkify(text):
     """A bare #12 or @name written in an entry, as a link: #12 as a reference,
     defined at the bottom of the file. Ones already linked are left alone."""
@@ -142,13 +169,21 @@ def compare(prev, tag):
     return f"https://github.com/{REPO}/compare/{prev}...{tag}" if prev else f"https://github.com/{REPO}/releases/tag/{tag}"
 
 
-def generated(prev):
-    """Added, Changed, Fixed from the commits, as {title: [lines]}. Updates
-    to dependencies alone are left out."""
-    sections = {"Added": [], "Changed": [], "Fixed": []}
+def generated(prev, refs):
+    """Added, Changed, Fixed from the commits, and the dependency updates,
+    as {title: [lines]}."""
+    sections = {"Added": [], "Changed": [], "Fixed": [], "Dependencies": []}
     for sha, author, subject, files in commits(prev):
         word = subject.split()[0]
-        if author.startswith("renovate") or (word in ("Update", "Bump") and all(f in DEP_FILES for f in files if ships(f))):
+        update = author.startswith("renovate") or (word in ("Update", "Bump") and all(f in DEP_FILES for f in files if ships(f)))
+        if any(f in DEP_FILES for f in files):
+            changes = version_changes(f"{sha}^", sha)
+            if not changes and update:
+                # Something the comparison doesn't read, such as a package
+                # only the CSS build's tools use.
+                changes = [re.sub(r"\s*\(#\d+\)$", "", subject)]
+            sections["Dependencies"] += [f"{c} {credit(sha, author, subject, refs)}" for c in changes]
+        if update:
             continue
         sections["Added" if word == "Add" else "Fixed" if word == "Fix" else "Changed"].append(subject)
     return sections
@@ -172,7 +207,7 @@ def changelog(prev, tag, date, summary="", security=""):
         sys.exit(f"{CHANGELOG} already has {version}")
 
     refs = {}
-    found = generated(prev) if prev else {}
+    found = generated(prev, refs) if prev else {}
     body = [linkify(summary.strip()), ""] if summary.strip() else []
     if unreleased:
         body += [linkify(unreleased), ""]
@@ -180,6 +215,10 @@ def changelog(prev, tag, date, summary="", security=""):
         body += ["Initial release.", ""]
     else:
         print(f"Nothing was written under Unreleased; listing the commits that shipped since {prev}.", file=sys.stderr)
+        # Dependency updates are listed only in a release that has nothing
+        # else: then they are what changed.
+        if not any(found[t] for t in ("Added", "Changed", "Fixed")):
+            found["Changed"] = found["Dependencies"]
         for title in ("Added", "Changed", "Fixed"):
             if found[title]:
                 body += [f"### {title}", "", *[f"- {i}" for i in found[title]], ""]
@@ -192,8 +231,6 @@ def changelog(prev, tag, date, summary="", security=""):
             body[-2] = body[-2].rstrip() + "\n" + "\n".join(fixes)
         else:
             body += ["### Security", "", *fixes, ""]
-    if prev and not body:
-        body = [updated(prev), ""]
 
     entry = f"## [{version}] - {date}\n\n" + "\n".join(body).strip() + "\n\n"
     links = re.sub(r"^\[Unreleased\]: .*$", f"[Unreleased]: {compare(tag, 'HEAD')}", rest, count=1, flags=re.M)
