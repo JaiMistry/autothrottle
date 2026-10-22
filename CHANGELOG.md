@@ -53,5 +53,3 @@ Initial release.
 [1.0.1]: https://github.com/JaiMistry/autothrottle/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/JaiMistry/autothrottle/releases/tag/v1.0.0
 [#6]: https://github.com/JaiMistry/autothrottle/issues/6
-[#9]: https://github.com/JaiMistry/autothrottle/pull/9
-[eaec13a]: https://github.com/JaiMistry/autothrottle/commit/eaec13afb043ea4907ccd11572c6a1147b77fb22

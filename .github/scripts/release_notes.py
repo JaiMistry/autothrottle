@@ -238,7 +238,9 @@ def changelog(prev, tag, date, summary="", security=""):
     # Each #12 in the entry links to its issue, unless already defined.
     for n in re.findall(r"\[#(\d+)\](?![(:])", entry):
         refs.setdefault(f"#{n}", f"https://github.com/{REPO}/issues/{n}")
-    missing = [f"[{k}]: {v}\n" for k, v in refs.items() if not re.search(rf"^\[{re.escape(k)}\]: ", links, re.M)]
+    # Only those the entry uses: credits are made for updates it leaves out.
+    missing = [f"[{k}]: {v}\n" for k, v in refs.items()
+               if f"[{k}]" in entry and not re.search(rf"^\[{re.escape(k)}\]: ", links, re.M)]
     if missing:
         links = links.rstrip("\n") + "\n" + "".join(missing)
     with open(CHANGELOG, "w") as f:
