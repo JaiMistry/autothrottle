@@ -280,15 +280,30 @@ function explainChromeFailure() {
   // Requests still waiting on a response, which is what keeps the network
   // from going idle: named when it never does.
   const unanswered = new Map();
-  page.on('request', (r) => unanswered.set(r, Date.now()));
-  page.on('response', (r) => unanswered.delete(r.request()));
-  page.on('requestfailed', (r) => unanswered.delete(r));
+  let lastRequestEvent = Date.now();
+  page.on('request', (r) => {
+    // Loading a page cancels what the last one still had in flight, but
+    // Puppeteer can miss the cancel of a request whose response had begun
+    // and count it in flight for good, so its own idle wait never ends.
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) unanswered.clear();
+    unanswered.set(r, Date.now());
+    lastRequestEvent = Date.now();
+  });
+  const answered = (r) => { unanswered.delete(r); lastRequestEvent = Date.now(); };
+  page.on('response', (r) => answered(r.request()));
+  page.on('requestfailed', answered);
   // htmx-boosted submits swap over XHR; wait for the network to settle.
   async function settle(action) {
-    const idle = page.waitForNetworkIdle({ idleTime: 400, timeout: 30000 }).catch((e) => {
-      const waiting = [...unanswered].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)}s)`);
-      throw new Error(`${e.message}; unanswered: ${waiting.join(', ') || 'none, but requests kept coming'}`);
-    });
+    const idle = (async () => {
+      const start = Date.now();
+      while (unanswered.size || Date.now() - Math.max(start, lastRequestEvent) < 400) {
+        if (Date.now() - start > 30000) {
+          const waiting = [...unanswered].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)}s)`);
+          throw new Error(`Timed out after waiting 30000ms; unanswered: ${waiting.join(', ') || 'none, but requests kept coming'}`);
+        }
+        await sleep(50);
+      }
+    })();
     await Promise.all([idle, action()]);
   }
   const submit = (formSel) => settle(() => page.click(`${formSel} [data-submit]`));
