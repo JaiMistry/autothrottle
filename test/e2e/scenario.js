@@ -293,18 +293,19 @@ function explainChromeFailure() {
   page.on('response', (r) => answered(r.request()));
   page.on('requestfailed', answered);
   // htmx-boosted submits swap over XHR; wait for the network to settle.
+  // The quiet is timed from the end of the action, not its start: a click
+  // on a busy runner can take longer than the quiet itself, which once let
+  // a sign-up's page load land after the wait had ended.
   async function settle(action) {
-    const idle = (async () => {
-      const start = Date.now();
-      while (unanswered.size || Date.now() - Math.max(start, lastRequestEvent) < 400) {
-        if (Date.now() - start > 30000) {
-          const waiting = [...unanswered].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)}s)`);
-          throw new Error(`Timed out after waiting 30000ms; unanswered: ${waiting.join(', ') || 'none, but requests kept coming'}`);
-        }
-        await sleep(50);
+    await action();
+    const start = Date.now();
+    while (unanswered.size || Date.now() - Math.max(start, lastRequestEvent) < 400) {
+      if (Date.now() - start > 30000) {
+        const waiting = [...unanswered].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)}s)`);
+        throw new Error(`Timed out after waiting 30000ms; unanswered: ${waiting.join(', ') || 'none, but requests kept coming'}`);
       }
-    })();
-    await Promise.all([idle, action()]);
+      await sleep(50);
+    }
   }
   const submit = (formSel) => settle(() => page.click(`${formSel} [data-submit]`));
   async function testConnection(formSel) {
