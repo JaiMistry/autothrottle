@@ -61,11 +61,17 @@ jobs:
         env:
           MEDIA: ${{ inputs.media }}
         run: |
+          media=$(grep -A1 "^  $MEDIA:" test/e2e/compose.newest.yml | sed -n 's/.*image: //p')
           {
-            for image in "$(grep -A1 "^  $MEDIA:" test/e2e/compose.newest.yml | sed -n 's/.*image: //p')" \
+            for image in "$media" \
                 ghcr.io/linuxserver/qbittorrent:latest ghcr.io/linuxserver/transmission:latest \
                 ghcr.io/linuxserver/deluge:latest; do
               version=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image" 2>/dev/null || true)
+              # The media server's own answer during setup: Emby's image
+              # carries no version label.
+              if [ "$image" = "$media" ] && [ -s test/e2e/.state/media-version ]; then
+                version=$(cat test/e2e/.state/media-version)
+              fi
               digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null | sed 's/.*@sha256:\(.\{12\}\).*/\1/' || true)
               echo "- \`$image\`: ${version:-unknown version} (${digest:-not pulled})"
             done
