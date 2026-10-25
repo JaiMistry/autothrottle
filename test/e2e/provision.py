@@ -151,6 +151,7 @@ def configure_plex():
         return root.get("claimed") == "1"
     wait_for("Plex to start and be claimed", claimed)
     (STATE / "plex-machine-id").write_text(identity["machineIdentifier"])
+    note_version(identity.get("version"))
 
     log("adding the test libraries")
     libraries = [
@@ -227,6 +228,12 @@ def cleanup():
     log(f"removed {removed} test device(s) from the Plex account")
 
 
+def note_version(version):
+    """What the server says it is, for the run's report of what was tested:
+    Emby's image carries no version label."""
+    (STATE / "media-version").write_text(version or "")
+
+
 def write_env(media):
     env = {
         "media": media,
@@ -255,6 +262,8 @@ def configure():
         with urllib.request.urlopen(SERVER["base"] + ready, timeout=5) as resp:
             return resp.status == 200
     wait_for(SERVER["label"], up)
+    with urllib.request.urlopen(SERVER["base"] + "/System/Info/Public", timeout=5) as resp:
+        note_version(json.load(resp).get("Version"))
 
     log(f"running {SERVER['label']}'s setup wizard")
     call("/Startup/Configuration", {"UICulture": "en-US", "MetadataCountryCode": "US", "PreferredMetadataLanguage": "en"})

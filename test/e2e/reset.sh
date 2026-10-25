@@ -23,7 +23,7 @@ export COMPOSE_PROFILES=jellyfin,emby,plex
 # can't remove — so the state is cleared from inside a container.
 if [ -d .state ]; then
   docker run --rm --memory=64m -v "$PWD/.state:/state" alpine:3 \
-    sh -c 'rm -rf /state/autothrottle /state/jellyfin /state/emby /state/plex /state/qbittorrent /state/transmission /state/deluge /state/env.json /state/plex-machine-id /state/plex-signins'
+    sh -c 'rm -rf /state/autothrottle /state/jellyfin /state/emby /state/plex /state/qbittorrent /state/transmission /state/deluge /state/env.json /state/plex-machine-id /state/plex-signins /state/media-version'
 fi
 
 export COMPOSE_PROFILES="${MEDIA:-jellyfin}"
