@@ -7,6 +7,10 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Throttle History dates are no longer partly hidden under the first hour's cells on phones.
+
 ## [1.1.1] - 2026-10-22
 
 ### Fixed
