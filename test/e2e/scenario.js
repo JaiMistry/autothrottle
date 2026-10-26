@@ -650,7 +650,10 @@ function explainChromeFailure() {
 
     section('Between episodes');
     const throttledAgain = () => until('the throttle', async () => ((await qbittorrent.limits()).down === 1500 * 1024 ? true : null), 30000);
-    const releasedAgain = () => until('the release', async () => ((await dashboard()).hero === 'Nothing is throttled' ? true : null), 60000);
+    // qBittorrent too: right after a throttle lands the Dashboard can still
+    // read nothing throttled, and the next step would start from a throttle
+    // about to be lifted.
+    const releasedAgain = () => until('the release', async () => ((await dashboard()).hero === 'Nothing is throttled' && (await qbittorrent.limits()).down === 0 ? true : null), 60000);
     const closingStretch = Math.round(EPISODE.durationMs / 1000) - 150;
     const finaleClosing = Math.round(FINALE.durationMs / 1000) - 150;
     // An episode left midway was left by choice: it releases at once too.
