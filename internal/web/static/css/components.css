@@ -136,6 +136,19 @@ html[data-rail="collapsed"] .at-shell .at-rail-foot form { grid-row: 2; grid-col
 /* min-height: 0, not 100%: a percentage of the indefinite 1fr row
    re-inflates it. */
 .at-main-col { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; }
+/* Changing page (app.js): the content dims while the next page loads,
+   then fades in, rising a few pixels. The bar and menu stay still. */
+.at-main-col { transition: opacity var(--dur-fast) var(--ease-out); }
+.at-main-col.at-leaving { opacity: .4; }
+.at-main-col.at-entering { animation: atPageIn var(--dur-base) var(--ease-out); }
+.at-main-col.at-entering > .at-main { animation: atPageRise var(--dur-base) var(--ease-out); }
+@keyframes atPageIn { from { opacity: 0; } }
+@keyframes atPageRise { from { transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .at-main-col { transition: none; }
+  .at-main-col.at-leaving { opacity: 1; }
+  .at-main-col.at-entering, .at-main-col.at-entering > .at-main { animation: none; }
+}
 .at-main { padding: var(--space-9) 26px var(--space-9); min-width: 0; }
 .at-foot {
   display: flex;
