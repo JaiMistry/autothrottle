@@ -257,7 +257,8 @@ function explainChromeFailure() {
   await page.setViewport({ width: 1440, height: 1000 });
   page.setDefaultTimeout(30000);
   const pageErrors = [];
-  page.on('pageerror', (e) => pageErrors.push(e.message));
+  // A page can throw anything; a rejection with no reason arrives as undefined.
+  page.on('pageerror', (e) => pageErrors.push(e instanceof Error ? e.message : `${page.url()}: threw ${String(e)}`));
   // The nesting guard warning means a page was aimed at part of a page.
   page.on('console', (m) => { if (m.text().includes('a full page was aimed at')) pageErrors.push(m.text()); });
   const oneShell = () => page.evaluate(() => document.querySelectorAll('.at-shell').length === 1 && document.querySelectorAll('.at-rail').length === 1);

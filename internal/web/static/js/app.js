@@ -695,7 +695,7 @@
           target: "#plex-signin",
           swap: "innerHTML",
           values: csrf ? { csrf_token: csrf.value } : {},
-        });
+        }).catch(function () {});
       }, 3000);
     }, 700);
   }
@@ -1101,7 +1101,9 @@
   function refreshHistory() {
     var card = document.getElementById("throttle-history");
     if (!card || animating || document.visibilityState !== "visible" || card.matches(":hover") || !window.htmx) return;
-    htmx.ajax("GET", "/dashboard/history?range=" + card.dataset.range, { target: "#throttle-history", swap: "outerHTML" });
+    // htmx rejects with nothing when the request fails (AutoThrottle
+    // restarting); the next refresh catches up.
+    htmx.ajax("GET", "/dashboard/history?range=" + card.dataset.range, { target: "#throttle-history", swap: "outerHTML" }).catch(function () {});
   }
   window.atRefreshHistory = refreshHistory;
   setInterval(refreshHistory, 60000);
