@@ -61,8 +61,8 @@ jobs:
     if: inputs.version == '' && !github.event.pull_request.draft
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27.3"
           cache: true
@@ -81,7 +81,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0 # the commit's date, for a build that isn't a release
@@ -99,16 +99,16 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       # Built here rather than in Docker, where Go's build cache started
       # empty every run: setup-go keeps it between runs.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "26"
           cache: npm
       # As the Dockerfile's tailwind stage builds it for the image.
       - name: Build the CSS
         run: |
           npm ci
           npx @tailwindcss/cli -i ./internal/web/static/css/input.css -o ./internal/web/static/css/tailwind.css --minify
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         id: go
         with:
           go-version: "1.27.3"
@@ -116,7 +116,7 @@ jobs:
           # job would restore CI's, which holds no Windows builds, and
           # never save one.
           cache: false
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -128,7 +128,7 @@ jobs:
           COMMIT: ${{ steps.version.outputs.commit }}
           BUILD_DATE: ${{ steps.version.outputs.date }}
         run: packaging/windows/build.sh bin
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-binaries
           path: bin
@@ -138,8 +138,8 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: windows-binaries
           path: bin
@@ -154,7 +154,7 @@ jobs:
           & $iscc /Q "/DAppVersion=$version" "/DFileVersion=$number" "/DBinDir=$PWD\bin" packaging\windows\autothrottle.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem packaging\windows\out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: packaging/windows/out/*.exe
@@ -169,8 +169,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: windows-installer
           path: installer

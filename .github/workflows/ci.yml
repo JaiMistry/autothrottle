@@ -12,8 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27.3"
           cache: true
@@ -41,7 +41,7 @@ jobs:
           awk 'NR==1{print;next} {k=$1; if(!(k in c) || $3>c[k]) {c[k]=$3; n[k]=$2}} END{for(k in c) print k, n[k], c[k]}' coverage.all.out > coverage.out
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -49,7 +49,7 @@ jobs:
   trivy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t autothrottle:scan .
       # Fails on a high or critical vulnerability that has a fix, the same
