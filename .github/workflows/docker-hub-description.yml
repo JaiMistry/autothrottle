@@ -32,7 +32,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: echo "tag=${TAG:-$(gh release view --json tagName --jq .tagName)}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.tag }}
 
@@ -58,7 +58,7 @@ jobs:
             perl -pe 's{src="(?!https?://)}{src="$ENV{FILES}}g; s{\]\((?!https?://|#)}{]($ENV{REPO}}g' > dockerhub.md
           cat dockerhub.md
 
-      - uses: peter-evans/dockerhub-description@v4
+      - uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -1,7 +1,7 @@
 # Both build stages run on the builder's own platform, whatever the image
 # is for: the CSS is the same on every architecture, and Go cross-compiles
 # (CGO is off), so an arm64 image never runs its compiler under emulation.
-FROM --platform=$BUILDPLATFORM node:22-slim AS tailwind
+FROM --platform=$BUILDPLATFORM node:26-slim AS tailwind
 # Build-time only: Node never ships in the final image.
 WORKDIR /src
 COPY package.json package-lock.json ./
