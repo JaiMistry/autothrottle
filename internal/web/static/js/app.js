@@ -359,7 +359,13 @@
     // a second app (an inherited hx-target does it), or the sign-in page
     // reached through a redirect. Load it instead.
     var body = e.detail.serverResponse;
-    if (e.detail.target !== document.body && typeof body === "string" && /^\s*<!doctype html/i.test(body)) {
+    // The menu's links take the content column from a whole page on
+    // purpose, as long as it is an app page: the sign-in page has none.
+    var nav = e.detail.requestConfig && e.detail.requestConfig.elt && e.detail.requestConfig.elt.closest &&
+      e.detail.requestConfig.elt.closest("[data-nav]");
+    var appPage = typeof body === "string" && /class="at-main-col"/.test(body);
+    if (e.detail.target !== document.body && typeof body === "string" && /^\s*<!doctype html/i.test(body) &&
+        !(nav && appPage)) {
       e.detail.shouldSwap = false;
       console.warn("AutoThrottle: a full page was aimed at #" + (e.detail.target && e.detail.target.id) + "; loading it instead");
       window.location.assign(e.detail.xhr.responseURL || window.location.href);
@@ -394,6 +400,65 @@
     if (trigger && document.activeElement === document.body && document.contains(trigger)) {
       trigger.focus({ preventScroll: true });
     }
+  });
+})();
+
+/* ── Page changes ─────────────────────────────────────────────────
+   A menu link swaps only the content column, so the bar and menu stay
+   put and the mobile drawer finishes sliding away. The tapped item lights
+   up at once, the content dims while the next page loads, and the new
+   page fades in when it lands. */
+(function () {
+  "use strict";
+
+  function navLink(elt) { return elt && elt.closest ? elt.closest("[data-nav]") : null; }
+  function column() { return document.querySelector(".at-main-col"); }
+
+  // The menu outlives the swap, so it is told which page is current.
+  function markCurrent(path) {
+    document.querySelectorAll(".at-rail .at-nav-item").forEach(function (a) {
+      if (new URL(a.href, location.href).pathname === path) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+  }
+
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var link = navLink(e.detail.elt);
+    if (!link) return;
+    markCurrent(new URL(link.href, location.href).pathname);
+    var col = column();
+    if (col) col.classList.add("at-leaving");
+  });
+
+  // A failed load leaves the page as it was.
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    if (!navLink(e.detail.elt) || e.detail.successful) return;
+    var col = column();
+    if (col) col.classList.remove("at-leaving");
+    markCurrent(location.pathname);
+  });
+
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var link = navLink(e.detail.requestConfig && e.detail.requestConfig.elt);
+    if (!link) return;
+    markCurrent(new URL(link.href, location.href).pathname);
+    var col = column();
+    if (!col) return;
+    col.classList.add("at-entering");
+    // Its own fade, not one bubbling up from inside the page.
+    col.addEventListener("animationend", function done(ev) {
+      if (ev.target !== col) return;
+      col.classList.remove("at-entering");
+      col.removeEventListener("animationend", done);
+    });
+  });
+
+  // Back and forward restore a saved page, menu included. It was saved as
+  // it was being left, so still dimmed.
+  document.body.addEventListener("htmx:historyRestore", function () {
+    var col = column();
+    if (col) col.classList.remove("at-leaving", "at-entering");
+    markCurrent(location.pathname);
   });
 })();
 

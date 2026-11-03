@@ -43,7 +43,9 @@
 <body>
 {{if .Authenticated}}
   {{/* Navigation is boosted, so a click swaps the body rather than reloading
-       the page. Scoped to the shell, leaving login a plain POST. */}}
+       the page. Scoped to the shell, leaving login a plain POST. The menu's
+       links swap only the content column ("navswap"), so the bar and menu
+       stay put while the page changes. */}}
 <div class="at-shell" id="at-shell" hx-boost="true">
     <header class="at-topbar">
       <button type="button" class="at-barbtn" data-drawer-open aria-label="Open menu" aria-expanded="false">
@@ -76,7 +78,7 @@
 </html>
 {{end}}
 
-{{define "brand"}}<a class="at-brand" href="/" aria-label="AutoThrottle: go to the Dashboard">
+{{define "brand"}}<a class="at-brand" href="/" {{template "navswap"}} aria-label="AutoThrottle: go to the Dashboard">
   <img src="/static/img/logo-mark.svg" width="{{.Size}}" height="{{.Size}}" alt="">
   {{if .ShowName}}<span class="at-rail-name">AutoThrottle</span>{{end}}
 </a>{{end}}
@@ -128,7 +130,9 @@
   </div>
 </nav>{{end}}
 
-{{define "navitem"}}<a href="{{.Href}}" class="at-nav-item"{{if eq .Active .ID}} aria-current="page"{{end}} title="{{.Label}}" aria-label="{{.Label}}">
+{{define "navswap"}}data-nav hx-target=".at-main-col" hx-select=".at-main-col" hx-swap="outerHTML show:window:top"{{end}}
+
+{{define "navitem"}}<a href="{{.Href}}" class="at-nav-item" {{template "navswap"}}{{if eq .Active .ID}} aria-current="page"{{end}} title="{{.Label}}" aria-label="{{.Label}}">
   <span class="at-nav-icon">{{template "navicon" .ID}}</span>
   <span class="at-nav-label" style="flex:1">{{.Label}}</span>
 </a>{{end}}
