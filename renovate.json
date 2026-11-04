@@ -39,11 +39,6 @@
       "enabled": false
     },
     {
-      "description": "The end-to-end servers follow releases only, never betas or date-numbered unstable builds",
-      "matchFileNames": ["test/e2e/compose.yml"],
-      "allowedVersions": "/^\\d+(\\.\\d+)+$/"
-    },
-    {
       "description": "Plex tags carry the build's hash after the version",
       "matchPackageNames": ["plexinc/pms-docker"],
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)-[0-9a-f]+$",
