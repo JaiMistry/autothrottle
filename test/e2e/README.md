@@ -3,11 +3,12 @@
 These tests set up a fresh AutoThrottle and use it only through its web UI,
 against real servers:
 
-- Jellyfin 10.11, Emby 4.9 and Plex 1.43, one at a time
-- qBittorrent 5.2, Transmission 4.1 and Deluge 2.2
+- Jellyfin, Emby and Plex, one at a time
+- qBittorrent, Transmission and Deluge, all three with each media server
 
-Throttling is checked on the download clients themselves, not only on the
-page.
+Each server runs at the oldest version the main README supports, and in a
+second round at its newest release (see [In CI](#in-ci)). Throttling is
+checked on the download clients themselves, not only on the page.
 
 ## Running
 
@@ -42,13 +43,13 @@ With `KEEP=1`, the stack is on these ports:
 ## What it covers
 
 **Setup**
-- Creating the account on first start-up
+- Creating the account on first start-up, and the empty Dashboard after
 - Adding a media server, first with a wrong credential and then the right one
 - Signing in with Plex (Plex only)
-- Refusing a duplicate media server
+- Refusing a duplicate media server, both at the same address and under another address, by the ID the server reports
 - Adding qBittorrent, Transmission and Deluge, with the address example showing each one's usual port
 - Deluge asking for a password only, and a wrong one failing the test and blocking saving
-- Turning mappings off and on
+- New mappings starting on, and turning them off and on
 
 **Throttling**
 - Docker's health check calling AutoThrottle healthy
@@ -70,6 +71,7 @@ With `KEEP=1`, the stack is on these ports:
 **Recovering from outages**
 - AutoThrottle restarting mid-playback: the throttle re-applied, the browser still signed in, the open page reconnecting its stream, and the health check passing again
 - qBittorrent and Deluge down while AutoThrottle starts: shown as Unreachable, logged once, and given their rates once they're back
+- A restarted Deluge, whose web UI comes back disconnected from its daemon: the next playback still throttles it, and releases it after
 - A media server going down, and the Dashboard showing it reconnecting
 
 **Live updates**
@@ -92,11 +94,23 @@ With `KEEP=1`, the stack is on these ports:
 
 The suite runs nightly, on demand from the Actions tab, and on pull
 requests that change what it tests, such as dependency updates. Each
-media server is its own job. Nightly, the same jobs also run against each
-server's newest release, at the same time; on demand that round is a
-checkbox. While the newest round fails, one issue labelled `upstream`
-stays open with the versions that failed, and it closes itself once a run
-passes.
+media server is its own job, in two rounds:
+
+- **Pinned** (`compose.yml`): each server at the oldest version the main
+  README supports, so its "4.9+" is tested, not assumed. The pins move only
+  when the README's minimums do, and `pins_test.go` fails CI until they
+  match.
+- **Newest** (`compose.newest.yml`): each server's latest release. It runs
+  nightly beside the pinned round; on demand it's a checkbox.
+
+While the newest round fails, one issue labelled `upstream` stays open with
+the releases it tested, and closes itself once a run passes. A run whose
+jobs couldn't pull their images opens none, since it tested nothing.
+
+The jobs sign in to ghcr.io with the workflow's own token, and to Docker Hub
+with `DOCKERHUB_PULL_TOKEN` (a read-only token, skipped when it isn't set),
+because the runners' shared addresses get rate-limited when they pull
+anonymously. A refused pull is retried up to three times.
 
 ## Plex
 
@@ -120,10 +134,11 @@ disk.
 
 | File | Purpose |
 |---|---|
-| `compose.yml` | The stack, with each server pinned to a tested version |
+| `compose.yml` | The stack, with each server pinned to the oldest version the main README supports |
 | `compose.newest.yml` | Each server at its newest release, for `E2E_NEWEST=1` |
 | `provision.py` | Prepares the stack before it starts and sets up the media server after |
 | `scenario.js` | The browser test |
 | `run.sh` | Runs everything |
-| `reset.sh` | Rebuilds the stack from nothing |
+| `reset.sh` | Rebuilds the stack from nothing, pulling its images with retries |
+| `pins_test.go` | Fails CI when a pin and the main README's supported versions disagree |
 | `fixtures/` | The test video, a 200 KB, ten-minute H.264 file, filed as a film (`movies/`) and as both episodes of a test show (`tv/`), the second being its last |
