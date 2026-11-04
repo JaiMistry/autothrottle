@@ -6,7 +6,8 @@
 # "1.43+"), on purpose and frozen: with compose.newest.yml's latest
 # releases, every night tests both ends of what's supported. Renovate
 # leaves them alone (it skips test folders). A pin moves only when the
-# README's minimum does; bumping one to make a failure go
+# README's minimum does (pins_test.go fails until they match); bumping
+# one to make a failure go
 # away would stop testing what the README claims. Where the minimum has
 # no image, or its first builds are betas, it's the oldest stable build:
 # Emby 4.9.1.80 (its 4.9.0.x are betas), Deluge 2.1.1 (2.1.0 has none).
