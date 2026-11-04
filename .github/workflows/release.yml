@@ -17,8 +17,9 @@ name: Release
 #
 # A release started from the Actions tab by the repository's owner is
 # created with their RELEASE_TOKEN, so it shows as theirs rather than the
-# bot's; automatic ones stay the bot's. Without the secret, the bot's
-# token is used.
+# bot's; automatic ones stay the bot's. A scheduled run names the owner
+# as its actor too (whoever last edited the schedule), so it is told
+# apart by its event. Without the secret, the bot's token is used.
 #
 # A pull request that changes how releases are built gets a dry run:
 # everything up to publishing, so a broken release is caught before it
@@ -356,7 +357,7 @@ jobs:
       - name: Create the GitHub release
         if: env.DRY_RUN != 'true'
         env:
-          GH_TOKEN: ${{ github.triggering_actor == github.repository_owner && secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.event_name != 'schedule' && github.triggering_actor == github.repository_owner && secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
           SHA: ${{ needs.plan.outputs.sha }}
           STABLE: ${{ needs.plan.outputs.stable }}
