@@ -106,18 +106,42 @@ jobs:
           # Printed so that an empty list below can be explained from the log.
           gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
             --jq '.jobs[] | [.name, .status, .conclusion // "-"] | @tsv' | tee jobs.tsv
-          failed=$(awk -F'\t' '$1 ~ /^newest/ && $3 == "failure" { print "- " $1 }' jobs.tsv)
-          [ -n "$failed" ] || failed="- Couldn't tell which; see the run."
+          # Each newest job records its four images. One whose images were
+          # never pulled failed before testing anything (a registry refusing
+          # them, say), so it says nothing about upstream.
+          tested="" untested=""
+          while IFS=$'\t' read -r name _ conclusion; do
+            case "$name" in newest*) ;; *) continue ;; esac
+            [ "$conclusion" = failure ] || continue
+            media=$(sed -n 's/^newest (\([a-z]*\)).*/\1/p' <<< "$name")
+            if grep -qv '(not pulled)' "versions-$media.md" 2>/dev/null; then
+              tested="$tested- $name"$'\n'
+            else
+              untested="$untested- $name"$'\n'
+            fi
+          done < jobs.tsv
+          if [ -z "$tested" ] && [ -n "$untested" ]; then
+            echo "::notice::The newest round failed before any test ran (no images pulled): not an upstream change, so no issue."
+            exit 0
+          fi
+          [ -n "$tested$untested" ] || tested="- Couldn't tell which; see the run."$'\n'
+          pulled=$(grep -hv '(not pulled)' versions-*.md 2>/dev/null | sort -u)
+          [ -n "$pulled" ] || pulled="- not recorded"
           {
             echo "The end-to-end run against each server's newest release failed. An upstream release may have changed something AutoThrottle relies on."
             echo
             echo "**Run:** $RUN_URL"
             echo
             echo "**Failed:**"
-            echo "$failed"
+            printf '%s' "$tested"
+            if [ -n "$untested" ]; then
+              echo
+              echo "**Couldn't start** (their images couldn't be pulled, so they tested nothing):"
+              printf '%s' "$untested"
+            fi
             echo
-            echo "**Versions tested:**"
-            sort -u versions-*.md 2>/dev/null || echo "- not recorded"
+            echo "**Newest releases tested:**"
+            echo "$pulled"
             echo
             echo "This issue is updated each night while the run fails, and closes itself when it passes."
           } > body.md
