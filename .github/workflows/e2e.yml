@@ -35,6 +35,8 @@ on:
 
 permissions:
   contents: read
+  # Signs in to ghcr.io to pull the download clients (e2e-suite.yml).
+  packages: read
 
 # Plex runs against one real plex.tv account. Each job removes only its
 # own server and sign-ins from it, so the two rounds can share it, but one

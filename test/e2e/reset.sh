@@ -11,11 +11,25 @@ cd "$(dirname "$0")"
 
 # E2E_NEWEST=1 runs every server at its newest release, pulled fresh.
 compose=(docker compose -f compose.yml)
-up=(up -d)
+policy=missing
 if [ "${E2E_NEWEST:-}" = 1 ]; then
   compose+=(-f compose.newest.yml)
-  up+=(--pull always)
+  policy=always
 fi
+up=(up -d --pull never)
+
+# Registries refuse a pull now and then (ghcr's "toomanyrequests" says to
+# retry within milliseconds), so the images are pulled first, retrying,
+# rather than let `up` fail the run. AutoThrottle is built, not pulled.
+pull_images() {
+  local attempt
+  for attempt in 1 2 3; do
+    "${compose[@]}" pull --quiet --ignore-buildable --policy "$policy" && return 0
+    [ "$attempt" = 3 ] && return 1
+    echo "  pulling the images failed (attempt $attempt of 3); retrying in $((attempt * 15)) s"
+    sleep $((attempt * 15))
+  done
+}
 
 export COMPOSE_PROFILES=jellyfin,emby,plex
 "${compose[@]}" down --remove-orphans >/dev/null 2>&1 || true
@@ -33,6 +47,7 @@ if [ "${MEDIA:-}" = plex ]; then
   PLEX_CLAIM="$(python3 provision.py claim)"
   export PLEX_CLAIM
 fi
+pull_images
 if [ -n "${AT_IMAGE:-}" ]; then
   "${compose[@]}" "${up[@]}" --no-build
 else
