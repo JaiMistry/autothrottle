@@ -67,6 +67,7 @@ func (d *DB) migrate() error {
 	for _, stmt := range []string{
 		`ALTER TABLE session_history ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE session_history ADD COLUMN device TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE downloaders ADD COLUMN alternative_speed INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := d.conn.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("migrating: %w", err)

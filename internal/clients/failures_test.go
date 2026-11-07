@@ -47,12 +47,17 @@ func TestQBittorrentFailures(t *testing.T) {
 	wantErr(t, "limits, login refused", SetQBittorrentLimits(ctx, status(500), "u", "p", 1, 1), "unexpected status 500")
 	wantErr(t, "limits, bad address", SetQBittorrentLimits(ctx, badURL, "", "", 1, 1), "building request")
 	wantErr(t, "limits, unreachable", SetQBittorrentLimits(ctx, unreachable, "", "", 1, 1), "connecting to")
-	uploadFails := serve(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "setUploadLimit") {
+	prefsFail := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "setPreferences") {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	wantErr(t, "limits, upload refused", SetQBittorrentLimits(ctx, uploadFails, "", "", 1, 1), "setting upload limit")
+	wantErr(t, "limits, refused", SetQBittorrentLimits(ctx, prefsFail, "", "", 1, 1), "setting speed limits")
+	wantErr(t, "inspect, refused", func() error { _, err := (QBittorrent{}).Inspect(ctx, status(500), "", ""); return err }(), "reading preferences")
+	wantErr(t, "inspect, no limits", func() error {
+		_, err := (QBittorrent{}).Inspect(ctx, serve(t, func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "{}") }), "", "")
+		return err
+	}(), "didn't report")
 	if err := (QBittorrent{}).SetLimits(ctx, serve(t, func(http.ResponseWriter, *http.Request) {}), "", "", 1, 1); err != nil {
 		t.Errorf("limits without a login: %v", err)
 	}

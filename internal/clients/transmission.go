@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 )
@@ -36,18 +37,90 @@ func TestTransmission(ctx context.Context, baseURL, username, password string) e
 	return err
 }
 
-// SetTransmissionLimits sets the ordinary global limits, not turtle
-// mode (the user's own toggle). 0 disables a limit, since a literal 0
-// would stop all traffic.
+// SetTransmissionLimits sets the ordinary global limits. 0 disables a
+// limit, since a literal 0 would stop all traffic.
 func SetTransmissionLimits(ctx context.Context, baseURL, username, password string, downloadLimitKBps, uploadLimitKBps int64) error {
+	return Transmission{}.Apply(ctx, baseURL, username, password, Desired{
+		Normal: Limits{DownloadKBps: downloadLimitKBps, UploadKBps: uploadLimitKBps},
+	})
+}
+
+// transmissionSession is the part of session-get AutoThrottle reads.
+// Numbers are floats: 4.1.0 sent the speed limits with a decimal point.
+type transmissionSession struct {
+	Down           *float64 `json:"speed-limit-down"`
+	DownEnabled    *bool    `json:"speed-limit-down-enabled"`
+	Up             *float64 `json:"speed-limit-up"`
+	UpEnabled      *bool    `json:"speed-limit-up-enabled"`
+	AltDown        *float64 `json:"alt-speed-down"`
+	AltUp          *float64 `json:"alt-speed-up"`
+	AltEnabled     *bool    `json:"alt-speed-enabled"`
+	AltTimeEnabled *bool    `json:"alt-speed-time-enabled"`
+}
+
+// Inspect reads Transmission's limits, alternative speed and schedule.
+func (Transmission) Inspect(ctx context.Context, baseURL, username, password string) (ClientState, error) {
+	args := map[string]any{"fields": []string{
+		"speed-limit-down", "speed-limit-down-enabled", "speed-limit-up", "speed-limit-up-enabled",
+		"alt-speed-down", "alt-speed-up", "alt-speed-enabled", "alt-speed-time-enabled",
+	}}
+	raw, err := transmissionCall(ctx, baseURL, username, password, "session-get", args)
+	if err != nil {
+		return ClientState{}, err
+	}
+	var got transmissionSession
+	if err := json.Unmarshal(raw, &got); err != nil {
+		return ClientState{}, fmt.Errorf("decoding session: %w", err)
+	}
+	if got.Down == nil || got.DownEnabled == nil || got.Up == nil || got.UpEnabled == nil ||
+		got.AltDown == nil || got.AltUp == nil || got.AltEnabled == nil || got.AltTimeEnabled == nil {
+		return ClientState{}, fmt.Errorf("decoding session: Transmission didn't report its speed limits")
+	}
+	limit := func(value float64, enabled bool) int64 {
+		if !enabled {
+			return 0
+		}
+		return int64(math.Round(value))
+	}
+	state := ClientState{
+		Normal:        Limits{DownloadKBps: limit(*got.Down, *got.DownEnabled), UploadKBps: limit(*got.Up, *got.UpEnabled)},
+		Alternative:   Limits{DownloadKBps: limit(*got.AltDown, true), UploadKBps: limit(*got.AltUp, true)},
+		AlternativeOn: *got.AltEnabled,
+	}
+	if *got.AltTimeEnabled {
+		state.Scheduler = "alternative speed schedule"
+	}
+	return state, nil
+}
+
+// Apply sets the limits and alternative speed in one call. Alternative
+// speed has no on/off per direction: 0 there is unlimited.
+func (Transmission) Apply(ctx context.Context, baseURL, username, password string, want Desired) error {
 	args := map[string]any{
-		"speed-limit-down":         downloadLimitKBps,
-		"speed-limit-down-enabled": downloadLimitKBps > 0,
-		"speed-limit-up":           uploadLimitKBps,
-		"speed-limit-up-enabled":   uploadLimitKBps > 0,
+		"speed-limit-down":         want.Normal.DownloadKBps,
+		"speed-limit-down-enabled": want.Normal.DownloadKBps > 0,
+		"speed-limit-up":           want.Normal.UploadKBps,
+		"speed-limit-up-enabled":   want.Normal.UploadKBps > 0,
+	}
+	if want.Alternative != nil {
+		args["alt-speed-down"] = want.Alternative.DownloadKBps
+		args["alt-speed-up"] = want.Alternative.UploadKBps
+	}
+	if want.AlternativeOn != nil {
+		args["alt-speed-enabled"] = *want.AlternativeOn
 	}
 	if _, err := transmissionCall(ctx, baseURL, username, password, "session-set", args); err != nil {
 		return fmt.Errorf("setting speed limits: %w", err)
+	}
+	return nil
+}
+
+// ClearConflicts turns off the alternative speed schedule, keeping its
+// times, and alternative speed.
+func (Transmission) ClearConflicts(ctx context.Context, baseURL, username, password string) error {
+	args := map[string]any{"alt-speed-time-enabled": false, "alt-speed-enabled": false}
+	if _, err := transmissionCall(ctx, baseURL, username, password, "session-set", args); err != nil {
+		return fmt.Errorf("turning off the alternative speed schedule: %w", err)
 	}
 	return nil
 }
