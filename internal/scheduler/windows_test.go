@@ -194,6 +194,40 @@ func TestThrottleInsideAWindowTakesTheLowerLimit(t *testing.T) {
 	wantEvent(t, database, "restored qbit's 00:00–00:00 window rate (nothing mapped is playing)")
 }
 
+// Throttling never raises a limit, outside windows too: a Throttled rate
+// higher than Default, or unlimited, leaves Default's. (Before windows,
+// Throttled replaced Default outright.)
+func TestThrottleNeverRaisesDefault(t *testing.T) {
+	s, database, limiter := newTestScheduler(t)
+	msID, dlID := addServerAndDownloader(t, database) // Throttled 500 / 100
+	mapped(t, database, msID, dlID)
+	dl, err := database.GetDownloader(dlID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl.DefaultDownloadLimit = 300
+	if err := database.UpdateDownloader(dl); err != nil {
+		t.Fatal(err)
+	}
+
+	s.HandleSessionEvent(msID, clients.Session{Key: "a"}, true)
+	s.resolve(context.Background())
+	calls := limiter.snapshot()
+	if got := calls[len(calls)-1]; got.download != 300 || got.upld != 100 {
+		t.Fatalf("throttled to %d / %d, want Default's 300 down and Throttled's 100 up", got.download, got.upld)
+	}
+
+	dl.BackupDownloadLimit = 0
+	if err := database.UpdateDownloader(dl); err != nil {
+		t.Fatal(err)
+	}
+	s.resolve(context.Background())
+	calls = limiter.snapshot()
+	if got := calls[len(calls)-1]; got.download != 300 {
+		t.Fatalf("an unlimited Throttled rate gave %d down, want Default's 300", got.download)
+	}
+}
+
 // A window that says don't throttle lets playback through, and says so.
 func TestWindowThatDoesNotThrottle(t *testing.T) {
 	s, database, _ := newTestScheduler(t)
