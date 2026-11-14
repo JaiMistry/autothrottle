@@ -282,17 +282,31 @@ function explainChromeFailure() {
   // from going idle: named when it never does.
   const unanswered = new Map();
   let lastRequestEvent = Date.now();
+  let loading = null; // a page load not yet committed
   page.on('request', (r) => {
     // Loading a page cancels what the last one still had in flight, but
     // Puppeteer can miss the cancel of a request whose response had begun
     // and count it in flight for good, so its own idle wait never ends.
-    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) unanswered.clear();
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) { unanswered.clear(); loading = r; }
     unanswered.set(r, Date.now());
     lastRequestEvent = Date.now();
   });
+  // The old page keeps running until the new one commits, and a live update
+  // landing in between sends a request the commit cancels, which Puppeteer
+  // never reports either. Nothing of the new page is asked for before the
+  // commit, so what is still waiting then belongs to the old one. Only a
+  // page load commits: pushState navigates too, but cancels nothing.
+  page.on('framenavigated', (f) => {
+    if (f !== page.mainFrame() || !loading) return;
+    loading = null;
+    unanswered.clear();
+  });
   const answered = (r) => { unanswered.delete(r); lastRequestEvent = Date.now(); };
   page.on('response', (r) => answered(r.request()));
-  page.on('requestfailed', answered);
+  page.on('requestfailed', (r) => {
+    if (r === loading) loading = null; // a page load that never commits
+    answered(r);
+  });
   // htmx-boosted submits swap over XHR; wait for the network to settle.
   // The quiet is timed from the end of the action, not its start: a click
   // on a busy runner can take longer than the quiet itself, which once let
