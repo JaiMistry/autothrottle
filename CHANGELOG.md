@@ -7,6 +7,18 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-16
+
+Released early: fixes a known vulnerability found in v1.1.2 by the weekly scan.
+
+### Changed
+
+- Update Go to 1.27.4 by [@JaiMistry](https://github.com/JaiMistry) ([e47ea62])
+
+### Security
+
+- [GO-2026-6859] is fixed.
+
 ## [1.1.2] - 2026-11-03
 
 ### Fixed
@@ -53,10 +65,13 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial release.
 
-[Unreleased]: https://github.com/JaiMistry/autothrottle/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/JaiMistry/autothrottle/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/JaiMistry/autothrottle/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/JaiMistry/autothrottle/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/JaiMistry/autothrottle/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/JaiMistry/autothrottle/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/JaiMistry/autothrottle/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/JaiMistry/autothrottle/releases/tag/v1.0.0
 [#6]: https://github.com/JaiMistry/autothrottle/issues/6
+[e47ea62]: https://github.com/JaiMistry/autothrottle/commit/e47ea620f51794f1491422bfd85687f848831e16
+[GO-2026-6859]: https://pkg.go.dev/vuln/GO-2026-6859
