@@ -10,6 +10,7 @@
   "automergeStrategy": "squash",
   "platformAutomerge": false,
   "postUpdateOptions": ["gomodTidy"],
+  "constraints": { "npm": "^10" },
   "vulnerabilityAlerts": {
     "labels": ["security"],
     "schedule": ["at any time"],
