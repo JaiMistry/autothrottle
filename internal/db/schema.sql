@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS downloaders (
     default_upload_limit INTEGER NOT NULL DEFAULT 0,
     backup_download_limit INTEGER NOT NULL DEFAULT 0,
     backup_upload_limit INTEGER NOT NULL DEFAULT 0,
+    -- Throttle through the client's alternative speed limits, so its own
+    -- UI shows it. qBittorrent and Transmission only.
+    alternative_speed INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -126,3 +129,23 @@ CREATE TABLE IF NOT EXISTS account (
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- A downloader's time windows: rates that replace its Default ones on
+-- some days between two times. Minutes after midnight, wall clock; an
+-- end at or before the start runs past midnight. days is a bitmask,
+-- bit 0 Sunday. Rates in KB/s, 0 unlimited.
+CREATE TABLE IF NOT EXISTS downloader_windows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    downloader_id INTEGER NOT NULL REFERENCES downloaders(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT '',
+    days INTEGER NOT NULL CHECK (days BETWEEN 1 AND 127),
+    start_minute INTEGER NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
+    end_minute INTEGER NOT NULL CHECK (end_minute BETWEEN 0 AND 1439),
+    download_limit INTEGER NOT NULL DEFAULT 0,
+    upload_limit INTEGER NOT NULL DEFAULT 0,
+    -- Whether playback still throttles during the window.
+    throttle INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_downloader_windows_downloader ON downloader_windows(downloader_id);

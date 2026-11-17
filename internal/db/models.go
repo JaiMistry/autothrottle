@@ -24,8 +24,11 @@ type Downloader struct {
 	CredentialEncrypted                      sql.NullString
 	DefaultDownloadLimit, DefaultUploadLimit int64 // KB/s, 0 = unlimited
 	BackupDownloadLimit, BackupUploadLimit   int64
-	Enabled                                  bool
-	CreatedAt, UpdatedAt                     string
+	// AlternativeSpeed throttles through the client's alternative speed
+	// limits, switching them on while throttled.
+	AlternativeSpeed     bool
+	Enabled              bool
+	CreatedAt, UpdatedAt string
 }
 
 type Mapping struct {
@@ -105,10 +108,10 @@ func (d *DB) DeleteMediaServer(id int64) error {
 func (d *DB) CreateDownloader(dl Downloader) (int64, error) {
 	res, err := d.conn.Exec(
 		`INSERT INTO downloaders (name, type, url, credential_encrypted,
-		 default_download_limit, default_upload_limit, backup_download_limit, backup_upload_limit, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 default_download_limit, default_upload_limit, backup_download_limit, backup_upload_limit, alternative_speed, enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		dl.Name, dl.Type, dl.URL, dl.CredentialEncrypted,
-		dl.DefaultDownloadLimit, dl.DefaultUploadLimit, dl.BackupDownloadLimit, dl.BackupUploadLimit, dl.Enabled,
+		dl.DefaultDownloadLimit, dl.DefaultUploadLimit, dl.BackupDownloadLimit, dl.BackupUploadLimit, dl.AlternativeSpeed, dl.Enabled,
 	)
 	if err != nil {
 		return 0, err
@@ -119,7 +122,7 @@ func (d *DB) CreateDownloader(dl Downloader) (int64, error) {
 func (d *DB) ListDownloaders() ([]Downloader, error) {
 	rows, err := d.conn.Query(
 		`SELECT id, name, type, url, credential_encrypted, default_download_limit, default_upload_limit,
-		 backup_download_limit, backup_upload_limit, enabled, created_at, updated_at FROM downloaders ORDER BY name COLLATE NOCASE`)
+		 backup_download_limit, backup_upload_limit, alternative_speed, enabled, created_at, updated_at FROM downloaders ORDER BY name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +132,7 @@ func (d *DB) ListDownloaders() ([]Downloader, error) {
 	for rows.Next() {
 		var dl Downloader
 		if err := rows.Scan(&dl.ID, &dl.Name, &dl.Type, &dl.URL, &dl.CredentialEncrypted,
-			&dl.DefaultDownloadLimit, &dl.DefaultUploadLimit, &dl.BackupDownloadLimit, &dl.BackupUploadLimit,
+			&dl.DefaultDownloadLimit, &dl.DefaultUploadLimit, &dl.BackupDownloadLimit, &dl.BackupUploadLimit, &dl.AlternativeSpeed,
 			&dl.Enabled, &dl.CreatedAt, &dl.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -142,9 +145,9 @@ func (d *DB) GetDownloader(id int64) (Downloader, error) {
 	var dl Downloader
 	err := d.conn.QueryRow(
 		`SELECT id, name, type, url, credential_encrypted, default_download_limit, default_upload_limit,
-		 backup_download_limit, backup_upload_limit, enabled, created_at, updated_at FROM downloaders WHERE id = ?`, id,
+		 backup_download_limit, backup_upload_limit, alternative_speed, enabled, created_at, updated_at FROM downloaders WHERE id = ?`, id,
 	).Scan(&dl.ID, &dl.Name, &dl.Type, &dl.URL, &dl.CredentialEncrypted,
-		&dl.DefaultDownloadLimit, &dl.DefaultUploadLimit, &dl.BackupDownloadLimit, &dl.BackupUploadLimit,
+		&dl.DefaultDownloadLimit, &dl.DefaultUploadLimit, &dl.BackupDownloadLimit, &dl.BackupUploadLimit, &dl.AlternativeSpeed,
 		&dl.Enabled, &dl.CreatedAt, &dl.UpdatedAt)
 	return dl, err
 }
@@ -153,10 +156,10 @@ func (d *DB) UpdateDownloader(dl Downloader) error {
 	_, err := d.conn.Exec(
 		`UPDATE downloaders SET name = ?, type = ?, url = ?, credential_encrypted = ?,
 		 default_download_limit = ?, default_upload_limit = ?, backup_download_limit = ?, backup_upload_limit = ?,
-		 enabled = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+		 alternative_speed = ?, enabled = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
 		dl.Name, dl.Type, dl.URL, dl.CredentialEncrypted,
 		dl.DefaultDownloadLimit, dl.DefaultUploadLimit, dl.BackupDownloadLimit, dl.BackupUploadLimit,
-		dl.Enabled, dl.ID,
+		dl.AlternativeSpeed, dl.Enabled, dl.ID,
 	)
 	return err
 }
