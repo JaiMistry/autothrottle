@@ -9,7 +9,7 @@ and AutoThrottle adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.3] - 2026-11-16
 
-Released early: fixes a known vulnerability found in v1.1.2 by the weekly scan.
+Fixes a known vulnerability found in v1.1.2 by the weekly scan.
 
 ### Changed
 
