@@ -1,15 +1,15 @@
 name: E2E suite
 
 # One media server's run of the end-to-end suite, called by the E2E
-# workflow for the pinned versions and for the newest.
+# workflow for the pinned versions and for the latest.
 on:
   workflow_call:
     inputs:
       media:
         type: string
         required: true
-      newest:
-        description: Each server's newest release instead of the pinned one
+      latest:
+        description: Each server's latest release instead of the pinned one
         type: boolean
         default: false
 
@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   e2e:
+    name: ${{ inputs.latest && 'Latest' || 'Pinned' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -69,7 +70,7 @@ jobs:
         run: test/e2e/run.sh
         env:
           MEDIA: ${{ inputs.media }}
-          E2E_NEWEST: ${{ inputs.newest && '1' || '' }}
+          E2E_LATEST: ${{ inputs.latest && '1' || '' }}
           AT_IMAGE: autothrottle-e2e:ci
           E2E_BROWSER: host
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
@@ -78,14 +79,14 @@ jobs:
           PLEX_E2E_TOKEN: ${{ secrets.PLEX_E2E_TOKEN }}
           PLEX_E2E_CLIENT_ID: ${{ secrets.PLEX_E2E_CLIENT_ID }}
 
-      # Which releases "newest" meant tonight, for the summary and for the
+      # Which releases "latest" meant tonight, for the summary and for the
       # issue a failure opens.
       - name: Record the versions
-        if: always() && inputs.newest
+        if: always() && inputs.latest
         env:
           MEDIA: ${{ inputs.media }}
         run: |
-          media=$(grep -A1 "^  $MEDIA:" test/e2e/compose.newest.yml | sed -n 's/.*image: //p')
+          media=$(grep -A1 "^  $MEDIA:" test/e2e/compose.latest.yml | sed -n 's/.*image: //p')
           {
             for image in "$media" \
                 ghcr.io/linuxserver/qbittorrent:latest ghcr.io/linuxserver/transmission:latest \
@@ -103,7 +104,7 @@ jobs:
           cat "versions-$MEDIA.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the versions
-        if: always() && inputs.newest
+        if: always() && inputs.latest
         uses: actions/upload-artifact@v7
         with:
           name: versions-${{ inputs.media }}
@@ -114,6 +115,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-failure-${{ inputs.media }}${{ inputs.newest && '-newest' || '' }}
+          name: e2e-failure-${{ inputs.media }}${{ inputs.latest && '-latest' || '' }}
           path: test/e2e/.state/failure.png
           if-no-files-found: ignore

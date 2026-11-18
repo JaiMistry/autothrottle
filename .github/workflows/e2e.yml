@@ -6,15 +6,15 @@ name: E2E
 # change what it tests: dependency updates, chiefly, where it proves the
 # new versions work before they merge.
 #
-# Nightly it also runs against each server's newest release, at the same
+# Nightly it also runs against each server's latest release, at the same
 # time, and keeps one issue open while that fails: an upstream release
 # that breaks AutoThrottle is found before users find it. On demand that
 # round is optional, since checking a change only needs the pinned ones.
 on:
   workflow_dispatch:
     inputs:
-      newest:
-        description: Also run against each server's newest release
+      latest:
+        description: Also run against each server's latest release
         type: boolean
         default: false
   schedule:
@@ -46,37 +46,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # A draft pull request gets CI only; this runs once it's marked ready.
-  pinned:
+  # One job per media server and round, named for both: "Plex / Pinned".
+  # The latest round is in the matrix only when it runs, nightly or when
+  # asked for, so no other run lists it as skipped. A draft pull request
+  # gets CI only; this runs once it's marked ready.
+  e2e:
     if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
-        media: [jellyfin, emby, plex]
-    name: e2e (${{ matrix.media }})
+        server:
+          - { id: jellyfin, name: Jellyfin }
+          - { id: emby, name: Emby }
+          - { id: plex, name: Plex }
+        round: ${{ fromJSON((github.event_name == 'schedule' || inputs.latest) && '["pinned", "latest"]' || '["pinned"]') }}
+    name: ${{ matrix.server.name }}
     uses: ./.github/workflows/e2e-suite.yml
     with:
-      media: ${{ matrix.media }}
+      media: ${{ matrix.server.id }}
+      latest: ${{ matrix.round == 'latest' }}
     secrets: inherit
 
-  newest:
-    if: github.event_name == 'schedule' || inputs.newest
-    strategy:
-      fail-fast: false
-      matrix:
-        media: [jellyfin, emby, plex]
-    name: newest (${{ matrix.media }})
-    uses: ./.github/workflows/e2e-suite.yml
-    with:
-      media: ${{ matrix.media }}
-      newest: true
-    secrets: inherit
-
-  # One issue while the newest releases fail, kept current each night and
+  # One issue while the latest releases fail, kept current each night and
   # closed by the first run that passes.
   report:
-    needs: newest
-    if: always() && (needs.newest.result == 'success' || needs.newest.result == 'failure')
+    name: Report
+    needs: e2e
+    if: always() && (github.event_name == 'schedule' || inputs.latest) && (needs.e2e.result == 'success' || needs.e2e.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -91,46 +87,52 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RESULT: ${{ needs.newest.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="E2E fails against the newest upstream releases"
+          title="E2E fails against the latest upstream releases"
           open=$(gh issue list --state open --label upstream --json number,title \
             --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
 
-          if [ "$RESULT" = success ]; then
-            if [ -n "$open" ]; then
-              gh issue close "$open" --comment "Passing again against the newest releases: $RUN_URL"
-            fi
-            exit 0
-          fi
-
-          # Printed so that an empty list below can be explained from the log.
+          # Printed so that what follows can be explained from the log.
           gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
             --jq '.jobs[] | [.name, .status, .conclusion // "-"] | @tsv' | tee jobs.tsv
-          # Each newest job records its four images. One whose images were
-          # never pulled failed before testing anything (a registry refusing
-          # them, say), so it says nothing about upstream.
-          tested="" untested=""
+          # The latest round's jobs are named "<Server> / Latest", and each
+          # records its four images. One whose images were never pulled
+          # failed before testing anything (a registry refusing them, say),
+          # so it says nothing about upstream.
+          tested="" untested="" passed=0 other=0
           while IFS=$'\t' read -r name _ conclusion; do
-            case "$name" in newest*) ;; *) continue ;; esac
-            [ "$conclusion" = failure ] || continue
-            media=$(sed -n 's/^newest (\([a-z]*\)).*/\1/p' <<< "$name")
+            case "$name" in *" / Latest") ;; *) continue ;; esac
+            case "$conclusion" in
+              success) passed=$((passed + 1)); continue ;;
+              failure) ;;
+              *) other=$((other + 1)); continue ;;
+            esac
+            media=$(tr '[:upper:]' '[:lower:]' <<< "${name% / Latest}")
             if grep -qv '(not pulled)' "versions-$media.md" 2>/dev/null; then
               tested="$tested- $name"$'\n'
             else
               untested="$untested- $name"$'\n'
             fi
           done < jobs.tsv
-          if [ -z "$tested" ] && [ -n "$untested" ]; then
-            echo "::notice::The newest round failed before any test ran (no images pulled): not an upstream change, so no issue."
+          if [ -z "$tested$untested" ]; then
+            if [ $((passed + other)) = 0 ]; then
+              echo "::error::No Latest job found in this run's jobs (listed above)."
+              exit 1
+            fi
+            if [ "$other" = 0 ] && [ -n "$open" ]; then
+              gh issue close "$open" --comment "Passing again against the latest releases: $RUN_URL"
+            fi
             exit 0
           fi
-          [ -n "$tested$untested" ] || tested="- Couldn't tell which; see the run."$'\n'
+          if [ -z "$tested" ]; then
+            echo "::notice::The latest round failed before any test ran (no images pulled): not an upstream change, so no issue."
+            exit 0
+          fi
           pulled=$(grep -hv '(not pulled)' versions-*.md 2>/dev/null | sort -u)
           [ -n "$pulled" ] || pulled="- not recorded"
           {
-            echo "The end-to-end run against each server's newest release failed. An upstream release may have changed something AutoThrottle relies on."
+            echo "The end-to-end run against each server's latest release failed. An upstream release may have changed something AutoThrottle relies on."
             echo
             echo "**Run:** $RUN_URL"
             echo
@@ -142,7 +144,7 @@ jobs:
               printf '%s' "$untested"
             fi
             echo
-            echo "**Newest releases tested:**"
+            echo "**Latest releases tested:**"
             echo "$pulled"
             echo
             echo "This issue is updated each night while the run fails, and closes itself when it passes."

@@ -3,8 +3,8 @@
 # Deluge. Driven by test/e2e/run.sh — see the README there.
 #
 # Each server is pinned to the oldest version the README promises (its
-# "1.43+"), on purpose and frozen: with compose.newest.yml's latest
-# releases, every night tests both ends of what's supported. Renovate
+# "1.43+"), on purpose and frozen: with compose.latest.yml's
+# latest releases, every night tests both ends of what's supported. Renovate
 # leaves them alone (it skips test folders). A pin moves only when the
 # README's minimum does (pins_test.go fails until they match); bumping
 # one to make a failure go away would stop testing what the README

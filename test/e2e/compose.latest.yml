@@ -1,5 +1,5 @@
-# Every server at its newest release, over the pinned versions in
-# compose.yml: E2E_NEWEST=1 test/e2e/run.sh. The nightly runs this too, to
+# Every server at its latest release, over the pinned versions in
+# compose.yml: E2E_LATEST=1 test/e2e/run.sh. The nightly runs this too, to
 # find out when an upstream release breaks something before users do.
 services:
   jellyfin:

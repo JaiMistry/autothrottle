@@ -3,17 +3,17 @@
 #
 # MEDIA=jellyfin|emby|plex picks the media server (default jellyfin),
 # AT_IMAGE=<image> uses an image you already built instead of building
-# AutoThrottle from this checkout, and E2E_NEWEST=1 uses each server's
-# newest release instead of the pinned one. Plex needs PLEX_E2E_TOKEN and
+# AutoThrottle from this checkout, and E2E_LATEST=1 uses each server's
+# latest release instead of the pinned one. Plex needs PLEX_E2E_TOKEN and
 # PLEX_E2E_CLIENT_ID set (run.sh loads them).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# E2E_NEWEST=1 runs every server at its newest release, pulled fresh.
+# E2E_LATEST=1 runs every server at its latest release, pulled fresh.
 compose=(docker compose -f compose.yml)
 policy=missing
-if [ "${E2E_NEWEST:-}" = 1 ]; then
-  compose+=(-f compose.newest.yml)
+if [ "${E2E_LATEST:-}" = 1 ]; then
+  compose+=(-f compose.latest.yml)
   policy=always
 fi
 up=(up -d --pull never)

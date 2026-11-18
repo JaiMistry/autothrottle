@@ -203,7 +203,7 @@ def configure_plex():
 def cleanup():
     """Removes this run's server, and the AutoThrottle sign-ins it made,
     from the test account. Another run can be using the account at the
-    same time (the newest round runs beside the pinned one), so what a
+    same time (the latest round runs beside the pinned one), so what a
     crashed run left behind goes only once it is older than any run can
     be. Only things E2E makes: the account is the tests' own."""
     ours = set()

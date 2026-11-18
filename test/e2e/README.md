@@ -7,7 +7,7 @@ against real servers:
 - qBittorrent, Transmission and Deluge, all three with each media server
 
 Each server runs at the oldest version the main README supports, and in a
-second round at its newest release (see [In CI](#in-ci)). Throttling is
+second round at its latest release (see [In CI](#in-ci)). Throttling is
 checked on the download clients themselves, not only on the page.
 
 ## Running
@@ -24,7 +24,7 @@ After that, each media server takes about four minutes.
 | `MEDIA=jellyfin`, `emby` or `plex` | Run one media server instead of all three. |
 | `AT_IMAGE=<image>` | Test an image you already built instead of building this checkout. |
 | `KEEP=1` | Leave the stack running when the run ends. |
-| `E2E_NEWEST=1` | Run each server at its newest release instead of the pinned version. |
+| `E2E_LATEST=1` | Run each server at its latest release instead of the pinned version. |
 | `PLEX_E2E_ENV=<file>` | Read the Plex test account's details from this file. |
 | `E2E_BROWSER=host` | Use this machine's Node, puppeteer-core and Chrome (`PUPPETEER_EXECUTABLE_PATH`) instead of the Puppeteer image. |
 
@@ -94,16 +94,17 @@ With `KEEP=1`, the stack is on these ports:
 
 The suite runs nightly, on demand from the Actions tab, and on pull
 requests that change what it tests, such as dependency updates. Each
-media server is its own job, in two rounds:
+media server is its own job in each of two rounds, named for both, such
+as Plex / Pinned:
 
 - **Pinned** (`compose.yml`): each server at the oldest version the main
   README supports, so its "4.9+" is tested, not assumed. The pins move only
   when the README's minimums do, and `pins_test.go` fails CI until they
   match.
-- **Newest** (`compose.newest.yml`): each server's latest release. It runs
+- **Latest** (`compose.latest.yml`): each server's latest release. It runs
   nightly beside the pinned round; on demand it's a checkbox.
 
-While the newest round fails, one issue labelled `upstream` stays open with
+While the latest round fails, one issue labelled `upstream` stays open with
 the releases it tested, and closes itself once a run passes. A run whose
 jobs couldn't pull their images opens none, since it tested nothing.
 
@@ -135,7 +136,7 @@ disk.
 | File | Purpose |
 |---|---|
 | `compose.yml` | The stack, with each server pinned to the oldest version the main README supports |
-| `compose.newest.yml` | Each server at its newest release, for `E2E_NEWEST=1` |
+| `compose.latest.yml` | Each server at its latest release, for `E2E_LATEST=1` |
 | `provision.py` | Prepares the stack before it starts and sets up the media server after |
 | `scenario.js` | The browser test |
 | `run.sh` | Runs everything |
