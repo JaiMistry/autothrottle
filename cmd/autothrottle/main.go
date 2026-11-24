@@ -131,6 +131,8 @@ func run(ctx context.Context, logger *slog.Logger, dataDir, addr string, out io.
 
 	go maintenance.Run(ctx)
 	go sched.RetryFailed(ctx)
+	go sched.RunClock(ctx)
+	go sched.WatchClients(ctx)
 	go func() {
 		heartbeat(ctx, database, runID)
 		close(beating)

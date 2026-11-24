@@ -21,6 +21,11 @@ type fakeDeluge struct {
 	status    map[string]string
 	config    map[string]float64
 	methods   []string
+	// The Scheduler plugin: enabled or not, its 24x7 grid, and whether it
+	// has paused the session.
+	plugins []string
+	grid    [][]int
+	paused  bool
 }
 
 func newFakeDeluge(t *testing.T) (*fakeDeluge, *httptest.Server) {
@@ -103,6 +108,40 @@ func (f *fakeDeluge) serve(w http.ResponseWriter, r *http.Request) {
 			f.config[k] = v
 		}
 		reply(nil, "")
+	case req.Method == "core.get_config_values":
+		var keys []string
+		_ = json.Unmarshal(req.Params[0], &keys)
+		values := map[string]float64{}
+		for _, k := range keys {
+			values[k] = f.config[k]
+		}
+		reply(values, "")
+	case req.Method == "core.get_enabled_plugins":
+		reply(append([]string{}, f.plugins...), "")
+	case req.Method == "core.disable_plugin":
+		var name string
+		_ = json.Unmarshal(req.Params[0], &name)
+		var kept []string
+		for _, p := range f.plugins {
+			if p != name {
+				kept = append(kept, p)
+			}
+		}
+		f.plugins = kept
+		reply(true, "")
+	case req.Method == "core.resume_session":
+		f.paused = false
+		reply(nil, "")
+	case strings.HasPrefix(req.Method, "scheduler.") && !f.schedulerOn():
+		reply(nil, "Unknown method")
+	case req.Method == "scheduler.get_config":
+		reply(map[string]any{"button_state": f.grid, "low_down": 50.0}, "")
+	case req.Method == "scheduler.get_state":
+		state := "Green"
+		if f.paused {
+			state = "Red"
+		}
+		reply(state, "")
 	case req.Method == "core.get_config_value":
 		var key string
 		_ = json.Unmarshal(req.Params[0], &key)
@@ -110,6 +149,15 @@ func (f *fakeDeluge) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		reply(nil, "Unknown method")
 	}
+}
+
+func (f *fakeDeluge) schedulerOn() bool {
+	for _, p := range f.plugins {
+		if p == "Scheduler" {
+			return true
+		}
+	}
+	return false
 }
 
 // state reads what the requests left behind.

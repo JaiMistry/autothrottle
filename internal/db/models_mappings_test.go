@@ -57,3 +57,23 @@ func TestListsSortCaseInsensitively(t *testing.T) {
 		t.Errorf("downloaders in order %s, %s", dls[0].Name, dls[1].Name)
 	}
 }
+
+func TestDownloaderAlternativeSpeed(t *testing.T) {
+	d := newTestDB(t)
+	id, err := d.CreateDownloader(Downloader{Name: "qBittorrent", Type: "qbittorrent", URL: "http://qb", AlternativeSpeed: true, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl, err := d.GetDownloader(id)
+	if err != nil || !dl.AlternativeSpeed {
+		t.Fatalf("created = %+v, %v", dl, err)
+	}
+	dl.AlternativeSpeed = false
+	if err := d.UpdateDownloader(dl); err != nil {
+		t.Fatal(err)
+	}
+	dls, err := d.ListDownloaders()
+	if err != nil || len(dls) != 1 || dls[0].AlternativeSpeed {
+		t.Fatalf("listed = %+v, %v", dls, err)
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/JaiMistry/autothrottle/internal/credential"
 	"github.com/JaiMistry/autothrottle/internal/db"
 	"github.com/JaiMistry/autothrottle/internal/live"
+	"github.com/JaiMistry/autothrottle/internal/schedule"
 	"github.com/JaiMistry/autothrottle/internal/settings"
 )
 
@@ -54,8 +55,15 @@ type Scheduler struct {
 
 	notify live.Notifier
 
-	// limiterFor is a field so tests can substitute a fake client.
-	limiterFor func(downloaderType string) clients.RateLimiter
+	// inspected is what each downloader last reported about its own
+	// limits, and conflict what stops AutoThrottle's limits applying there.
+	inspected map[int64]clients.ClientState
+	conflict  map[int64]string
+
+	// limiterFor and controllerFor are fields so tests can substitute a
+	// fake client.
+	limiterFor    func(downloaderType string) clients.RateLimiter
+	controllerFor func(downloaderType string) clients.Controller
 }
 
 type appliedState struct {
@@ -64,6 +72,21 @@ type appliedState struct {
 
 	cause   string // the media server that caused it
 	failure string // the last apply error, verbatim
+
+	// window is the time window in force, when inWindow. suppressed is
+	// playback the window lets through unthrottled.
+	window     schedule.Window
+	inWindow   bool
+	suppressed bool
+	// desired is what a managed downloader was put into, nil for one only
+	// given its limits; at is when, so a reading taken before it isn't
+	// mistaken for someone else's change.
+	desired *clients.Desired
+	at      time.Time
+	// until is when what's in force may next change, and then what
+	// follows, for the Dashboard.
+	until time.Time
+	then  string
 }
 
 // DownloaderState is one downloader's live state, for the Dashboard.
@@ -77,6 +100,16 @@ type DownloaderState struct {
 	UploadKBps   int64
 	Failure      string
 	Known        bool
+	// Window is the time window in force, by label; empty for Default.
+	// Suppressed: something is playing, but the window says don't
+	// throttle. Until is when that may next change, to Then.
+	Window     string
+	Suppressed bool
+	Until      time.Time
+	Then       string
+	// Conflict is what stops AutoThrottle's limits applying in the
+	// client, such as its own scheduler; empty when nothing does.
+	Conflict string
 }
 
 func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Scheduler {
@@ -90,7 +123,10 @@ func New(database *db.DB, encryptionKey []byte, store *settings.Store) *Schedule
 		nextEpisodeBy: make(map[int64]time.Time),
 		releaseAt:     make(map[int64]time.Time),
 		restoreDelay:  settings.RestoreDelay,
+		inspected:     make(map[int64]clients.ClientState),
+		conflict:      make(map[int64]string),
 		limiterFor:    clients.RateLimiterFor,
+		controllerFor: clients.ControllerFor,
 		// Persisted, so a restart does not silently re-enable throttling.
 		paused: store.Paused(),
 	}
@@ -246,7 +282,7 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 	defer s.mu.Unlock()
 	state, known := s.applied[downloaderID]
 	_, holding := s.releaseAt[downloaderID]
-	return DownloaderState{
+	out := DownloaderState{
 		Throttled:    state.throttled,
 		Holding:      holding,
 		Cause:        state.cause,
@@ -254,7 +290,15 @@ func (s *Scheduler) State(downloaderID int64) DownloaderState {
 		UploadKBps:   state.uploadLimit,
 		Failure:      state.failure,
 		Known:        known,
+		Suppressed:   state.suppressed,
+		Until:        state.until,
+		Then:         state.then,
+		Conflict:     s.conflict[downloaderID],
 	}
+	if state.inWindow {
+		out.Window = state.window.Label()
+	}
+	return out
 }
 
 // ClearSessions drops a server's sessions and re-resolves, for when its
@@ -474,6 +518,15 @@ type resolution struct {
 	throttled       bool
 	causeServerName string
 	causeServerID   int64 // for the log's cause tags
+
+	// managed: the downloader has time windows or uses alternative
+	// speed, so AutoThrottle owns all of its limits.
+	managed    bool
+	window     schedule.Window
+	inWindow   bool
+	suppressed bool
+	until      time.Time
+	then       string
 }
 
 func (s *Scheduler) resolve(ctx context.Context) {
@@ -490,6 +543,11 @@ func (s *Scheduler) resolve(ctx context.Context) {
 	mappings, err := s.db.ListMappings()
 	if err != nil {
 		slog.Error("scheduler: listing mappings", "error", err)
+		return
+	}
+	windows, err := s.db.ListWindows()
+	if err != nil {
+		slog.Error("scheduler: listing time windows", "error", err)
 		return
 	}
 
@@ -552,12 +610,28 @@ func (s *Scheduler) resolve(ctx context.Context) {
 			}
 			throttled, causeServerName = true, prev.cause
 		}
-		toApply = append(toApply, resolution{
+		r := resolution{
 			downloader:      dl,
 			throttled:       throttled,
 			causeServerName: causeServerName,
 			causeServerID:   causeServerID,
-		})
+			managed:         len(windows[dl.ID]) > 0 || dl.AlternativeSpeed,
+		}
+		// Leaving, AutoThrottle restores Default: no one would end a window.
+		if !s.exiting {
+			r.window, r.inWindow = schedule.Active(windows[dl.ID], now)
+			if next, ok := schedule.NextChange(windows[dl.ID], now); ok {
+				r.until, r.then = next, "Default"
+				if w, ok := schedule.Active(windows[dl.ID], next); ok {
+					r.then = w.Label()
+				}
+			}
+		}
+		if r.throttled && r.inWindow && !r.window.Throttle {
+			r.throttled, r.suppressed = false, true
+			delete(s.releaseAt, dl.ID)
+		}
+		toApply = append(toApply, r)
 	}
 
 	// Forget downloaders that are gone or off, so re-enabling one
@@ -639,32 +713,73 @@ func (s *Scheduler) ThrottlingSince() (since time.Time, ok bool) {
 
 func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	dl, throttled, causeServerName, causeServerID := r.downloader, r.throttled, r.causeServerName, r.causeServerID
-	downloadLimit, uploadLimit := dl.DefaultDownloadLimit, dl.DefaultUploadLimit
-	message := fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
-	s.mu.Lock()
-	if s.exiting {
-		message = fmt.Sprintf("restored default rate for %s (AutoThrottle is exiting)", dl.Name)
+
+	// What's in force without playback: Default, or the window's rates.
+	base := clients.Limits{DownloadKBps: dl.DefaultDownloadLimit, UploadKBps: dl.DefaultUploadLimit}
+	if r.inWindow {
+		base = clients.Limits{DownloadKBps: r.window.DownloadKBps, UploadKBps: r.window.UploadKBps}
 	}
-	s.mu.Unlock()
+	// Throttling never raises a limit, so a window slower than the
+	// Throttled rates keeps its own.
+	throttledLimits := clients.Limits{
+		DownloadKBps: lowerLimit(dl.BackupDownloadLimit, base.DownloadKBps),
+		UploadKBps:   lowerLimit(dl.BackupUploadLimit, base.UploadKBps),
+	}
+	limits := base
 	if throttled {
-		downloadLimit, uploadLimit = dl.BackupDownloadLimit, dl.BackupUploadLimit
-		message = fmt.Sprintf("throttled %s because %s is playing", dl.Name, causeServerName)
+		limits = throttledLimits
 	}
+
+	// A managed downloader is put wholly into AutoThrottle's state:
+	// alternative speed off, or carrying the throttle where it's wanted.
+	var desired *clients.Desired
+	if r.managed {
+		d := clients.Desired{Normal: limits}
+		if clients.HasAlternativeSpeed(dl.Type) {
+			on := throttled && dl.AlternativeSpeed
+			if dl.AlternativeSpeed {
+				alternative := throttledLimits
+				d.Normal, d.Alternative = base, &alternative
+			}
+			d.AlternativeOn = &on
+		}
+		desired = &d
+	}
+
 	want := appliedState{
 		throttled:     throttled,
-		downloadLimit: downloadLimit,
-		uploadLimit:   uploadLimit,
+		downloadLimit: limits.DownloadKBps,
+		uploadLimit:   limits.UploadKBps,
 		cause:         causeServerName,
+		window:        r.window,
+		inWindow:      r.inWindow,
+		suppressed:    r.suppressed,
+		desired:       desired,
+		until:         r.until,
+		then:          r.then,
 	}
 
 	s.mu.Lock()
 	prev, known := s.applied[dl.ID]
+	exiting := s.exiting
 	// A recorded failure is never "the same state": it must retry.
-	if known && prev.throttled == want.throttled &&
-		prev.downloadLimit == want.downloadLimit &&
-		prev.uploadLimit == want.uploadLimit &&
-		prev.cause == want.cause && prev.failure == "" {
+	sameClient := known && prev.failure == "" && prev.downloadLimit == want.downloadLimit &&
+		prev.uploadLimit == want.uploadLimit && sameDesired(prev.desired, want.desired)
+	if sameClient && prev.throttled == want.throttled && prev.cause == want.cause &&
+		sameWindow(prev, want) && prev.suppressed == want.suppressed {
+		prev.until, prev.then = want.until, want.then
+		s.applied[dl.ID] = prev
 		s.mu.Unlock()
+		return
+	}
+	// Nothing to send, only what it means: the Dashboard's story changes.
+	if sameClient && prev.throttled == want.throttled {
+		want.at = prev.at
+		s.applied[dl.ID] = want
+		s.mu.Unlock()
+		if want.suppressed && !prev.suppressed {
+			s.event(dl, causeServerID, fmt.Sprintf("not throttling %s while %s plays: its %s window allows it", dl.Name, causeServerName, r.window.Label()))
+		}
 		return
 	}
 	// Recorded first so concurrent resolves don't both apply it; a
@@ -672,10 +787,7 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	s.applied[dl.ID] = want
 	s.mu.Unlock()
 
-	// After a failure the client's state is unknown, so name it in full.
-	if known && prev.failure == "" && prev.throttled == throttled {
-		message = fmt.Sprintf("updated rate limits for %s", dl.Name)
-	}
+	message := applyMessage(dl, r, prev, known, exiting)
 
 	username, password, err := credential.Decrypt(s.encryptionKey, dl.CredentialEncrypted.String)
 	if err != nil {
@@ -683,17 +795,59 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 		return
 	}
 
-	limiter := s.limiterFor(dl.Type)
-	if limiter == nil {
-		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("no rate-limit support for downloader type %q (%s)", dl.Type, dl.Name))
-		return
+	if desired != nil {
+		controller := s.controllerFor(dl.Type)
+		if controller == nil {
+			s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("no full control for downloader type %q (%s)", dl.Type, dl.Name))
+			return
+		}
+		err = controller.Apply(ctx, dl.URL, username, password, *desired)
+	} else {
+		limiter := s.limiterFor(dl.Type)
+		if limiter == nil {
+			s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("no rate-limit support for downloader type %q (%s)", dl.Type, dl.Name))
+			return
+		}
+		err = limiter.SetLimits(ctx, dl.URL, username, password, limits.DownloadKBps, limits.UploadKBps)
 	}
-
-	if err := limiter.SetLimits(ctx, dl.URL, username, password, downloadLimit, uploadLimit); err != nil {
+	if err != nil {
 		s.recordFailure(dl.ID, prev.failure, fmt.Sprintf("failed to apply rate limits to %s: %v", dl.Name, clients.Redact(err)))
 		return
 	}
+	s.mu.Lock()
+	if current := s.applied[dl.ID]; current.failure == "" {
+		current.at = time.Now()
+		s.applied[dl.ID] = current
+	}
+	s.mu.Unlock()
 
+	s.event(dl, causeServerID, message)
+}
+
+// applyMessage says why a downloader's rates are changing.
+func applyMessage(dl db.Downloader, r resolution, prev appliedState, known, exiting bool) string {
+	// After a failure the client's state is unknown, so name it in full.
+	sameStory := known && prev.failure == "" && prev.throttled == r.throttled &&
+		sameWindow(prev, appliedState{window: r.window, inWindow: r.inWindow})
+	switch {
+	case sameStory:
+		return fmt.Sprintf("updated rate limits for %s", dl.Name)
+	case r.throttled:
+		return fmt.Sprintf("throttled %s because %s is playing", dl.Name, r.causeServerName)
+	case exiting:
+		return fmt.Sprintf("restored default rate for %s (AutoThrottle is exiting)", dl.Name)
+	case r.inWindow && known && prev.throttled:
+		return fmt.Sprintf("restored %s's %s window rate (nothing mapped is playing)", dl.Name, r.window.Label())
+	case r.inWindow:
+		return fmt.Sprintf("applied %s's %s window rate", dl.Name, r.window.Label())
+	case known && prev.inWindow && !prev.throttled:
+		return fmt.Sprintf("restored default rate for %s (its %s window ended)", dl.Name, prev.window.Label())
+	}
+	return fmt.Sprintf("restored default rate for %s (nothing mapped is playing)", dl.Name)
+}
+
+// event records an info event about a downloader.
+func (s *Scheduler) event(dl db.Downloader, causeServerID int64, message string) {
 	if err := s.db.InsertEvent(db.Event{
 		Level:         "info",
 		Message:       message,
@@ -702,6 +856,30 @@ func (s *Scheduler) applyState(ctx context.Context, r resolution) {
 	}); err != nil {
 		slog.Error("scheduler: recording event", "error", err)
 	}
+}
+
+// lowerLimit is the stricter of two limits, 0 being unlimited.
+func lowerLimit(a, b int64) int64 {
+	switch {
+	case a <= 0:
+		return max(b, 0)
+	case b <= 0:
+		return a
+	}
+	return min(a, b)
+}
+
+func sameWindow(a, b appliedState) bool {
+	return a.inWindow == b.inWindow && (!a.inWindow || a.window == b.window)
+}
+
+func sameDesired(a, b *clients.Desired) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Normal == b.Normal &&
+		(a.Alternative == nil) == (b.Alternative == nil) && (a.Alternative == nil || *a.Alternative == *b.Alternative) &&
+		(a.AlternativeOn == nil) == (b.AlternativeOn == nil) && (a.AlternativeOn == nil || *a.AlternativeOn == *b.AlternativeOn)
 }
 
 // recordFailure marks a downloader failing, so the next resolve retries
